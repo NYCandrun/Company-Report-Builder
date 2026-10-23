@@ -13,6 +13,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
+from urllib.error import HTTPError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from urllib.robotparser import RobotFileParser
 
@@ -96,14 +97,28 @@ class TextExtractor(HTMLParser):
 def _robots_allowed(url: str) -> bool:
     parsed = urlparse(url)
     robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
+    _require_public_host(robots_url)
     parser = RobotFileParser()
     parser.set_url(robots_url)
+    request = Request(
+        robots_url,
+        headers={"User-Agent": USER_AGENT, "Accept": "text/plain,*/*;q=0.1"},
+    )
     try:
-        parser.read()
+        with build_opener(PublicRedirectHandler()).open(request, timeout=30) as response:
+            body = response.read(1_000_001)
+            if len(body) > 1_000_000:
+                raise ValueError("robots.txt exceeds 1000000-byte safety limit")
+    except HTTPError as error:
+        if error.code in {401, 403}:
+            return False
+        # Other unavailable robots responses are not evidence of a prohibition.
+        return True
     except Exception:
         # An unavailable robots file is not evidence of a prohibition. The
         # caller still performs one paced public request and records failures.
         return True
+    parser.parse(body.decode("utf-8", errors="replace").splitlines())
     return parser.can_fetch(USER_AGENT, url)
 
 
