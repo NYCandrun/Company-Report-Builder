@@ -11,6 +11,18 @@
     "task_type": {"type": "string", "minLength": 1},
     "independent": {"type": "boolean"},
     "track_input_staleness": {"type": "boolean"},
+    "model_route": {
+      "type": "object",
+      "properties": {
+        "optional": {"type": "boolean"},
+        "tier": {"type": "string"},
+        "model_class": {"type": "string"},
+        "effort": {"type": "string"},
+        "fallback": {"type": "string"},
+        "enforcement": {"const": "advisory_only"}
+      },
+      "additionalProperties": true
+    },
     "inputs": {"type": "array"},
     "outputs": {"type": "array", "items": {"type": "string"}, "minItems": 1},
     "prompt_files": {"type": "array", "items": {"type": "string"}, "minItems": 1},

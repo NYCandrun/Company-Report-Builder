@@ -11,9 +11,9 @@ import textwrap
 from pathlib import Path
 from typing import Any
 
-from research_control.hashing import sha256_file
+from research_control.hashing import hash_path, hash_patterns, sha256_file
 from research_control.diagram_contract import DIAGRAM_SPECS
-from research_control.io import atomic_write_json, atomic_write_text, utc_now
+from research_control.io import atomic_write_json, atomic_write_text, load_json, utc_now
 
 
 FACT_ID = re.compile(r"(?<![A-Za-z0-9])\[?[A-Z][A-Z0-9-]*-[A-Z]*\d+[a-z]?\]?")
@@ -38,6 +38,9 @@ blockquote { margin-left: 0; padding-left: 18px; border-left: 3px solid var(--ac
 .meta { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
 @media print { body { background: white; } main { width: auto; margin: 0; padding: 36pt 42pt; box-shadow: none; } }
 """.strip()
+
+RENDER_METADATA = "tools/outputs/render-metadata.json"
+REVIEW_SCOPE = "tools/outputs/review-scope.json"
 
 
 def reader_text(markdown: str) -> str:
@@ -308,6 +311,109 @@ def make_page_previews(pdf_path: Path, markdown: str, directory: Path, slug: str
     return "svg", make_svg_previews(markdown, directory, slug)
 
 
+def _render_inputs(root: Path, source: Path) -> dict[str, str]:
+    patterns = [
+        str(source.relative_to(root)),
+        "05-synthesis/design/style.css",
+        "research_control/publication.py",
+        "research_control/diagram_contract.py",
+        *(spec["path"] for spec in DIAGRAM_SPECS),
+    ]
+    return hash_patterns(root, patterns)
+
+
+def _prior_document_current(root: Path, record: dict[str, Any], input_hashes: dict[str, str]) -> bool:
+    if record.get("input_hashes") != input_hashes:
+        return False
+    paths_and_hashes = [
+        (record.get("html"), record.get("html_sha256")),
+        (record.get("pdf"), record.get("pdf_sha256")),
+    ]
+    paths_and_hashes.extend(
+        (relative, digest)
+        for relative, digest in record.get("page_hashes", {}).items()
+    )
+    return bool(paths_and_hashes) and all(
+        isinstance(relative, str)
+        and isinstance(digest, str)
+        and hash_path(root / relative) == digest
+        for relative, digest in paths_and_hashes
+    )
+
+
+def _reviewed_hashes(root: Path) -> dict[tuple[str, str], str]:
+    path = root / "06-checks/visual-review.json"
+    if not path.is_file() or not path.stat().st_size:
+        return {}
+    try:
+        value = load_json(path)
+    except Exception:
+        return {}
+    result: dict[tuple[str, str], str] = {}
+    for record in value.get("pages", []):
+        if record.get("status") == "clean":
+            result[("brief_page", str(record.get("page")))] = str(record.get("artifact_sha256") or "")
+    for record in value.get("diagrams", []):
+        if record.get("status") == "clean":
+            result[("diagram", str(record.get("diagram")))] = str(record.get("artifact_sha256") or "")
+    brand = value.get("brand_guide", {})
+    for record in brand.get("html", []) if isinstance(brand, dict) else []:
+        if record.get("status") == "clean":
+            result[("brand_html", str(record.get("viewport")))] = str(record.get("artifact_sha256") or "")
+    for record in brand.get("pdf_pages", []) if isinstance(brand, dict) else []:
+        if record.get("status") == "clean":
+            result[("brand_pdf", str(record.get("page")))] = str(record.get("artifact_sha256") or "")
+    return result
+
+
+def write_review_scope(root: Path, metadata: dict[str, Any]) -> dict[str, Any]:
+    """Select visual targets by hash while retaining complete review accounting."""
+    prior = _reviewed_hashes(root)
+    targets: list[dict[str, Any]] = []
+    document = metadata.get("documents", {}).get("company-brief", {})
+    for page, relative in enumerate(document.get("page_previews", []), 1):
+        digest = hash_path(root / relative)
+        targets.append({
+            "kind": "brief_page", "id": str(page), "path": relative,
+            "artifact_sha256": digest,
+            "action": "reuse" if prior.get(("brief_page", str(page))) == digest else "inspect",
+        })
+    for spec in DIAGRAM_SPECS:
+        digest = hash_path(root / spec["path"])
+        targets.append({
+            "kind": "diagram", "id": spec["id"], "path": spec["path"],
+            "artifact_sha256": digest,
+            "action": "reuse" if prior.get(("diagram", spec["id"])) == digest else "inspect",
+        })
+    brand_html = "07-final-report/brand-guide.html"
+    html_digest = hash_path(root / brand_html)
+    for viewport in ("desktop", "mobile"):
+        targets.append({
+            "kind": "brand_html", "id": viewport, "path": brand_html,
+            "artifact_sha256": html_digest,
+            "action": "reuse" if prior.get(("brand_html", viewport)) == html_digest else "inspect",
+        })
+    brand_pdf = root / "07-final-report/brand-guide.pdf"
+    pdf_digest = hash_path(brand_pdf)
+    page_count = _pdf_pages(brand_pdf) if brand_pdf.is_file() else 0
+    for page in range(1, page_count + 1):
+        targets.append({
+            "kind": "brand_pdf", "id": str(page),
+            "path": str(brand_pdf.relative_to(root)), "artifact_sha256": pdf_digest,
+            "action": "reuse" if prior.get(("brand_pdf", str(page))) == pdf_digest else "inspect",
+        })
+    scope = {
+        "schema_version": "1.0.0",
+        "rule": "inspect changed hashes; retain prior clean records only when their artifact hash is identical",
+        "targets": targets,
+        "inspect_count": sum(item["action"] == "inspect" for item in targets),
+        "reuse_count": sum(item["action"] == "reuse" for item in targets),
+        "created_at": utc_now(),
+    }
+    atomic_write_json(root / REVIEW_SCOPE, scope)
+    return scope
+
+
 def render(root: Path) -> dict[str, Any]:
     documents = {
         "company-brief": root / "05-synthesis/company-brief.md",
@@ -320,8 +426,10 @@ def render(root: Path) -> dict[str, Any]:
     css = DEFAULT_CSS + ("\n" + custom_css if custom_css.strip() else "")
     output_dir = root / "07-final-report"
     preview_dir = root / "tools/outputs/rendered-pages"
+    prior_path = root / RENDER_METADATA
+    prior = load_json(prior_path) if prior_path.is_file() and prior_path.stat().st_size else {}
     metadata: dict[str, Any] = {
-        "schema_version": "1.0.0",
+        "schema_version": "2.0.0",
         "renderer": "research_control.publication",
         "rendered_at": utc_now(),
         "documents": {},
@@ -331,6 +439,14 @@ def render(root: Path) -> dict[str, Any]:
         markdown = source.read_text(encoding="utf-8")
         html_path = output_dir / f"{slug}.html"
         pdf_path = output_dir / f"{slug}.pdf"
+        input_hashes = _render_inputs(root, source)
+        prior_document = prior.get("documents", {}).get(slug, {}) if isinstance(prior, dict) else {}
+        if _prior_document_current(root, prior_document, input_hashes):
+            record = dict(prior_document)
+            record["render_action"] = "reused"
+            metadata["documents"][slug] = record
+            metadata["total_pages"] += int(record.get("pages", 0))
+            continue
         title = "Company brief"
         document = markdown_to_html(markdown, title, css)
         document = document.replace("</main>", _diagram_gallery(root) + "</main>", 1)
@@ -345,9 +461,15 @@ def render(root: Path) -> dict[str, Any]:
             "pdf_renderer": pdf_renderer,
             "preview_format": preview_format,
             "page_previews": [str(Path(item).relative_to(root)) for item in previews],
+            "page_hashes": {
+                str(Path(item).relative_to(root)): sha256_file(Path(item)) for item in previews
+            },
             "html_sha256": sha256_file(html_path),
             "pdf_sha256": sha256_file(pdf_path),
+            "input_hashes": input_hashes,
+            "render_action": "rebuilt",
         }
         metadata["total_pages"] += pages
-    atomic_write_json(root / "tools/outputs/render-metadata.json", metadata)
+    atomic_write_json(root / RENDER_METADATA, metadata)
+    metadata["review_scope"] = write_review_scope(root, metadata)
     return metadata

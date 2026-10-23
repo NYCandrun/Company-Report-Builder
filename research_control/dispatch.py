@@ -8,6 +8,7 @@ from typing import Any
 
 from research_control.io import atomic_write_json, atomic_write_text, utc_now
 from research_control.runtime import RuntimeStore
+from research_control.routing import model_route
 
 
 PACKET_DIRECTORY = "tools/outputs/task-packets"
@@ -21,6 +22,7 @@ def _prompt(root: Path, relative: str) -> str:
 
 
 def write_packet(root: Path, task: dict[str, Any]) -> dict[str, Any]:
+    route = model_route(root, task["task_type"])
     packet = {
         "schema_version": "2.0.0",
         "task_id": task["task_id"],
@@ -40,6 +42,7 @@ def write_packet(root: Path, task: dict[str, Any]) -> dict[str, Any]:
         "schema_files": task["schema_files"],
         "validators": task["validators"],
         "metadata": task["metadata"],
+        "model_route": route,
         "created_at": utc_now(),
     }
     directory = root / PACKET_DIRECTORY
@@ -75,6 +78,8 @@ def write_packet(root: Path, task: dict[str, Any]) -> dict[str, Any]:
         f"- Schemas: {', '.join(task['schema_files']) or 'packet-specific structure'}",
         f"- Validators: {', '.join(task['validators']) or 'output existence and hashes'}",
         f"- Host pacing key: `{task['host_key'] or 'none'}`",
+        f"- Advisory model tier: `{route['tier']}` / `{route['model_class']}` / effort `{route['effort']}`",
+        "- Model routing is optional. If the host cannot select models or effort, use the available model; do not block or weaken the task.",
         "",
         "## Instructions",
         "",

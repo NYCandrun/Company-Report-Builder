@@ -17,6 +17,7 @@ from research_control.brand_contract import (
     BRAND_SOURCE_MAP,
 )
 from research_control.io import load_json
+from research_control.hashing import hash_path
 
 from .common import report_for
 
@@ -92,14 +93,21 @@ def validate_visual_records(root: Path) -> dict:
     records = value.get("brand_guide", {}) if isinstance(value, dict) else {}
     html_records = records.get("html", []) if isinstance(records, dict) else []
     by_viewport = {str(item.get("viewport")): item for item in html_records if isinstance(item, dict)}
+    html_hash = hash_path(root / BRAND_GUIDE_HTML)
     for viewport in ("desktop", "mobile"):
         if by_viewport.get(viewport, {}).get("status") != "clean":
             failures.append(f"brand guide {viewport} independent visual review is missing or unresolved")
+        if by_viewport.get(viewport, {}).get("artifact_sha256") != html_hash:
+            failures.append(f"brand guide {viewport} review is not bound to the current HTML hash")
     page_count = _pdf_pages(root / BRAND_GUIDE_PDF) if (root / BRAND_GUIDE_PDF).is_file() else 0
     pdf_records = records.get("pdf_pages", []) if isinstance(records, dict) else []
     pages = {item.get("page") for item in pdf_records if isinstance(item, dict) and item.get("status") == "clean"}
     expected = set(range(1, page_count + 1))
     if pages != expected:
         failures.append(f"brand guide PDF clean-review pages {sorted(pages)} do not match {sorted(expected)}")
+    pdf_hash = hash_path(root / BRAND_GUIDE_PDF)
+    for item in pdf_records:
+        if isinstance(item, dict) and item.get("page") in expected and item.get("artifact_sha256") != pdf_hash:
+            failures.append(f"brand guide PDF page {item.get('page')} review is not bound to the current PDF hash")
     checked = len(set(by_viewport) & {"desktop", "mobile"}) + len(pages & expected)
     return report_for(sys.modules[__name__], "brand_visual_records", root, patterns, 2 + page_count, checked, failures)

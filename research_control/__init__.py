@@ -1,6 +1,6 @@
 """Adaptive orchestrator and deterministic controls for company research."""
 
-__version__ = "2.2.0"
+__version__ = "2.3.0"
 
 PASS = "PASS"
 FAIL = "FAIL"

@@ -1,11 +1,15 @@
-TASK TYPE: INDEPENDENT FULL VISUAL REVIEW
+TASK TYPE: INDEPENDENT HASH-SCOPED VISUAL REVIEW
 
-You did not author or lay out these pages or diagrams. Open every assigned
-company-brief page preview (PNG when the runtime provides rasterization,
-otherwise the generated SVG) in numeric page order with no sampling. Also
-inspect the final HTML in a browser. Open all four architecture SVGs at their
-declared 165 mm publication width. Write exactly one record per numbered brief
-page and one record per diagram, including clean artifacts.
+You did not author or lay out these pages or diagrams. Read
+`tools/outputs/review-scope.json`. On the first review it assigns every surface
+to `inspect`. On later reviews, open every target marked `inspect`, with no
+sampling. A target marked `reuse` may retain its prior clean record only when
+the record's `artifact_sha256` exactly equals the scope hash. Never reuse an
+issues record or a record without a matching hash. Also inspect the final HTML
+in a browser whenever either its desktop/mobile target or any placed report
+page is marked `inspect`. Open changed architecture SVGs at their declared 165
+mm publication width. The final JSON must still contain exactly one current
+record per numbered brief page and per diagram, including reused clean records.
 Also inspect `brand-guide.html` end to end at desktop and mobile widths and
 render and inspect every page of `brand-guide.pdf`. Confirm the four diagrams
 remain legible and unclipped where they are placed inside the company-brief
@@ -40,3 +44,7 @@ for every brand-guide PDF page:
   ]
 }
 ```
+
+Every page, diagram, HTML viewport, and brand-PDF page record must include the
+exact `artifact_sha256` from the review scope. Report how many targets were
+inspected and how many unchanged clean records were reused.

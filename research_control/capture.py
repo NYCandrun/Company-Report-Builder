@@ -6,6 +6,7 @@ import csv
 import ipaddress
 import re
 import socket
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
@@ -16,6 +17,8 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 from urllib.robotparser import RobotFileParser
 
 from research_control.io import atomic_write_json, atomic_write_text, utc_now
+from research_control.runtime import RuntimeStore
+from research_control.web_cache import SharedWebCache
 
 
 USER_AGENT = "CompanyResearchAgent/1.1 (+public-research; respects robots.txt)"
@@ -32,6 +35,15 @@ MANIFEST_FIELDS = (
     "method",
     "notes",
 )
+
+
+@dataclass(frozen=True)
+class _PublicResponse:
+    url: str
+    content_type: str
+    body: bytes
+    status: int
+    headers: dict[str, str]
 
 
 class TextExtractor(HTMLParser):
@@ -232,6 +244,7 @@ def capture_source_part(
     grade: str = "P",
     title: str | None = None,
     publisher: str | None = None,
+    store: RuntimeStore | None = None,
 ) -> dict[str, Any]:
     """Capture one source without touching a shared manifest.
 
@@ -245,16 +258,42 @@ def capture_source_part(
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise ValueError("capture URL must be absolute http(s)")
-    _require_public_host(url)
-    if not _robots_allowed(url):
-        raise PermissionError(f"robots.txt disallows capture: {url}")
+    def fetch_uncached() -> _PublicResponse:
+        _require_public_host(url)
+        if not _robots_allowed(url):
+            raise PermissionError(f"robots.txt disallows capture: {url}")
+        request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/pdf,text/plain;q=0.9,*/*;q=0.5"})
+        with build_opener(PublicRedirectHandler()).open(request, timeout=30) as response:
+            return _PublicResponse(
+                url=response.geturl(),
+                content_type=response.headers.get_content_type(),
+                body=response.read(),
+                status=int(getattr(response, "status", 200)),
+                headers={str(key): str(value) for key, value in response.headers.items()},
+            )
 
-    request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/pdf,text/plain;q=0.9,*/*;q=0.5"})
-    with build_opener(PublicRedirectHandler()).open(request, timeout=30) as response:
-        body = response.read()
-        final_url = response.geturl()
-        content_type = response.headers.get_content_type()
-        modified = _iso_date(response.headers.get("Last-Modified", ""))
+    if store is not None:
+        cached = SharedWebCache(root, store).fetch_or_reuse(
+            url,
+            consumer=f"capture.source.{source_id.casefold()}",
+            purpose="research_capture",
+            fetcher=fetch_uncached,
+        )
+        body = cached.body
+        final_url = cached.final_url
+        content_type = cached.content_type
+        headers = cached.headers
+        cache_hit = cached.cache_hit
+        cache_object = cached.object_path
+    else:
+        response = fetch_uncached()
+        body = response.body
+        final_url = response.url
+        content_type = response.content_type
+        headers = response.headers
+        cache_hit = False
+        cache_object = ""
+    modified = _iso_date(headers.get("Last-Modified", headers.get("last-modified", "")))
     directory = root / "01-sources/captures" / source_id
     directory.mkdir(parents=True, exist_ok=True)
     date_published = ""
@@ -278,7 +317,7 @@ def capture_source_part(
                     notes = f"Unparsed publication-date metadata: {raw_date}"
                 break
         local_files = [str(raw_path.relative_to(root)), str(text_path.relative_to(root))]
-        method = "public HTTP capture"
+        method = "shared-cache public HTTP capture" if cache_hit else "public HTTP capture"
         token_estimate = max(1, len(content) // 4)
     elif content_type.startswith("text/") or content_type in {"application/json", "application/xml", "application/rss+xml", "application/atom+xml"}:
         suffix = ".xml" if "xml" in content_type else ".json" if content_type == "application/json" else ".txt"
@@ -289,7 +328,7 @@ def capture_source_part(
         atomic_write_text(text_path, content)
         local_files = [str(raw_path.relative_to(root)), str(text_path.relative_to(root))]
         title = title or Path(parsed.path).name or final_url
-        method = f"public HTTP capture ({content_type})"
+        method = f"{'shared-cache ' if cache_hit else ''}public HTTP capture ({content_type})"
         token_estimate = max(1, len(content) // 4)
         canonical_text = bool(content.strip())
     else:
@@ -298,7 +337,7 @@ def capture_source_part(
         raw_path.write_bytes(body)
         local_files = [str(raw_path.relative_to(root))]
         title = title or Path(parsed.path).name or final_url
-        method = f"public HTTP capture ({content_type})"
+        method = f"{'shared-cache ' if cache_hit else ''}public HTTP capture ({content_type})"
         token_estimate = max(1, len(body) // 4)
         notes = f"Binary {content_type}; worker must create a canonical text derivative before extraction."
 
@@ -325,6 +364,8 @@ def capture_source_part(
         "content_bytes": len(body),
         "estimated_tokens": token_estimate,
         "canonical_text_ready": canonical_text,
+        "shared_cache_hit": cache_hit,
+        "shared_cache_object": cache_object,
         "captured_at": utc_now(),
         "disposition": {
             "input_id": source_id,

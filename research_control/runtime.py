@@ -206,6 +206,29 @@ class RuntimeStore:
                 completion_evidence TEXT,
                 updated_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS shared_urls (
+                url TEXT PRIMARY KEY,
+                state TEXT NOT NULL,
+                final_url TEXT,
+                content_type TEXT,
+                status_code INTEGER,
+                headers_json TEXT NOT NULL DEFAULT '{}',
+                content_sha256 TEXT,
+                object_path TEXT,
+                content_bytes INTEGER,
+                first_seen_at TEXT NOT NULL,
+                fetched_at TEXT,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS shared_url_uses (
+                url TEXT NOT NULL REFERENCES shared_urls(url) ON DELETE CASCADE,
+                consumer TEXT NOT NULL,
+                purpose TEXT NOT NULL,
+                discovered_from TEXT NOT NULL DEFAULT '',
+                first_seen_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL,
+                PRIMARY KEY (url, consumer, purpose)
+            );
             CREATE TABLE IF NOT EXISTS events (
                 sequence INTEGER PRIMARY KEY AUTOINCREMENT,
                 occurred_at TEXT NOT NULL,
@@ -216,6 +239,8 @@ class RuntimeStore:
             CREATE INDEX IF NOT EXISTS tasks_state_priority ON tasks(state, priority, created_at);
             CREATE INDEX IF NOT EXISTS tasks_host_state ON tasks(host_key, state);
             CREATE INDEX IF NOT EXISTS sources_channel_status ON sources(channel, status);
+            CREATE INDEX IF NOT EXISTS shared_urls_final_url ON shared_urls(final_url);
+            CREATE INDEX IF NOT EXISTS shared_url_uses_purpose ON shared_url_uses(purpose, consumer);
             """
         )
         self.connection.commit()

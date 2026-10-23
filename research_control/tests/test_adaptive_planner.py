@@ -11,6 +11,7 @@ from research_control.orchestration import initialize, load_state, save_state
 from research_control.planner import AdaptivePlanner
 from research_control.reducers import reduce_capture_parts, reduce_discovery
 from research_control.runtime import RuntimeStore
+from research_control.routing import model_route
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[2]
@@ -24,6 +25,15 @@ def copy_template(target: Path) -> None:
 
 
 class AdaptivePlannerTests(unittest.TestCase):
+    def test_model_routing_is_advisory_and_capability_dependent(self) -> None:
+        economy = model_route(SOURCE_ROOT, "capture")
+        strong = model_route(SOURCE_ROOT, "diagram_modeler")
+        self.assertTrue(economy["optional"])
+        self.assertEqual("advisory_only", economy["enforcement"])
+        self.assertEqual("economy", economy["tier"])
+        self.assertEqual("strong", strong["tier"])
+        self.assertEqual("use_available_model", strong["fallback"])
+
     def test_brand_input_is_presentation_only_and_no_extra_phase_is_added(self) -> None:
         document = workflow(SOURCE_ROOT / "WORKFLOW.yaml")
         final_tasks = {item["id"]: item for item in document["execution_profiles"]["final"]["tasks"]}

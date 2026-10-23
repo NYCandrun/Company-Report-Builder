@@ -5,6 +5,14 @@ page, query, or result-count target. Continue until the channel reaches a
 documented fixed point: repeated materially different discovery passes produce
 no new relevant sources.
 
+Use the shared URL ledger and response cache opportunistically. At the start of
+a pass, `python3 -m research_control web list --purpose brand_discovery` may
+surface first-party leads already found by the concurrent brand worker. Treat
+them only as leads: independently apply this packet's relevance and channel
+rules before adding them through `discovery add`. The discovery commands
+automatically register admitted URLs, and the first-party crawler automatically
+reuses cached public bytes. Do not wait for brand work to finish.
+
 For `company_site`, run `python3 -m research_control discovery crawl`; it drains
 the first-party link frontier and repeats empty passes until saturated. For
 other channels, use the runtime's search, browser, repository, and media tools.

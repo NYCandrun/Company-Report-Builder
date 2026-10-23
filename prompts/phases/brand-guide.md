@@ -18,6 +18,35 @@ outputs:
 - `05-synthesis/brand-guide/evidence/screenshots/`
 - `05-synthesis/brand-guide/evidence/acceptance-check.md`
 
+Use the run-local shared URL ledger without waiting for the research branch.
+Before each materially different discovery pass, query already known research
+leads with:
+
+```bash
+python3 -m research_control web list --purpose research_discovery
+```
+
+The listing is compact and paginated. Follow `next_offset` only while another
+page could expose a materially different visual surface; the page size is an
+output-safety bound, not a coverage or source-count target.
+
+Register browser-only pages and fetch reusable public HTML, CSS, SVG, or other
+raw assets through the controlled cache when useful:
+
+```bash
+python3 -m research_control web register --url URL \
+  --consumer capture.brand-guide --purpose brand_discovery
+python3 -m research_control web fetch --url URL \
+  --consumer capture.brand-guide --purpose brand_asset
+```
+
+This is opportunistic reuse, not a dependency: begin from the company URL
+immediately and never wait for research discovery. Ledger entries are leads and
+cached bytes are transport artifacts, not brand evidence. Cite selected pages
+and assets in the brand evidence outputs, and never move their factual content
+into the research claim system. Continue to use a real browser for rendered
+visual inspection even when raw bytes came from cache.
+
 The HTML and PDF are final release artifacts. The PDF is the print counterpart
 of the same guide, generated from its print mode rather than authored as a
 separate design. Do not call either artifact an official guide unless the

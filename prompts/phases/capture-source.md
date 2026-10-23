@@ -3,6 +3,11 @@
 Capture only the source in the immutable task input. Write only its
 `01-sources/captures/SOURCE_ID/` directory and private capture receipt.
 
+The `source capture` command automatically reuses an identical response already
+stored by research or brand discovery. Cache reuse changes only transport; this
+packet must still create its own canonical capture, receipt, and evidence
+disposition.
+
 For an ordinary public page, run:
 
 ```bash

@@ -12,7 +12,7 @@ import re
 import socket
 import time
 import xml.etree.ElementTree as ElementTree
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Callable
@@ -22,6 +22,7 @@ from urllib.request import Request, build_opener
 from research_control.capture import PublicRedirectHandler, USER_AGENT, _robots_allowed
 from research_control.io import atomic_write_json, atomic_write_jsonl, atomic_write_text, utc_now, workflow
 from research_control.runtime import DISCOVERY_COMPLETE, DISCOVERY_TERMINAL, RuntimeStore
+from research_control.web_cache import SharedWebCache
 
 
 DISCOVERY_CHANNELS = (
@@ -68,6 +69,7 @@ class FetchResult:
     content_type: str
     body: bytes
     status: int = 200
+    headers: dict[str, str] = field(default_factory=dict)
 
 
 class LinkExtractor(HTMLParser):
@@ -209,6 +211,7 @@ def public_fetch(url: str, policy: DiscoveryPolicy) -> FetchResult:
             content_type=response.headers.get_content_type(),
             body=body,
             status=getattr(response, "status", 200),
+            headers={str(key): str(value) for key, value in response.headers.items()},
         )
 
 
@@ -236,6 +239,7 @@ class DiscoveryEngine:
             )
         self.policy = policy
         self.fetcher = fetcher or public_fetch
+        self.shared_cache = SharedWebCache(self.root, store)
         metadata = store.metadata()
         self.company_url = canonicalize_url(metadata["company_url"])
         self.company_host = host_key(self.company_url)
@@ -252,6 +256,12 @@ class DiscoveryEngine:
             relevance="required",
             depth=0,
             metadata={"seed": True},
+        )
+        self.shared_cache.note_url(
+            self.company_url,
+            consumer="capture.discover.company-site",
+            purpose="research_discovery",
+            discovered_from="company_url",
         )
         self.write_catalog()
         return source
@@ -287,6 +297,12 @@ class DiscoveryEngine:
                     discovered_from=discovered_from,
                     depth=depth,
                 )
+                self.shared_cache.note_url(
+                    canonical,
+                    consumer=f"capture.discover.{channel.replace('_', '-')}",
+                    purpose="research_discovery",
+                    discovered_from=discovered_from,
+                )
                 if was_created:
                     created.append(source["source_id"])
             except (ValueError, PermissionError) as error:
@@ -310,6 +326,7 @@ class DiscoveryEngine:
         new_sources = 0
         failures: list[dict[str, str]] = []
         fetched: list[str] = []
+        cache_hits = 0
         last_request: dict[str, float] = {}
         while True:
             frontier = [
@@ -333,19 +350,41 @@ class DiscoveryEngine:
                 self.write_catalog()
                 return {
                     "status": "incomplete", "reason": breaker, "pages_fetched": pages,
-                    "bytes_read": bytes_read, "new_sources": new_sources, "channel_state": channel,
+                    "bytes_read": bytes_read, "new_sources": new_sources, "cache_hits": cache_hits,
+                    "channel_state": channel,
                 }
             if source["depth"] > self.policy.max_depth:
                 self.store.update_source(source["source_id"], status="excluded", metadata={"reason": "depth safety limit"})
                 continue
             try:
                 key = source["host_key"]
-                if self.fetcher is public_fetch and key in last_request:
-                    remaining = self.policy.min_host_interval_seconds - (time.monotonic() - last_request[key])
-                    if remaining > 0:
-                        time.sleep(remaining)
-                result = self.fetcher(source["canonical_url"], self.policy)
-                last_request[key] = time.monotonic()
+                consumer = f"capture.discover.{str(source['channel']).replace('_', '-')}"
+
+                def fetch_uncached() -> FetchResult:
+                    if self.fetcher is public_fetch and key in last_request:
+                        remaining = self.policy.min_host_interval_seconds - (time.monotonic() - last_request[key])
+                        if remaining > 0:
+                            time.sleep(remaining)
+                    fetched_result = self.fetcher(source["canonical_url"], self.policy)
+                    last_request[key] = time.monotonic()
+                    return fetched_result
+
+                cached = self.shared_cache.fetch_or_reuse(
+                    source["canonical_url"],
+                    consumer=consumer,
+                    purpose="research_discovery",
+                    discovered_from=str(source.get("discovered_from") or ""),
+                    fetcher=fetch_uncached,
+                )
+                if cached.cache_hit:
+                    cache_hits += 1
+                result = FetchResult(
+                    url=cached.final_url,
+                    content_type=cached.content_type,
+                    body=cached.body,
+                    status=cached.status,
+                    headers=cached.headers,
+                )
                 pages += 1
                 bytes_read += len(result.body)
                 fetched.append(source["source_id"])
@@ -360,6 +399,8 @@ class DiscoveryEngine:
                     "content_type": result.content_type,
                     "http_status": result.status,
                     "final_url": result.url,
+                    "shared_cache_object": cached.object_path,
+                    "shared_cache_hit": cached.cache_hit,
                 }
                 self.store.update_source(
                     source["source_id"], status="discovered_fetched",
@@ -390,6 +431,12 @@ class DiscoveryEngine:
                             depth=source["depth"] + 1,
                             metadata={"anchor_text": anchor},
                         )
+                        self.shared_cache.note_url(
+                            candidate,
+                            consumer=f"capture.discover.{channel.replace('_', '-')}",
+                            purpose="research_discovery",
+                            discovered_from=source["source_id"],
+                        )
                         new_sources += int(created)
                 elif "xml" in result.content_type or source["source_kind"] == "feed":
                     for href in xml_links(result.body):
@@ -413,6 +460,12 @@ class DiscoveryEngine:
                             depth=source["depth"] + 1,
                             metadata={"discovered_via": "xml_feed_or_sitemap"},
                         )
+                        self.shared_cache.note_url(
+                            candidate,
+                            consumer=f"capture.discover.{channel.replace('_', '-')}",
+                            purpose="research_discovery",
+                            discovered_from=source["source_id"],
+                        )
                         new_sources += int(created)
             except Exception as error:  # each source gets a terminal disposition; unrelated discovery continues
                 failures.append({"source_id": source["source_id"], "url": source["canonical_url"], "reason": str(error)})
@@ -429,6 +482,7 @@ class DiscoveryEngine:
             "pages_fetched": pages,
             "bytes_read": bytes_read,
             "new_sources": new_sources,
+            "cache_hits": cache_hits,
             "fetched_source_ids": fetched,
             "failures": failures,
             "channel_state": channel,

@@ -17,6 +17,7 @@ from research_control.diagram_contract import (
 )
 from research_control.brand_contract import BRAND_GUIDE_HTML
 from research_control.io import load_json
+from research_control.hashing import hash_path
 
 from .common import report_for
 
@@ -374,6 +375,9 @@ def validate_visual_records(root: Path) -> dict[str, Any]:
             failures.append(f"diagram {diagram_id or index}: issues status has no issues")
         if record.get("review_width_mm") != 165:
             failures.append(f"diagram {diagram_id or index}: review_width_mm must equal 165")
+        spec = next((item for item in DIAGRAM_SPECS if item["id"] == diagram_id), None)
+        if spec and record.get("artifact_sha256") != hash_path(root / spec["path"]):
+            failures.append(f"diagram {diagram_id}: visual review is not bound to the current SVG hash")
     expected_ids = {spec["id"] for spec in DIAGRAM_SPECS}
     failures.extend(f"diagram {diagram_id}: no visual-review record" for diagram_id in sorted(expected_ids - set(by_id)))
     failures.extend(f"unexpected diagram visual-review record: {diagram_id}" for diagram_id in sorted(set(by_id) - expected_ids))

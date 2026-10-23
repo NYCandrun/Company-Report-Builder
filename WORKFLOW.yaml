@@ -1,9 +1,9 @@
 {
-  "schema_version": "2.2.0",
+  "schema_version": "2.3.0",
   "source_of_truth": ["RESEARCH_CONSTITUTION.md", "WORKFLOW.yaml"],
   "runtime_entrypoint": "README.md",
   "legacy_traceability_source": "docs/legacy-prompt.md",
-  "description": "Canonical adaptive execution, brand, diagram, phase, and gate contract for company research.",
+  "description": "Canonical adaptive execution, shared transport cache, optional model routing, incremental publication, brand, diagram, phase, and gate contract for company research.",
   "status_values": ["PASS", "FAIL", "UNKNOWN"],
   "disposition_values": ["completed", "completed_zero", "duplicate", "excluded", "blocked", "rejected"],
   "assurance_layers": {
@@ -77,6 +77,28 @@
       "target_extraction_tokens": 70000,
       "maximum_extraction_tokens": 90000,
       "split_oversize_sources": true
+    },
+    "model_routing": {
+      "optional": true,
+      "fallback": "use_available_model",
+      "default_tier": "strong",
+      "tiers": {
+        "economy": {
+          "model_class": "faster_capable",
+          "effort": "low",
+          "task_types": ["capture", "discovery_reducer", "capture_reducer", "extraction_reducer", "assembler"]
+        },
+        "standard": {
+          "model_class": "balanced_capable",
+          "effort": "medium",
+          "task_types": ["source_discovery", "filing", "language_review"]
+        },
+        "strong": {
+          "model_class": "strongest_available",
+          "effort": "high",
+          "task_types": []
+        }
+      }
     },
     "worker_outputs": "isolated_parts_then_single_writer_reducer"
   },
@@ -301,7 +323,7 @@
             {"id": "diagrams", "path": "07-final-report/{01-product-capability-map,02-operating-model,03-enterprise-logical-architecture,04-technical-dependency-map}.svg", "required": true},
             {"id": "diagram_captions", "path": "07-final-report/diagram-captions.md", "required": true}
           ],
-          "outputs": ["07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "tools/outputs/render-metadata.json"],
+          "outputs": ["07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "tools/outputs/render-metadata.json", "tools/outputs/review-scope.json"],
           "independent": false,
           "exclusive_inputs": false,
           "validators": []
@@ -345,6 +367,13 @@
           "task_type": "visual_review",
           "prompt": "prompts/phases/visual-review.md",
           "cores": ["prompts/core/runtime.md", "prompts/core/writing.md"],
+          "inputs": [
+            {"id": "brief_artifacts", "path": "07-final-report/company-brief.{pdf,html}", "required": true},
+            {"id": "brand_artifacts", "path": "07-final-report/brand-guide.{pdf,html}", "required": true},
+            {"id": "diagram_artifacts", "path": "07-final-report/{01-product-capability-map,02-operating-model,03-enterprise-logical-architecture,04-technical-dependency-map}.svg", "required": true},
+            {"id": "render_metadata", "path": "tools/outputs/render-metadata.json", "required": true},
+            {"id": "review_scope", "path": "tools/outputs/review-scope.json", "required": true}
+          ],
           "outputs": ["06-checks/visual-review.md", "06-checks/visual-review.json", "tools/outputs/publication-findings-visual.jsonl"],
           "independent": true,
           "exclusive_inputs": false,
@@ -356,7 +385,7 @@
           "prompt": "prompts/phases/publication-fixer.md",
           "depends_on": ["language", "citation-a", "citation-b", "visual"],
           "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
-          "outputs": ["05-synthesis/company-brief.md", "05-synthesis/design-notes.md", "05-synthesis/brand-guide/evidence/**", "tools/outputs/citation-map-company-brief.json", "tools/outputs/exhibit-map.json", "tools/outputs/diagram-models.json", "07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "07-final-report/brand-guide.pdf", "07-final-report/brand-guide.html", "07-final-report/diagram-models.md", "07-final-report/diagram-style-spec.md", "07-final-report/01-product-capability-map.svg", "07-final-report/02-operating-model.svg", "07-final-report/03-enterprise-logical-architecture.svg", "07-final-report/04-technical-dependency-map.svg", "07-final-report/diagram-captions.md", "tools/outputs/render-metadata.json", "06-checks/publication-decisions.md", "tools/outputs/publication-decisions.jsonl"],
+          "outputs": ["05-synthesis/company-brief.md", "05-synthesis/design-notes.md", "05-synthesis/brand-guide/evidence/**", "tools/outputs/citation-map-company-brief.json", "tools/outputs/exhibit-map.json", "tools/outputs/diagram-models.json", "07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "07-final-report/brand-guide.pdf", "07-final-report/brand-guide.html", "07-final-report/diagram-models.md", "07-final-report/diagram-style-spec.md", "07-final-report/01-product-capability-map.svg", "07-final-report/02-operating-model.svg", "07-final-report/03-enterprise-logical-architecture.svg", "07-final-report/04-technical-dependency-map.svg", "07-final-report/diagram-captions.md", "tools/outputs/render-metadata.json", "tools/outputs/review-scope.json", "06-checks/publication-decisions.md", "tools/outputs/publication-decisions.jsonl"],
           "independent": true,
           "exclusive_inputs": true,
           "output_mode": "revise"
@@ -379,7 +408,7 @@
     {
       "id": "adaptive_runtime",
       "report": "tools/outputs/tests/adaptive_runtime.json",
-      "covers": ["discovery saturation", "dynamic task counts", "token-sized batching", "leases", "host concurrency", "targeted retries", "stale invalidation"]
+      "covers": ["discovery saturation", "shared URL and response cache", "optional advisory model routing", "dynamic task counts", "token-sized batching", "leases", "host concurrency", "targeted retries", "stale invalidation"]
     },
     {
       "id": "data_integrity",
@@ -399,7 +428,7 @@
     {
       "id": "execution_integrity",
       "report": "tools/outputs/tests/execution_integrity.json",
-      "covers": ["ledger", "reconciliation", "fail-closed validation", "gates", "staleness", "visual page accounting"]
+      "covers": ["ledger", "reconciliation", "fail-closed validation", "hash-reused validation", "gates", "staleness", "visual page accounting"]
     },
     {
       "id": "release_integrity",

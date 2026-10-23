@@ -21,6 +21,7 @@ from research_control.io import (
     utc_now,
     workflow,
 )
+from research_control.routing import model_route
 
 
 STATE_PATH = "tools/outputs/run-state.json"
@@ -64,6 +65,7 @@ RUN_DIRECTORIES = (
     "tools/outputs/task-packets",
     "tools/outputs/tests",
     "tools/outputs/validations",
+    "tools/outputs/web-cache/objects",
     "tools/outputs/worker-parts/capture",
     "tools/outputs/worker-parts/discovery",
     "tools/outputs/worker-parts/extraction",
@@ -171,8 +173,9 @@ def initialize(root: Path, company_url: str) -> dict[str, Any]:
         "# Runtime prompt changes\n\n"
         "The historical monolith is preserved in `prompt/PROMPT.md`. The runtime entrypoint is the concise "
         "repository `README.md`, backed by the constitution, executable workflow, scoped task packets, and "
-        "deterministic controls. Research scope is unchanged. Version 2.2 adds a concurrent public-evidence "
-        "brand-guide branch and applies its presentation language to the model-gated architecture diagrams.\n",
+        "deterministic controls. Research scope is unchanged. Version 2.3 adds a shared transport cache and "
+        "URL lead ledger for concurrent research/brand discovery, optional advisory model routing, and "
+        "hash-scoped publication rebuild and visual review.\n",
     )
     atomic_write_text(root / document["global"]["ledger"], "")
     atomic_write_json(root / ACTIVE_PATH, {})
@@ -273,6 +276,7 @@ def _read_prompt(root: Path, relative: str) -> str:
 
 def _write_packet(root: Path, phase: dict[str, Any], task: dict[str, Any]) -> tuple[Path, Path]:
     task_id = f"{phase['id']}.{task['id']}"
+    route = model_route(root, task["task_type"])
     packet = {
         "schema_version": "1.0.0",
         "task_id": task_id,
@@ -282,6 +286,7 @@ def _write_packet(root: Path, phase: dict[str, Any], task: dict[str, Any]) -> tu
         "exclusive_inputs": bool(task.get("exclusive_inputs", True)),
         "output_mode": task.get("output_mode", "create"),
         "track_input_staleness": bool(task.get("track_input_staleness")),
+        "model_route": route,
         "company_url": load_state(root)["company_url"],
         "inputs": task.get("inputs", phase.get("inputs", [])),
         "outputs": task.get("outputs", []),
@@ -307,6 +312,8 @@ def _write_packet(root: Path, phase: dict[str, Any], task: dict[str, Any]) -> tu
         f"- Task type: `{task['task_type']}`",
         f"- Independent context required: `{'yes' if task.get('independent') else 'no'}`",
         f"- Output mode: `{packet['output_mode']}`",
+        f"- Advisory model tier: `{route['tier']}` / `{route['model_class']}` / effort `{route['effort']}`",
+        "- Model routing is optional; use the available model when the host cannot route models.",
         "",
         "## Inputs",
         "",

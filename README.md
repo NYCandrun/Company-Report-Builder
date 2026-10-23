@@ -53,6 +53,11 @@ python3 -m research_control work succeed TASK_ID --worker-id STABLE_WORKER_ID \
   --model MODEL --effort EFFORT
 ```
 
+Model routing is advisory and optional. Each packet names an economy, standard,
+or strong reasoning tier. Use it only when the current host/session exposes
+model or effort selection; otherwise omit `--model` and `--effort` and use the
+available model. Routing availability never blocks a task or relaxes its gates.
+
 For long work, renew the lease:
 
 ```bash
@@ -128,6 +133,26 @@ tools for formats that need them. Respect robots rules, rate limits, logins,
 paywalls, and bot challenges. Record inaccessible evidence; do not bypass the
 restriction.
 
+Research discovery and brand discovery remain separate agent responsibilities,
+but share a run-local transport cache and URL lead ledger in the scheduler.
+This prevents repeated public fetches without allowing brand observations into
+the research claim register or research facts into the brand evidence record.
+The first-party crawler and ordinary source capture use the cache automatically.
+Workers can query or populate it explicitly:
+
+```bash
+python3 -m research_control web list --purpose research_discovery
+python3 -m research_control web fetch --url URL \
+  --consumer TASK_ID --purpose brand_asset
+python3 -m research_control web export
+```
+
+URLs in this ledger are leads, not evidence. Each consuming workflow must still
+apply its own inclusion rules and create its own evidence records. The workers
+start concurrently and never wait on this optional sharing. Ledger listings are
+compact and paginated for prompt efficiency; `next_offset` indicates another
+page of leads, not a source-count completion target.
+
 ## Adaptive planning and scheduling
 
 The scheduler uses `tools/outputs/runtime.sqlite3` as its private transactional
@@ -145,6 +170,8 @@ scope or corpus information exists.
   dispositions, facts, reviews, and publication artifacts.
 - Input or output hash changes mark affected work stale and propagate
   invalidation to its downstream consumers.
+- Passing deterministic validators and reconciliations are reused only while
+  both their input hashes and validation-engine hash remain identical.
 
 Task states are:
 
@@ -213,6 +240,12 @@ The fixed figure labels are:
 
 The assembler places all four SVGs into the company-brief HTML so they are also
 reviewed in the target report layout.
+
+Publication rendering is input-hash aware. Unchanged HTML, PDF, and page
+previews are reused. `tools/outputs/review-scope.json` marks changed visual
+surfaces for inspection and permits prior clean records to carry forward only
+when their artifact hashes match exactly. Initial review still covers every
+page, diagram, brand-guide viewport, and brand-guide PDF page.
 
 Release remains fail-closed. It requires current phase gates, complete input
 accounting, independent review identities, resolvable fact/source citations,

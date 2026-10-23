@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 import re
 import shutil
 import sys
@@ -13,7 +14,7 @@ from typing import Any, Iterable
 from research_control import FAIL, PASS, UNKNOWN
 from research_control.diagram_contract import DIAGRAM_CAPTIONS, DIAGRAM_MODEL_JSON, DIAGRAM_SPECS, FINAL_ARTIFACTS
 from research_control.gates.phase_gate import check_phase_gate
-from research_control.hashing import checker_version, hash_patterns, hash_path
+from research_control.hashing import checker_version, hash_patterns, hash_path, report_inputs_current
 from research_control.io import (
     atomic_write_json,
     find_phase,
@@ -72,6 +73,33 @@ def _report(
 def _write(root: Path, relative: str, report: dict[str, Any]) -> dict[str, Any]:
     atomic_write_json(root / relative, report)
     return report
+
+
+def _validation_engine_key(root: Path) -> str:
+    values = hash_patterns(root, [
+        "research_control/checks.py",
+        "research_control/validators/*.py",
+        "research_control/reconciliation/*.py",
+        "research_control/reporting/*.py",
+        "research_control/hashing/*.py",
+        "research_control/schemas/*.json",
+        "WORKFLOW.yaml",
+    ])
+    return sha256(json.dumps(values, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _cached_pass(root: Path, relative: str, engine_key: str) -> dict[str, Any] | None:
+    path = root / relative
+    if not path.is_file() or not path.stat().st_size:
+        return None
+    try:
+        report = load_json(path)
+    except Exception:
+        return None
+    current, _stale = report_inputs_current(root, report)
+    if report.get("status") == PASS and report.get("cache_key") == engine_key and current:
+        return report
+    return None
 
 
 def _paths(root: Path, patterns: Iterable[str]) -> list[Path]:
@@ -502,12 +530,22 @@ def _validate_visual(root: Path, checker: str) -> dict[str, Any]:
         return _report(root, checker, ["tools/outputs/render-metadata.json", "06-checks/visual-review.json"], 1, 0, unknowns=["render metadata has no page count"])
     report = visual_records.validate(expected, records, root)
     report["checker"] = checker
+    metadata = load_json(root / "tools/outputs/render-metadata.json")
+    previews = metadata.get("documents", {}).get("company-brief", {}).get("page_previews", [])
+    by_page = {record.get("page"): record for record in records}
+    for page, relative in enumerate(previews, 1):
+        expected_hash = hash_path(root / relative)
+        if by_page.get(page, {}).get("artifact_sha256") != expected_hash:
+            report["failures"].append(
+                f"page {page}: visual review is not bound to current preview hash"
+            )
     if checker == "visual_audit":
         unresolved = [row.get("page") for row in records if row.get("status") == "issues"]
         if unresolved:
             report["failures"].append(f"unresolved visual issues remain on pages {unresolved}")
-            report["failure_count"] = len(report["failures"])
-            report["status"] = FAIL
+    if report["failures"]:
+        report["failure_count"] = len(report["failures"])
+        report["status"] = FAIL
     return report
 
 
@@ -732,10 +770,20 @@ def run_reconciliation(root: Path, phase: dict[str, Any], reconciliation_id: str
 def _run_tests(root: Path, test_ids: list[str]) -> list[dict[str, Any]]:
     if not test_ids:
         return []
-    from tools.run_integrity_tests import run_category
+    from tools import run_integrity_tests as integrity
 
     report_dir = root / "tools/outputs/tests"
-    return [run_category(test_id, report_dir) for test_id in test_ids]
+    reports: list[dict[str, Any]] = []
+    expected_version = checker_version(integrity)
+    for test_id in test_ids:
+        path = report_dir / f"{test_id}.json"
+        prior = load_json(path) if path.is_file() and path.stat().st_size else {}
+        current, _stale = report_inputs_current(root, prior) if prior else (False, [])
+        if prior.get("status") == PASS and prior.get("checker_version") == expected_version and current:
+            reports.append(prior)
+        else:
+            reports.append(integrity.run_category(test_id, report_dir))
+    return reports
 
 
 def _task_failures(root: Path, phase_id: str) -> tuple[list[str], list[str]]:
@@ -841,12 +889,21 @@ def check_phase(
             raise ValueError(f"phase dependencies are incomplete: {', '.join(incomplete_dependencies)}")
 
     reports: list[dict[str, Any]] = []
+    engine_key = _validation_engine_key(root)
     for item in phase.get("validators", []):
-        report = run_validator(root, phase, item["id"])
-        reports.append(_write(root, item["report"], report))
+        report = _cached_pass(root, item["report"], engine_key)
+        if report is None:
+            report = run_validator(root, phase, item["id"])
+            report["cache_key"] = engine_key
+            _write(root, item["report"], report)
+        reports.append(report)
     for item in phase.get("reconciliations", []):
-        report = run_reconciliation(root, phase, item["id"])
-        reports.append(_write(root, item["report"], report))
+        report = _cached_pass(root, item["report"], engine_key)
+        if report is None:
+            report = run_reconciliation(root, phase, item["id"])
+            report["cache_key"] = engine_key
+            _write(root, item["report"], report)
+        reports.append(report)
     if run_tests:
         reports.extend(_run_tests(root, phase.get("tests", [])))
 

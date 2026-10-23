@@ -15,6 +15,7 @@ from research_control.capture import capture_url
 from research_control.cli import _refresh_release_evidence
 from research_control.diagram_contract import DIAGRAM_CAPTIONS, DIAGRAM_MODEL_JSON, DIAGRAM_MODEL_MARKDOWN, DIAGRAM_SPECS, DIAGRAM_STYLE_MARKDOWN
 from research_control.gates.release import check_release
+from research_control.hashing import hash_path
 from research_control.io import atomic_write_json, atomic_write_jsonl, atomic_write_text
 from research_control.orchestration import (
     current_phase,
@@ -203,6 +204,9 @@ class OperationalRunTests(unittest.TestCase):
             self.assertNotIn("ACME-001", html)
             self.assertTrue((root / "07-final-report/company-brief.pdf").read_bytes().startswith(b"%PDF-"))
             self.assertTrue(metadata["documents"]["company-brief"]["page_previews"])
+            second = render(root)
+            self.assertEqual("reused", second["documents"]["company-brief"]["render_action"])
+            self.assertTrue((root / "tools/outputs/review-scope.json").is_file())
 
     def test_capture_helper_rejects_private_network_targets(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -432,19 +436,30 @@ class OperationalRunTests(unittest.TestCase):
 
             def write_visual() -> None:
                 metadata = json.loads((root / "tools/outputs/render-metadata.json").read_text(encoding="utf-8"))
+                previews = metadata["documents"]["company-brief"]["page_previews"]
                 text(root, "06-checks/visual-review.md", f"# Visual review\n\nReviewed {metadata['total_pages']} pages; all clean.\n")
                 atomic_write_json(root / "06-checks/visual-review.json", {
-                    "pages": [{"page": page, "status": "clean", "issues": []} for page in range(1, metadata["total_pages"] + 1)],
+                    "pages": [
+                        {
+                            "page": page, "status": "clean", "issues": [],
+                            "artifact_sha256": hash_path(root / previews[page - 1]),
+                        }
+                        for page in range(1, metadata["total_pages"] + 1)
+                    ],
                     "diagrams": [
-                        {"diagram": spec["id"], "review_width_mm": 165, "status": "clean", "issues": []}
+                        {
+                            "diagram": spec["id"], "review_width_mm": 165,
+                            "status": "clean", "issues": [],
+                            "artifact_sha256": hash_path(root / spec["path"]),
+                        }
                         for spec in DIAGRAM_SPECS
                     ],
                     "brand_guide": {
                         "html": [
-                            {"viewport": "desktop", "status": "clean", "issues": []},
-                            {"viewport": "mobile", "status": "clean", "issues": []},
+                            {"viewport": "desktop", "status": "clean", "issues": [], "artifact_sha256": hash_path(root / "07-final-report/brand-guide.html")},
+                            {"viewport": "mobile", "status": "clean", "issues": [], "artifact_sha256": hash_path(root / "07-final-report/brand-guide.html")},
                         ],
-                        "pdf_pages": [{"page": 1, "status": "clean", "issues": []}],
+                        "pdf_pages": [{"page": 1, "status": "clean", "issues": [], "artifact_sha256": hash_path(root / "07-final-report/brand-guide.pdf")}],
                     },
                 })
                 jsonl(root, "tools/outputs/publication-findings-visual.jsonl", [{"review_id": "visual", "status": "clean"}])

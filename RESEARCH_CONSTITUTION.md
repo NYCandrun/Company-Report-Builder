@@ -42,6 +42,13 @@ produces the release brand guide. It may shape typography, color, spacing,
 diagram styling, and report presentation, but it never supplies company or
 architecture facts.
 
+The brand and research branches may share a run-local URL lead ledger and
+content-addressed cache to avoid fetching identical public bytes twice. This is
+transport reuse only. A ledger entry is not evidence, and each branch must
+independently admit and record any material it uses under its own evidence
+contract. Neither branch waits for the other, and shared discovery never
+merges their responsibilities.
+
 The repository must be reproducible from the effective prompt, company URL,
 user-provided inputs, captured public sources, and dependencies created or
 declared during the run. Incidental local files or conventions are not valid

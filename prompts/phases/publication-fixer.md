@@ -8,11 +8,15 @@ a reason and evidence path. Record decisions in
 
 Apply accepted changes only to final Markdown, citation maps, exhibit maps,
 diagram model files, editable SVGs, captions, or design sources. Never
-hand-edit generated HTML or PDF. Rebuild the company-brief HTML/PDF with
-`python3 -m research_control render`, even when the review set is clean. If a
+hand-edit generated HTML or PDF. Run `python3 -m research_control render` only
+when the company-brief source, its style, a placed diagram, or a brand artifact
+changed. The renderer reuses the HTML, PDF, and page previews when their input
+hashes are unchanged and writes a hash-scoped re-review plan. Do not render a
+clean, unchanged review set merely to refresh timestamps. If a
 diagram changes, revalidate its model, regenerate the SVG from that model, and
 preserve its deterministic title/subtitle. The subsequent independent
-re-review must bind to all accepted source and artifact hashes.
+re-review inspects changed hashes and retains only unchanged, hash-bound clean
+records.
 
 For accepted brand-guide findings, revise the authored brand-guide HTML,
 regenerate its PDF from the same print mode, update its acceptance evidence,

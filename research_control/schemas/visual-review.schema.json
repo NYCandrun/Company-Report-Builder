@@ -7,6 +7,7 @@
   "properties": {
     "page": {"type": "integer", "minimum": 1},
     "document": {"type": "string"},
+    "artifact_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "status": {"enum": ["clean", "issues"]},
     "issues": {"type": "array", "items": {"type": "object"}}
   },

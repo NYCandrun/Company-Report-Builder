@@ -23,11 +23,12 @@ CATEGORIES = {
         "research_control.tests.test_runtime",
         "research_control.tests.test_discovery",
         "research_control.tests.test_adaptive_planner",
+        "research_control.tests.test_web_cache",
     ],
     "data_integrity": ["research_control.tests.test_sources", "research_control.tests.test_facts"],
     "evidence_pipeline": ["research_control.tests.test_facts", "research_control.tests.test_reconciliation"],
     "citation_integrity": ["research_control.tests.test_citations"],
-    "execution_integrity": ["research_control.tests.test_reconciliation", "research_control.tests.test_phase_gates", "research_control.tests.test_staleness", "research_control.tests.test_visual_records"],
+    "execution_integrity": ["research_control.tests.test_reconciliation", "research_control.tests.test_phase_gates", "research_control.tests.test_staleness", "research_control.tests.test_validation_cache", "research_control.tests.test_visual_records"],
     "release_integrity": ["research_control.tests.test_release", "research_control.tests.test_staleness"],
 }
 

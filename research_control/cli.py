@@ -13,7 +13,7 @@ from research_control import PASS, __version__
 from research_control.adaptive import advance, complete_work, open_runtime, runtime_status
 from research_control.capture import capture_source_part, capture_url
 from research_control.checks import check_phase
-from research_control.discovery import DISCOVERY_CHANNELS, DiscoveryEngine
+from research_control.discovery import DISCOVERY_CHANNELS, DiscoveryEngine, DiscoveryPolicy, public_fetch
 from research_control.gates.release import check_release
 from research_control.io import workflow
 from research_control.orchestration import (
@@ -30,6 +30,7 @@ from research_control.orchestration import (
 from research_control.publication import render
 from research_control.reducers import reduce_capture_parts, reduce_discovery, reduce_extraction_parts
 from research_control.reporting import print_summary
+from research_control.web_cache import SharedWebCache
 
 
 def _root(value: str | Path) -> Path:
@@ -78,6 +79,8 @@ def preflight(root: Path) -> int:
         "research_control/schemas/discovery-pass.schema.json",
         "research_control/schemas/diagram-models.schema.json",
         "research_control/schemas/diagram-review.schema.json",
+        "research_control/web_cache.py",
+        "research_control/routing.py",
     ]
     failures = [f"missing required file: {relative}" for relative in required if not (root / relative).is_file()]
     warnings: list[str] = []
@@ -98,6 +101,11 @@ def preflight(root: Path) -> int:
         batching = adaptive.get("batching", {})
         if int(batching.get("target_extraction_tokens", 0)) > int(batching.get("maximum_extraction_tokens", 0)):
             failures.append("target extraction tokens exceed the maximum")
+        routing = adaptive.get("model_routing", {})
+        if routing and routing.get("optional") is not True:
+            failures.append("model routing must remain optional and advisory")
+        if routing and routing.get("fallback") != "use_available_model":
+            failures.append("model routing must fall back to the available session model")
         phase_ids = {phase["id"] for phase in document["phases"]}
         if phase_ids != set(profiles):
             failures.append(f"execution profiles do not match phases: {sorted(phase_ids ^ set(profiles))}")
@@ -222,6 +230,24 @@ def _parser() -> argparse.ArgumentParser:
     source_capture.add_argument("--title")
     source_capture.add_argument("--publisher")
 
+    web = subparsers.add_parser("web", help="use the shared transport cache and URL lead ledger")
+    web_sub = web.add_subparsers(dest="web_command", required=True)
+    for command in ("register", "fetch"):
+        web_item = web_sub.add_parser(command)
+        web_item.add_argument("--url", required=True)
+        web_item.add_argument("--consumer", required=True)
+        web_item.add_argument("--purpose", required=True)
+        web_item.add_argument("--discovered-from", default="")
+        if command == "fetch":
+            web_item.add_argument("--refresh", action="store_true")
+    web_list = web_sub.add_parser("list")
+    web_list.add_argument("--purpose")
+    web_list.add_argument("--state", choices=["registered", "fetched"])
+    web_list.add_argument("--offset", type=int, default=0)
+    web_list.add_argument("--limit", type=int, default=200)
+    web_list.add_argument("--details", action="store_true")
+    web_sub.add_parser("export")
+
     reduce = subparsers.add_parser("reduce", help="merge isolated worker parts as the single writer")
     reduce.add_argument("kind", choices=["discovery", "capture", "extraction"])
 
@@ -339,8 +365,70 @@ def main() -> None:
                 grade = args.grade or ("S" if source_record["channel"] == "independent_web" else "P")
                 _print_json(capture_source_part(
                     root, url=source_record["canonical_url"], source_id=args.source_id,
-                    grade=grade, title=args.title, publisher=args.publisher,
+                    grade=grade, title=args.title, publisher=args.publisher, store=store,
                 ))
+            return
+        if args.command == "web":
+            with open_runtime(root) as store:
+                cache = SharedWebCache(root, store)
+                if args.web_command == "register":
+                    normalized = cache.note_url(
+                        args.url, consumer=args.consumer, purpose=args.purpose,
+                        discovered_from=args.discovered_from,
+                    )
+                    _print_json({"status": "registered", "url": normalized})
+                elif args.web_command == "fetch":
+                    if args.refresh:
+                        fetched = public_fetch(args.url, DiscoveryPolicy())
+                        response = cache.store_response(
+                            args.url,
+                            final_url=fetched.url,
+                            content_type=fetched.content_type,
+                            status=fetched.status,
+                            headers=fetched.headers,
+                            body=fetched.body,
+                            consumer=args.consumer,
+                            purpose=args.purpose,
+                            discovered_from=args.discovered_from,
+                        )
+                    else:
+                        response = cache.fetch_or_reuse(
+                            args.url,
+                            consumer=args.consumer,
+                            purpose=args.purpose,
+                            discovered_from=args.discovered_from,
+                            fetcher=lambda: public_fetch(args.url, DiscoveryPolicy()),
+                        )
+                    _print_json({
+                        "status": "fetched", "url": response.requested_url,
+                        "final_url": response.final_url, "content_type": response.content_type,
+                        "http_status": response.status, "content_bytes": len(response.body),
+                        "content_sha256": response.content_sha256,
+                        "object_path": response.object_path, "cache_hit": response.cache_hit,
+                    })
+                elif args.web_command == "list":
+                    records = cache.records(purpose=args.purpose, state=args.state)
+                    if args.offset < 0 or args.limit < 1 or args.limit > 1000:
+                        raise ValueError("web list requires offset >= 0 and limit between 1 and 1000")
+                    selected = records[args.offset:args.offset + args.limit]
+                    if not args.details:
+                        selected = [{
+                            "url": item["url"],
+                            "state": item["state"],
+                            "final_url": item.get("final_url"),
+                            "content_type": item.get("content_type"),
+                            "object_path": item.get("object_path"),
+                            "purposes": sorted({use["purpose"] for use in item.get("uses", [])}),
+                        } for item in selected]
+                    next_offset = args.offset + len(selected) if args.offset + len(selected) < len(records) else None
+                    _print_json({
+                        "note": "URL leads and cached bytes are not evidence until admitted by the consuming workflow.",
+                        "total": len(records), "offset": args.offset, "count": len(selected),
+                        "next_offset": next_offset, "urls": selected,
+                    })
+                else:
+                    path = cache.export_ledger()
+                    _print_json({"status": "exported", "ledger": str(path.relative_to(root))})
             return
         if args.command == "reduce":
             if args.kind == "extraction":

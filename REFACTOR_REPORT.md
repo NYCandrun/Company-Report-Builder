@@ -1,5 +1,20 @@
 # Refactor report
 
+## Version 2.3 efficiency revision
+
+- Research discovery and brand discovery still start concurrently and retain
+  separate evidence authority, but now share a SQLite URL lead ledger and
+  content-addressed public-response cache. Simultaneous requests coordinate so
+  one worker normally fetches while the other reuses the immutable object.
+- Task packets carry an optional advisory model tier. Hosts with routing can
+  reserve stronger reasoning for synthesis, verification, review, and modeling;
+  hosts without routing use the available session model without blocking.
+- Publication rendering reuses unchanged HTML, PDF, and page previews. Visual
+  review is scoped by current artifact hashes, with complete accounting and
+  reuse permitted only for prior clean records bound to identical hashes.
+- Passing deterministic validations and reconciliations are skipped only when
+  both their recorded input hashes and the validation-engine hash are current.
+
 ## Version 2.2 brand-guide integration
 
 One independent brand-guide packet now starts with adaptive capture and runs in

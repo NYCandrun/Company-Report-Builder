@@ -6,6 +6,12 @@ ledger, `WORKFLOW_STATE.md`, `RUN_HISTORY.md`, shared manifests, global blocked
 logs, citation maps, repository configuration, or another worker's output
 unless the assignment names that shared-state responsibility.
 
+The one infrastructure exception is the controlled `python3 -m research_control
+web ...` interface. It may update the run-local URL ledger and immutable response
+cache. That cache is transport only: a URL or cached object is not research
+evidence, brand evidence, or a factual claim until the consuming packet admits
+it through its own required evidence records.
+
 ## Assignment contract
 
 Before work starts, the assignment must provide:
