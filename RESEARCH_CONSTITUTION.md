@@ -35,7 +35,7 @@ The repository has three durable layers:
 1. Captured sources, saved with provenance and dates.
 2. A fact store in which every fact has a verbatim receipt and exact location.
 3. Sense-making built only on the fact store, culminating in the company brief
-   and one-page summary.
+   and an auditable four-diagram architecture package.
 
 The repository must be reproducible from the effective prompt, company URL,
 user-provided inputs, captured public sources, and dependencies created or
@@ -225,14 +225,13 @@ how a sentence changed from a prior draft. Say things explicitly rather than
 alluding to them. Verbatim quotes preserve original spelling and punctuation.
 proper nouns, titles, URLs, file names, and fact IDs are not rewritten.
 
-The final artifact is titled **company brief**. Its cover says **Focus: Product
-marketing**, and the front matter identifies the product-marketing point of
-view. File names, running headers, and the one-page eyebrow use `company brief`.
-Reader-facing copy never says `onboarding`, `starting at`, `the new PMM`, or
-`the role`.
+The narrative artifact is titled **company brief**. Its cover says **Focus:
+Product marketing**, and the front matter identifies the product-marketing
+point of view. Reader-facing copy never says `onboarding`, `starting at`, `the
+new PMM`, or `the role`.
 
 Before design, a separate high-reasoning context reviews the company brief,
-one-page summary, and glossary for American usage. It records every change and
+diagram captions, and glossary for American usage. It records every change and
 does not alter quotes, fact IDs, file names, or URLs.
 
 ## Publication
@@ -244,9 +243,11 @@ instructions, internal warnings, or remove-before-sharing notes.
 
 A source receives the next citation number on first use, in reading order.
 Later uses reuse that number. Citation groups deduplicate and sort numbers. The
-one-page uses its own independent sequence. Each source note appears once and
-contains title, publisher, date, grade, and full public URL when one exists.
-Grade-I notes have no public link but retain the same typographic treatment.
+company brief has one sequence. Each source note appears once and contains
+title, publisher, date, grade, and full public URL when one exists. Grade-I
+notes have no public link but retain the same typographic treatment. Diagram
+nodes and edges instead reconcile through stable model IDs to fact IDs, source
+IDs, verification verdicts, and recorded inference chains.
 
 Web citations use a validated text fragment when possible and otherwise the
 plain manifest URL. YouTube citations use transcript time. Other audio and
@@ -272,9 +273,14 @@ headings. The section does not open with Grade-I evidence or a guess about
 reporting lines. Evidence limits use reproducible counts and plain-language
 method names.
 
-The one-page contains **Ten things to know**, with every item sourced in the
-same design system. Grade-I material may remain in a private working brief but
-is removed from any externally shared version unless explicitly authorized.
+The architecture package contains four editable SVGs derived only after a
+machine-validated model stage: capability taxonomy/inventory, operating
+model/behavior, enterprise logical architecture/structure, and focused
+technical dependencies/receipts. Their titles and question subtitles are
+deterministic. D relationships are solid, R relationships are distinguished,
+and H/U possibilities never masquerade as established architecture. Grade-I
+material may remain in a private working brief but is removed from any
+externally shared version unless explicitly authorized.
 
 Fonts are embedded only when legally permitted and technically available.
 Design notes record input-guide choices, public-identity choices, exclusions,
@@ -286,9 +292,10 @@ without imitating an unrelated proprietary report.
 Automated layout checks find measurable overflow, tight boxes, overlaps, split
 exhibits, and unexplained gaps. They do not replace visual judgment. A separate
 high-reasoning reviewer opens every rendered page in order with no sampling and
-records one row for every clean or defective page. The orchestrator also views
-every page for visual quality, presumptive employment language, exposed
-internals, stale counts, and stale metadata.
+records one row for every clean or defective page. The same reviewer opens all
+four SVGs at 165 mm publication width and records one row per diagram. The
+orchestrator also views every page and diagram for visual quality, presumptive
+employment language, exposed internals, stale counts, and stale metadata.
 
 Fix systemic layout causes before isolated symptoms. After material pagination
 changes, rerun placement, design, visual, citation, exhibit, negative, and page
@@ -336,8 +343,10 @@ The effective dependency order is:
 7. Apply fact corrections and repair dependent synthesis.
 8. Run independent technical, adversarial, insider, and editorial reviews.
 9. Disposition every finding and apply accepted fixes.
-10. Write and assemble the company brief and one-page summary.
-11. Run publication, citation, claim, design, and full visual checks.
+10. Write and assemble the company brief; reconstruct and validate the four
+    architecture information models before drawing.
+11. Build the four editable SVGs, then run publication, citation, claim,
+    design, and complete page-and-diagram visual checks.
 12. Independently accept the exact release artifacts.
 
 The historical numbering places the verification framework before Phase 4,

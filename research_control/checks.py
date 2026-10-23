@@ -6,10 +6,12 @@ import json
 import re
 import shutil
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Iterable
 
 from research_control import FAIL, PASS, UNKNOWN
+from research_control.diagram_contract import DIAGRAM_CAPTIONS, DIAGRAM_MODEL_JSON, DIAGRAM_SPECS, FINAL_ARTIFACTS
 from research_control.gates.phase_gate import check_phase_gate
 from research_control.hashing import checker_version, hash_patterns, hash_path
 from research_control.io import (
@@ -24,7 +26,7 @@ from research_control.io import (
 from research_control.orchestration import ACTIVE_PATH, all_task_definitions, load_state, set_phase_result
 from research_control.reconciliation.assignments import reconcile_records, validate_ledger
 from research_control.reporting import make_validation_report
-from research_control.validators import citations, dates, exhibits, facts, quotes, sources, tags, visual_records, writing_rules
+from research_control.validators import citations, dates, diagrams, exhibits, facts, quotes, sources, tags, visual_records, writing_rules
 
 
 FACT_ID = re.compile(r"\b[A-Z][A-Z0-9-]*-[A-Z]*\d+[a-z]?\b")
@@ -331,32 +333,38 @@ def _validate_publication_decisions(root: Path) -> dict[str, Any]:
 
 
 def _final_artifacts(root: Path) -> list[str]:
-    return [
-        "07-final-report/company-brief.pdf",
-        "07-final-report/company-brief.html",
-        "07-final-report/one-page.pdf",
-        "07-final-report/one-page.html",
-    ]
+    return list(FINAL_ARTIFACTS)
 
 
 def _validate_reader_facing(root: Path) -> dict[str, Any]:
-    paths = _paths(root, ["07-final-report/*.html"])
+    paths = _paths(root, ["07-final-report/company-brief.html", *(spec["path"] for spec in DIAGRAM_SPECS)])
     failures: list[str] = []
     prohibited = ("02-facts/", "tools/outputs/", "scratchpad/", "remove-before-sharing", "source_id", "fact_id")
     for path in paths:
         text = path.read_text(encoding="utf-8", errors="replace")
+        if path.suffix == ".svg":
+            try:
+                svg = ET.fromstring(text)
+                text = " ".join(
+                    element.text or ""
+                    for element in svg.iter()
+                    if element.tag.rsplit("}", 1)[-1] in {"text", "tspan"}
+                )
+            except ET.ParseError:
+                failures.append(f"{path.relative_to(root)}: unreadable SVG text")
         for token in prohibited:
             if token.casefold() in text.casefold():
                 failures.append(f"{path.relative_to(root)}: exposes internal token {token}")
         visible = re.sub(r"<[^>]+>", " ", text)
         for fact_id in FACT_ID.findall(visible):
             failures.append(f"{path.relative_to(root)}: exposes fact ID {fact_id}")
-    unknowns = [] if len(paths) == 2 else [f"expected two HTML artifacts, found {len(paths)}"]
-    return _report(root, "reader_facing_text", ["07-final-report/*.html"], 2, len(paths), failures, unknowns)
+    expected = 1 + len(DIAGRAM_SPECS)
+    unknowns = [] if len(paths) == expected else [f"expected one HTML brief and four SVG diagrams, found {len(paths)} artifacts"]
+    return _report(root, "reader_facing_text", ["07-final-report/company-brief.html", "07-final-report/*.svg"], expected, len(paths), failures, unknowns)
 
 
 def _validate_american_english(root: Path) -> dict[str, Any]:
-    paths = _paths(root, ["05-synthesis/company-brief.md", "05-synthesis/one-page.md"])
+    paths = _paths(root, ["05-synthesis/company-brief.md", DIAGRAM_CAPTIONS])
     failures: list[str] = []
     for path in paths:
         for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
@@ -364,7 +372,7 @@ def _validate_american_english(root: Path) -> dict[str, Any]:
             for british, american in BRITISH_FORMS.items():
                 if re.search(rf"\b{british}\b", unquoted, re.IGNORECASE):
                     failures.append(f"{path.relative_to(root)}:{number}: use {american} instead of {british}")
-    unknowns = [] if len(paths) == 2 else ["final Markdown files are incomplete"]
+    unknowns = [] if len(paths) == 2 else ["company brief or diagram captions are incomplete"]
     return _report(root, "american_english", [str(path.relative_to(root)) for path in paths], 2, len(paths), failures, unknowns)
 
 
@@ -408,7 +416,7 @@ def _validate_citations(root: Path) -> dict[str, Any]:
                 failures.append(f"{path.name}: Markdown citation placement {markdown_numbers} does not match map {expected_numbers}")
             if html_numbers != expected_numbers:
                 failures.append(f"{path.name}: rendered citation placement {html_numbers} does not match map {expected_numbers}")
-    unknowns = [] if len(maps) == 2 else [f"expected two citation maps, found {len(maps)}"]
+    unknowns = [] if len(maps) == 1 else [f"expected one company-brief citation map, found {len(maps)}"]
     expected = sum(len(data.get("citations", [])) for _path, data in maps)
     return _report(root, "citation_structure", ["tools/outputs/citation-map-*.json"], expected, checked, failures, unknowns)
 
@@ -420,13 +428,22 @@ def _validate_final_cited_facts(root: Path) -> dict[str, Any]:
         for citation in data.get("citations", [])
         for fact_id in citation.get("facts", [])
     }
+    model_path = root / DIAGRAM_MODEL_JSON
+    if model_path.is_file() and model_path.stat().st_size:
+        model = load_json(model_path)
+        cited.update(
+            str(fact_id)
+            for group in ("entities", "relationships")
+            for record in model.get(group, [])
+            for fact_id in record.get("fact_ids", [])
+        )
     verified = {
         str(row.get("fact_id"))
         for row in _verification_records(root)
         if row.get("verdict") in {"confirmed", "corrected"}
     }
     missing = sorted(cited - verified)
-    return _report(root, "new_cited_fact_verification", ["tools/outputs/citation-map-*.json", "tools/outputs/verification-verdicts.jsonl"], len(cited), len(cited & verified), [f"cited fact lacks accepted verification: {item}" for item in missing])
+    return _report(root, "new_cited_fact_verification", ["tools/outputs/citation-map-*.json", DIAGRAM_MODEL_JSON, "tools/outputs/verification-verdicts.jsonl"], len(cited), len(cited & verified), [f"published fact lacks accepted verification: {item}" for item in missing])
 
 
 def _validate_exhibits(root: Path) -> dict[str, Any]:
@@ -453,12 +470,6 @@ def _validate_design(root: Path) -> dict[str, Any]:
             text = path.read_text(encoding="utf-8", errors="replace").casefold()
             if "<style" not in text and "stylesheet" not in text:
                 failures.append(f"{relative}: no stylesheet")
-    metadata_path = root / "tools/outputs/render-metadata.json"
-    if metadata_path.is_file() and metadata_path.stat().st_size:
-        metadata = load_json(metadata_path)
-        one_page_count = metadata.get("documents", {}).get("one-page", {}).get("pages")
-        if one_page_count != 1:
-            failures.append(f"one-page output renders to {one_page_count!r} pages instead of exactly one")
     if failures:
         report["status"] = FAIL
         report["failure_count"] = len(failures)
@@ -556,6 +567,22 @@ def run_validator(root: Path, phase: dict[str, Any], validator_id: str) -> dict[
         return _validate_final_cited_facts(root)
     if validator_id == "citation_structure":
         return _validate_citations(root)
+    if validator_id == "diagram_models":
+        verified = {
+            str(row.get("fact_id"))
+            for row in _verification_records(root)
+            if row.get("verdict") in {"confirmed", "corrected"}
+        }
+        return diagrams.validate_models(
+            root,
+            {str(row.get("fact_id")) for row in fact_rows},
+            source_ids,
+            verified,
+        )
+    if validator_id == "diagram_artifacts":
+        return diagrams.validate_artifacts(root)
+    if validator_id == "diagram_visual_records":
+        return diagrams.validate_visual_records(root)
     if validator_id == "exhibit_mapping":
         return _validate_exhibits(root)
     if validator_id == "design_check":
@@ -652,17 +679,41 @@ def run_reconciliation(root: Path, phase: dict[str, Any], reconciliation_id: str
         return _coverage_reconciliation(root, reconciliation_id, assigned, completed, ["tools/outputs/review-findings-*.jsonl", "tools/outputs/review-decisions.jsonl"])
     if reconciliation_id == "final_cited_facts":
         assigned = sorted({str(fid) for _path, data in _citation_maps(root) for citation in data.get("citations", []) for fid in citation.get("facts", [])})
+        model_path = root / DIAGRAM_MODEL_JSON
+        if model_path.is_file() and model_path.stat().st_size:
+            model = load_json(model_path)
+            assigned = sorted(set(assigned) | {
+                str(fact_id)
+                for group in ("entities", "relationships")
+                for record in model.get(group, [])
+                for fact_id in record.get("fact_ids", [])
+            })
         completed = [str(row.get("fact_id", "")) for row in _verification_records(root) if row.get("verdict") in {"confirmed", "corrected"}]
-        return _coverage_reconciliation(root, reconciliation_id, assigned, completed, ["tools/outputs/citation-map-*.json", "tools/outputs/verification-verdicts.jsonl"])
+        return _coverage_reconciliation(root, reconciliation_id, assigned, completed, ["tools/outputs/citation-map-*.json", DIAGRAM_MODEL_JSON, "tools/outputs/verification-verdicts.jsonl"])
     if reconciliation_id == "citation_sources":
         assigned = sorted({str(note.get("source_id")) for _path, data in _citation_maps(root) for note in data.get("notes", []) if note.get("source_id")})
+        model_path = root / DIAGRAM_MODEL_JSON
+        if model_path.is_file() and model_path.stat().st_size:
+            model = load_json(model_path)
+            assigned = sorted(set(assigned) | {
+                str(source_id)
+                for group in ("entities", "relationships")
+                for record in model.get(group, [])
+                for source_id in record.get("source_ids", [])
+            })
         completed = manifest_ids
-        return _coverage_reconciliation(root, reconciliation_id, assigned, completed, ["tools/outputs/citation-map-*.json", "01-sources/MANIFEST.csv"])
+        return _coverage_reconciliation(root, reconciliation_id, assigned, completed, ["tools/outputs/citation-map-*.json", DIAGRAM_MODEL_JSON, "01-sources/MANIFEST.csv"])
     if reconciliation_id == "visual_pages":
         expected, records = _visual_data(root)
         assigned = [str(page) for page in range(1, expected + 1)]
         completed = [str(row.get("page", "")) for row in records]
         return _coverage_reconciliation(root, reconciliation_id, assigned, completed, ["tools/outputs/render-metadata.json", "06-checks/visual-review.json"])
+    if reconciliation_id == "visual_diagrams":
+        review_path = root / "06-checks/visual-review.json"
+        value = load_json(review_path) if review_path.is_file() and review_path.stat().st_size else {}
+        assigned = [spec["id"] for spec in DIAGRAM_SPECS]
+        completed = [str(row.get("diagram", "")) for row in value.get("diagrams", [])]
+        return _coverage_reconciliation(root, reconciliation_id, assigned, completed, ["07-final-report/*.svg", "06-checks/visual-review.json"])
     return _rename(_ledger(root), f"reconcile:{reconciliation_id}")
 
 

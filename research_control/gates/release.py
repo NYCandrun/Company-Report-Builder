@@ -10,20 +10,13 @@ from pathlib import Path
 from typing import Any
 
 from research_control import FAIL, PASS, UNKNOWN
+from research_control.diagram_contract import DIAGRAM_MODEL_JSON, FINAL_ARTIFACTS
 from research_control.hashing import checker_version, hash_path, hash_patterns, report_inputs_current, sha256_file
 from research_control.io import atomic_write_json, load_json, load_jsonl, resolve_pattern, utc_now, workflow
 from research_control.reconciliation.assignments import validate_ledger
 from research_control.reporting import make_validation_report, print_summary
 from research_control.validators.common import validate_report_shape
 from .phase_gate import gate_report_is_current
-
-
-FINAL_ARTIFACTS = [
-    "07-final-report/company-brief.pdf",
-    "07-final-report/company-brief.html",
-    "07-final-report/one-page.pdf",
-    "07-final-report/one-page.html",
-]
 
 
 def _git_commit(root: Path) -> str | None:
@@ -198,7 +191,7 @@ def check_release(root: Path, workflow_path: Path | None = None, write_manifest:
             "git_commit": _git_commit(root), "artifacts": artifact_hashes,
             "evidence_hashes": hash_patterns(root, [
                 "01-sources/MANIFEST.csv", "02-facts/**", "tools/outputs/citation-map-*.json",
-                "05-synthesis/company-brief.md", "05-synthesis/one-page.md", "tools/brief_html/**",
+                DIAGRAM_MODEL_JSON, "05-synthesis/company-brief.md", "tools/brief_html/**",
             ]),
             "gates": gate_summaries,
             "reconciliations": {key: value for key, value in report_summaries.items() if ":reconciliations:" in key},

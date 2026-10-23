@@ -1,5 +1,15 @@
 # Refactor report
 
+## Version 2.1 publication revision
+
+The original one-page summary contract is deliberately superseded. The
+research scope, evidence controls, and company brief remain; the one-page
+Markdown/HTML/PDF and second citation sequence are replaced by an auditable
+model registry, four editable SVG architecture diagrams, captions, exact
+title/subtitle checks, model-to-evidence bindings, and one visual-review record
+per diagram at 165 mm. The preserved legacy prompt and requirement inventory
+remain historical traceability inputs rather than the current output contract.
+
 ## Architecture
 
 The operational refactor separates one 3,399-line mixed-concern prompt into
@@ -11,8 +21,8 @@ five layers:
    and reasoning models need to understand.
 3. `WORKFLOW.yaml` is the canonical executable phase and task contract. It preserves
    the real order: capture, facts, initial synthesis, cited-fact verification,
-   corrected synthesis, independent review, company brief, publication checks,
-   and release acceptance.
+   corrected synthesis, independent review, company brief, gated architecture
+   modeling and diagram build, publication checks, and release acceptance.
 4. `prompts/` gives each worker only its role, bounded inputs, output contract,
    relevant principles, and completion criteria. It keeps writing,
    verification, skeptical review, citation review, and visual review in
@@ -227,7 +237,8 @@ The repository now supports the intended clean-room interaction: copy the
 template, give a supported coding agent one public company URL, and tell it to
 follow `README.md`. The agent uses `research_control` to initialize and resume
 the run, request permitted task packets, record attempts, run phase checks,
-render four final artifacts, and perform release acceptance.
+render the company brief, build four editable architecture diagrams from a
+validated evidence model, and perform release acceptance.
 
 The runner now supplies the durable scheduler and first-party public-web
 frontier. It does not pretend that a standard-library HTTP client can replace

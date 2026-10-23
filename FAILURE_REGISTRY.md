@@ -393,7 +393,7 @@ deterministic checker cannot establish meaning.
 - **Current source:** README 15.3 and 16.1.
 - **Enforcement:** Citation validator.
 - **Regression test:** `test_duplicate_source_number_is_caught`.
-- **Notes:** The one-page intentionally has an independent sequence.
+- **Notes:** The company brief has one reading-order sequence; diagrams use stable model-to-evidence bindings instead of a second citation-number sequence.
 
 ## F040 — Citation note is missing, unused, or incomplete
 

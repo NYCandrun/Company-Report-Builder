@@ -71,8 +71,12 @@ def preflight(root: Path) -> int:
         "prompts/phases/capture-source.md",
         "prompts/phases/capture-reducer.md",
         "prompts/phases/extraction-reducer.md",
+        "prompts/phases/diagram-modeling.md",
+        "prompts/phases/diagram-building.md",
         "research_control/schemas/work-item.schema.json",
         "research_control/schemas/discovery-pass.schema.json",
+        "research_control/schemas/diagram-models.schema.json",
+        "research_control/schemas/diagram-review.schema.json",
     ]
     failures = [f"missing required file: {relative}" for relative in required if not (root / relative).is_file()]
     warnings: list[str] = []

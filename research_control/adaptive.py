@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from research_control import PASS
-from research_control.checks import check_phase
+from research_control.checks import check_phase, run_validator
 from research_control.dispatch import emit_ready_packets
 from research_control.io import load_json, workflow
 from research_control.orchestration import current_phase, initialize, load_state
@@ -139,6 +139,16 @@ def complete_work(
 
 
 def _validate_semantic_receipt(root: Path, store: RuntimeStore, task: dict[str, Any]) -> None:
+    if task["task_type"] in {"diagram_modeler", "diagram_builder"}:
+        document = workflow(root / "WORKFLOW.yaml")
+        phase = next(item for item in document["phases"] if item["id"] == task["phase"])
+        for validator_id in task.get("validators", []):
+            validation = run_validator(root, phase, validator_id)
+            if validation.get("status") != PASS:
+                details = validation.get("failures") or validation.get("unknowns") or ["validation did not pass"]
+                raise ValueError(
+                    f"{task['task_id']}: {validator_id} failed: {'; '.join(str(item) for item in details)}"
+                )
     if task["task_type"] == "source_discovery":
         path = root / task["metadata"]["receipt"]
         if not path.is_file():

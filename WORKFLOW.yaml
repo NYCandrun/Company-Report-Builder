@@ -1,5 +1,5 @@
 {
-  "schema_version": "2.0.0",
+  "schema_version": "2.1.0",
   "source_of_truth": ["RESEARCH_CONSTITUTION.md", "WORKFLOW.yaml"],
   "runtime_entrypoint": "README.md",
   "legacy_traceability_source": "docs/legacy-prompt.md",
@@ -229,9 +229,31 @@
           "task_type": "brief_writer",
           "prompt": "prompts/phases/brief-writing.md",
           "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
-          "outputs": ["05-synthesis/company-brief.md", "05-synthesis/one-page.md", "05-synthesis/design-notes.md", "05-synthesis/design/style.css", "tools/outputs/citation-map-company-brief.json", "tools/outputs/citation-map-one-page.json", "tools/outputs/exhibit-map.json"],
+          "outputs": ["05-synthesis/company-brief.md", "05-synthesis/design-notes.md", "05-synthesis/design/style.css", "tools/outputs/citation-map-company-brief.json", "tools/outputs/exhibit-map.json"],
           "independent": false,
-          "exclusive_inputs": true
+          "exclusive_inputs": true,
+          "validators": []
+        },
+        {
+          "id": "model-diagrams",
+          "task_type": "diagram_modeler",
+          "prompt": "prompts/phases/diagram-modeling.md",
+          "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
+          "outputs": ["07-final-report/diagram-models.md", "tools/outputs/diagram-models.json"],
+          "independent": true,
+          "exclusive_inputs": false,
+          "validators": ["diagram_models"]
+        },
+        {
+          "id": "build-diagrams",
+          "task_type": "diagram_builder",
+          "prompt": "prompts/phases/diagram-building.md",
+          "depends_on": ["write-brief", "model-diagrams"],
+          "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
+          "outputs": ["07-final-report/01-product-capability-map.svg", "07-final-report/02-operating-model.svg", "07-final-report/03-enterprise-logical-architecture.svg", "07-final-report/04-technical-dependency-map.svg", "07-final-report/diagram-captions.md"],
+          "independent": false,
+          "exclusive_inputs": false,
+          "validators": ["diagram_models", "diagram_artifacts"]
         },
         {
           "id": "assemble",
@@ -239,9 +261,10 @@
           "prompt": "prompts/phases/publication-build.md",
           "depends_on": ["write-brief"],
           "cores": ["prompts/core/runtime.md", "prompts/core/writing.md"],
-          "outputs": ["07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "07-final-report/one-page.pdf", "07-final-report/one-page.html", "tools/outputs/render-metadata.json"],
+          "outputs": ["07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "tools/outputs/render-metadata.json"],
           "independent": false,
-          "exclusive_inputs": false
+          "exclusive_inputs": false,
+          "validators": []
         }
       ]
     },
@@ -293,7 +316,7 @@
           "prompt": "prompts/phases/publication-fixer.md",
           "depends_on": ["language", "citation-a", "citation-b", "visual"],
           "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
-          "outputs": ["05-synthesis/company-brief.md", "05-synthesis/one-page.md", "05-synthesis/design-notes.md", "tools/outputs/citation-map-company-brief.json", "tools/outputs/citation-map-one-page.json", "tools/outputs/exhibit-map.json", "07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "07-final-report/one-page.pdf", "07-final-report/one-page.html", "tools/outputs/render-metadata.json", "06-checks/publication-decisions.md", "tools/outputs/publication-decisions.jsonl"],
+          "outputs": ["05-synthesis/company-brief.md", "05-synthesis/design-notes.md", "tools/outputs/citation-map-company-brief.json", "tools/outputs/exhibit-map.json", "tools/outputs/diagram-models.json", "07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "07-final-report/diagram-models.md", "07-final-report/01-product-capability-map.svg", "07-final-report/02-operating-model.svg", "07-final-report/03-enterprise-logical-architecture.svg", "07-final-report/04-technical-dependency-map.svg", "07-final-report/diagram-captions.md", "tools/outputs/render-metadata.json", "06-checks/publication-decisions.md", "tools/outputs/publication-decisions.jsonl"],
           "independent": true,
           "exclusive_inputs": true,
           "output_mode": "revise"
@@ -632,19 +655,26 @@
       "inputs": [
         {"id": "reviewed_synthesis", "path": "05-synthesis/*.md", "required": true},
         {"id": "verified_facts", "path": "02-facts/**", "required": true},
+        {"id": "source_manifest", "path": "01-sources/MANIFEST.csv", "required": true},
+        {"id": "verification_verdicts", "path": "tools/outputs/verification-verdicts.jsonl", "required": true},
+        {"id": "reviewed_timelines", "path": "03-timelines/*.md", "required": false},
         {"id": "design_system", "path": "05-synthesis/design/**", "required": true}
       ],
       "outputs": [
         {"id": "brief_markdown", "path": "05-synthesis/company-brief.md"},
-        {"id": "one_page_markdown", "path": "05-synthesis/one-page.md"},
         {"id": "brief_pdf", "path": "07-final-report/company-brief.pdf"},
         {"id": "brief_html", "path": "07-final-report/company-brief.html"},
-        {"id": "one_page_pdf", "path": "07-final-report/one-page.pdf"},
-        {"id": "one_page_html", "path": "07-final-report/one-page.html"},
+        {"id": "diagram_models", "path": "07-final-report/diagram-models.md"},
+        {"id": "diagram_model_registry", "path": "tools/outputs/diagram-models.json"},
+        {"id": "diagram_svgs", "path": "07-final-report/{01-product-capability-map,02-operating-model,03-enterprise-logical-architecture,04-technical-dependency-map}.svg"},
+        {"id": "diagram_captions", "path": "07-final-report/diagram-captions.md"},
         {"id": "design_notes", "path": "05-synthesis/design-notes.md"}
       ],
       "reconciliations": [],
-      "validators": [],
+      "validators": [
+        {"id": "diagram_models", "report": "tools/outputs/validations/diagram-models.json", "assurance_layer": "reasoning_quality"},
+        {"id": "diagram_artifacts", "report": "tools/outputs/validations/diagram-artifacts.json", "assurance_layer": "publication_integrity"}
+      ],
       "semantic_reviews": [],
       "tests": ["data_integrity"],
       "completion": {"require_all": true, "state_update_after_gate": false},
@@ -658,7 +688,8 @@
       "allowed_preparatory_work": [],
       "inputs": [
         {"id": "predesign_reference", "kind": "git_commit_or_checksum", "required": true},
-        {"id": "final_artifacts", "path": "07-final-report/{company-brief,one-page}.{pdf,html}", "required": true},
+        {"id": "brief_artifacts", "path": "07-final-report/company-brief.{pdf,html}", "required": true},
+        {"id": "diagram_artifacts", "path": "07-final-report/{diagram-models.md,diagram-captions.md,01-product-capability-map.svg,02-operating-model.svg,03-enterprise-logical-architecture.svg,04-technical-dependency-map.svg}", "required": true},
         {"id": "citation_maps", "path": "tools/outputs/citation-map-*.json", "required": true}
       ],
       "outputs": [
@@ -672,7 +703,8 @@
       "reconciliations": [
         {"id": "final_cited_facts", "report": "tools/outputs/reconciliation/final-cited-facts.json"},
         {"id": "citation_sources", "report": "tools/outputs/reconciliation/citation-sources.json"},
-        {"id": "visual_pages", "report": "tools/outputs/reconciliation/visual-pages.json"}
+        {"id": "visual_pages", "report": "tools/outputs/reconciliation/visual-pages.json"},
+        {"id": "visual_diagrams", "report": "tools/outputs/reconciliation/visual-diagrams.json"}
       ],
       "validators": [
         {"id": "final_artifact_contract", "report": "tools/outputs/validations/final-artifacts.json", "assurance_layer": "publication_integrity"},
@@ -681,6 +713,9 @@
         {"id": "new_cited_fact_verification", "report": "tools/outputs/validations/final-cited-facts.json", "assurance_layer": "evidence_validity"},
         {"id": "citation_structure", "report": "tools/outputs/validations/citations.json", "assurance_layer": "publication_integrity"},
         {"id": "exhibit_mapping", "report": "tools/outputs/validations/exhibits.json", "assurance_layer": "publication_integrity"},
+        {"id": "diagram_models", "report": "tools/outputs/validations/diagram-models.json", "assurance_layer": "reasoning_quality"},
+        {"id": "diagram_artifacts", "report": "tools/outputs/validations/diagram-artifacts.json", "assurance_layer": "publication_integrity"},
+        {"id": "diagram_visual_records", "report": "tools/outputs/validations/diagram-visual-records.json", "assurance_layer": "execution_integrity"},
         {"id": "design_check", "report": "tools/outputs/validations/design.json", "assurance_layer": "publication_integrity"},
         {"id": "visual_audit", "report": "tools/outputs/validations/visual-audit.json", "assurance_layer": "publication_integrity"},
         {"id": "visual_records", "report": "tools/outputs/validations/visual-records.json", "assurance_layer": "execution_integrity"},
@@ -696,17 +731,17 @@
       ],
       "tests": ["citation_integrity", "execution_integrity", "release_integrity"],
       "completion": {"require_all": true, "state_update_after_gate": true},
-      "stale_if": ["05-synthesis/company-brief.md", "05-synthesis/one-page.md", "02-facts/**", "01-sources/MANIFEST.csv", "tools/outputs/citation-map-*.json", "tools/brief_html/**", "07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "07-final-report/one-page.pdf", "07-final-report/one-page.html"],
+      "stale_if": ["05-synthesis/company-brief.md", "02-facts/**", "01-sources/MANIFEST.csv", "tools/outputs/citation-map-*.json", "tools/outputs/diagram-models.json", "tools/brief_html/**", "07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "07-final-report/*.svg", "07-final-report/diagram-*.md"],
       "downstream": ["release_acceptance"],
       "retry_policy": "global",
       "gate": {
         "name": "final",
-        "required_paths": ["07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "07-final-report/one-page.pdf", "07-final-report/one-page.html", "06-checks/final-report.md"],
-        "required_reconciliations": ["final_cited_facts", "citation_sources", "visual_pages"],
-        "required_validators": ["final_artifact_contract", "reader_facing_text", "american_english", "new_cited_fact_verification", "citation_structure", "exhibit_mapping", "design_check", "visual_audit", "visual_records", "publication_decisions", "artifact_binding"],
+        "required_paths": ["07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "07-final-report/diagram-models.md", "07-final-report/01-product-capability-map.svg", "07-final-report/02-operating-model.svg", "07-final-report/03-enterprise-logical-architecture.svg", "07-final-report/04-technical-dependency-map.svg", "07-final-report/diagram-captions.md", "06-checks/final-report.md"],
+        "required_reconciliations": ["final_cited_facts", "citation_sources", "visual_pages", "visual_diagrams"],
+        "required_validators": ["final_artifact_contract", "reader_facing_text", "american_english", "new_cited_fact_verification", "citation_structure", "exhibit_mapping", "diagram_models", "diagram_artifacts", "diagram_visual_records", "design_check", "visual_audit", "visual_records", "publication_decisions", "artifact_binding"],
         "required_semantic_reviews": ["american_english_review", "citation_claim_a", "citation_claim_b", "visual_review", "orchestrator_page_review"],
         "required_tests": ["citation_integrity", "execution_integrity", "release_integrity"],
-        "required_worker_task_types": ["brief_writer", "assembler", "language_review", "citation_claim_review", "visual_review", "publication_fixer", "orchestrator_page_review"]
+        "required_worker_task_types": ["brief_writer", "diagram_modeler", "diagram_builder", "assembler", "language_review", "citation_claim_review", "visual_review", "publication_fixer", "orchestrator_page_review"]
       }
     },
     {
@@ -718,7 +753,8 @@
         {"id": "worker_ledger", "path": "tools/outputs/worker-ledger.jsonl", "required": true},
         {"id": "all_reconciliations", "path": "tools/outputs/reconciliation/*.json", "required": true},
         {"id": "all_validations", "path": "tools/outputs/validations/*.json", "required": true},
-        {"id": "final_artifacts", "path": "07-final-report/{company-brief,one-page}.{pdf,html}", "required": true}
+        {"id": "brief_artifacts", "path": "07-final-report/company-brief.{pdf,html}", "required": true},
+        {"id": "diagram_artifacts", "path": "07-final-report/{diagram-models.md,diagram-captions.md,01-product-capability-map.svg,02-operating-model.svg,03-enterprise-logical-architecture.svg,04-technical-dependency-map.svg}", "required": true}
       ],
       "outputs": [
         {"id": "release_manifest", "path": "07-final-report/release-manifest.json"}

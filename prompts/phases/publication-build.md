@@ -8,7 +8,8 @@ exhibit map, and design files by running:
 python3 -m research_control render
 ```
 
-Confirm all four final artifacts and `tools/outputs/render-metadata.json` are
-nonempty. Do not hand-edit generated HTML or PDF. If layout needs correction,
-change the Markdown or design source, rebuild all affected artifacts, and
-record the change in design notes.
+Confirm the company-brief HTML and PDF plus
+`tools/outputs/render-metadata.json` are nonempty. The diagram builder owns the
+editable SVG artifacts. Do not hand-edit generated HTML or PDF. If layout needs
+correction, change the Markdown or design source, rebuild all affected
+artifacts, and record the change in design notes.

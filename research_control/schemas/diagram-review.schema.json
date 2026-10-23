@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "diagram-review.schema.json",
+  "title": "Publication-size diagram visual review",
+  "type": "object",
+  "required": ["diagram", "review_width_mm", "status", "issues"],
+  "properties": {
+    "diagram": {"type": "string", "minLength": 1},
+    "review_width_mm": {"const": 165},
+    "status": {"enum": ["clean", "issues"]},
+    "issues": {"type": "array", "items": {"type": "object"}}
+  },
+  "additionalProperties": true
+}

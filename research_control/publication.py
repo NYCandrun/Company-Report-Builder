@@ -280,7 +280,6 @@ def make_page_previews(pdf_path: Path, markdown: str, directory: Path, slug: str
 def render(root: Path) -> dict[str, Any]:
     documents = {
         "company-brief": root / "05-synthesis/company-brief.md",
-        "one-page": root / "05-synthesis/one-page.md",
     }
     missing = [str(path.relative_to(root)) for path in documents.values() if not path.is_file() or not path.stat().st_size]
     if missing:
@@ -301,7 +300,7 @@ def render(root: Path) -> dict[str, Any]:
         markdown = source.read_text(encoding="utf-8")
         html_path = output_dir / f"{slug}.html"
         pdf_path = output_dir / f"{slug}.pdf"
-        title = "Company brief" if slug == "company-brief" else "Ten things to know"
+        title = "Company brief"
         atomic_write_text(html_path, markdown_to_html(markdown, title, css))
         pdf_renderer, pages = render_pdf(html_path, markdown, pdf_path)
         preview_format, previews = make_page_previews(pdf_path, markdown, preview_dir, slug)

@@ -1,6 +1,7 @@
 TASK TYPE: INDEPENDENT AMERICAN-ENGLISH REVIEW
 
-Review the final Markdown and rendered reader-facing text. Check spelling,
+Review the company-brief Markdown, diagram captions, and rendered reader-facing
+text. Check spelling,
 punctuation, quote style, terminology, directness, and every mechanical rule in
 the writing core. Preserve proper nouns, source titles, URLs, file names, fact
 IDs, and verbatim quotations.

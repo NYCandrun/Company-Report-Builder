@@ -13,6 +13,7 @@ from research_control import PASS
 from research_control.checks import check_phase
 from research_control.capture import capture_url
 from research_control.cli import _refresh_release_evidence
+from research_control.diagram_contract import DIAGRAM_CAPTIONS, DIAGRAM_MODEL_JSON, DIAGRAM_MODEL_MARKDOWN, DIAGRAM_SPECS
 from research_control.gates.release import check_release
 from research_control.io import atomic_write_json, atomic_write_jsonl, atomic_write_text
 from research_control.orchestration import (
@@ -64,6 +65,68 @@ def static_test_reports(root: Path) -> None:
         atomic_write_json(root / f"tools/outputs/tests/{name}.json", report)
 
 
+def write_diagram_models(root: Path) -> None:
+    entity = {
+        "id": "ENT-001",
+        "label": "Acme workflow software",
+        "entity_type": "product",
+        "owner_boundary": "company platform",
+        "evidence_class": "D",
+        "fact_ids": ["ACME-001"],
+        "source_ids": ["SRC-001"],
+        "reasoning_note": "",
+    }
+    models = []
+    for spec in DIAGRAM_SPECS:
+        models.append({
+            "id": spec["id"],
+            "title": spec["title"],
+            "subtitle": spec["subtitle"],
+            "question_answered": spec["subtitle"],
+            "main_takeaway": "The evidence establishes one company product.",
+            "entity_ids": ["ENT-001"],
+            "relationship_ids": [],
+            "structure": "A narrow evidence-bounded view.",
+            "deliberate_omissions": [],
+            "caveats": ["The clean-room fixture contains one fact."],
+        })
+    atomic_write_json(root / DIAGRAM_MODEL_JSON, {
+        "entities": [entity],
+        "relationships": [],
+        "diagrams": models,
+    })
+    text(
+        root,
+        DIAGRAM_MODEL_MARKDOWN,
+        "# Diagram models\n\n## Entity registry\n\nENT-001 — Acme workflow software. ACME-001; SRC-001.\n\n"
+        "## Relationship registry\n\nNo supported relationship in the one-fact fixture.\n\n"
+        "## Model 01\n\nENT-001\n\n## Model 02\n\nENT-001\n\n"
+        "## Model 03\n\nENT-001\n\n## Model 04\n\nENT-001\n",
+    )
+
+
+def write_diagram_artifacts(root: Path) -> None:
+    captions = ["# Diagram captions", ""]
+    for spec in DIAGRAM_SPECS:
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="165mm" height="90mm" viewBox="0 0 660 360">'
+            f'<text x="20" y="30">{spec["title"]}</text>'
+            f'<text x="20" y="55">{spec["subtitle"]}</text>'
+            '<g data-model-id="ENT-001"><rect x="20" y="90" width="300" height="80" />'
+            '<text x="35" y="135">Acme workflow software</text></g></svg>\n'
+        )
+        text(root, spec["path"], svg)
+        captions.extend([
+            f'## {spec["title"]}',
+            "",
+            spec["subtitle"],
+            "",
+            "The fixture supports a deliberately narrow view. Reference: ACME-001 / SRC-001.",
+            "",
+        ])
+    text(root, DIAGRAM_CAPTIONS, "\n".join(captions))
+
+
 class OperationalRunTests(unittest.TestCase):
     def setUp(self) -> None:
         self._renderer_environment = patch.dict(
@@ -107,14 +170,12 @@ class OperationalRunTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             text(root, "05-synthesis/company-brief.md", "# Company brief\n\nFocus: Product marketing\n\nA supported claim [ACME-001].\n")
-            text(root, "05-synthesis/one-page.md", "# Ten things to know\n\nA supported claim [ACME-001].\n")
             metadata = render(root)
-            self.assertEqual(2, metadata["total_pages"])
-            for slug in ("company-brief", "one-page"):
-                html = (root / f"07-final-report/{slug}.html").read_text(encoding="utf-8")
-                self.assertNotIn("ACME-001", html)
-                self.assertTrue((root / f"07-final-report/{slug}.pdf").read_bytes().startswith(b"%PDF-"))
-                self.assertTrue(metadata["documents"][slug]["page_previews"])
+            self.assertEqual(1, metadata["total_pages"])
+            html = (root / "07-final-report/company-brief.html").read_text(encoding="utf-8")
+            self.assertNotIn("ACME-001", html)
+            self.assertTrue((root / "07-final-report/company-brief.pdf").read_bytes().startswith(b"%PDF-"))
+            self.assertTrue(metadata["documents"]["company-brief"]["page_previews"])
 
     def test_capture_helper_rejects_private_network_targets(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -290,14 +351,14 @@ class OperationalRunTests(unittest.TestCase):
 
             def write_brief() -> None:
                 text(root, "05-synthesis/company-brief.md", "# Company brief\n\nFocus: Product marketing\n\nAcme provides workflow software. ACME-001 [1]\n\n## Sources\n\n1. [Acme home](https://acme.example)\n")
-                text(root, "05-synthesis/one-page.md", "# Ten things to know\n\n1. Acme provides workflow software. ACME-001 [1]\n\n## Sources\n\n1. [Acme home](https://acme.example)\n")
                 text(root, "05-synthesis/design-notes.md", "# Design notes\n\nUse a restrained editorial layout.\n")
                 text(root, "05-synthesis/design/style.css", "h1 { color: #123b67; }\n")
                 atomic_write_json(root / "tools/outputs/citation-map-company-brief.json", citation_map)
-                atomic_write_json(root / "tools/outputs/citation-map-one-page.json", citation_map)
                 atomic_write_json(root / "tools/outputs/exhibit-map.json", {"elements": [{"element_id": "portfolio", "fact_ids": ["ACME-001"], "evidence_bearing": True}]})
 
             complete_task(root, "final.write-brief", "brief-writer", write_brief)
+            complete_task(root, "final.model-diagrams", "diagram-modeler", lambda: write_diagram_models(root))
+            complete_task(root, "final.build-diagrams", "diagram-builder", lambda: write_diagram_artifacts(root))
             complete_task(root, "final.assemble", "assembler", lambda: render(root))
             report, _ = check_phase(root, "final", run_tests=False)
             self.assertEqual(PASS, report["status"], report)
@@ -345,7 +406,11 @@ class OperationalRunTests(unittest.TestCase):
                 metadata = json.loads((root / "tools/outputs/render-metadata.json").read_text(encoding="utf-8"))
                 text(root, "06-checks/visual-review.md", f"# Visual review\n\nReviewed {metadata['total_pages']} pages; all clean.\n")
                 atomic_write_json(root / "06-checks/visual-review.json", {
-                    "pages": [{"page": page, "status": "clean", "issues": []} for page in range(1, metadata["total_pages"] + 1)]
+                    "pages": [{"page": page, "status": "clean", "issues": []} for page in range(1, metadata["total_pages"] + 1)],
+                    "diagrams": [
+                        {"diagram": spec["id"], "review_width_mm": 165, "status": "clean", "issues": []}
+                        for spec in DIAGRAM_SPECS
+                    ],
                 })
                 jsonl(root, "tools/outputs/publication-findings-visual.jsonl", [{"review_id": "visual", "status": "clean"}])
 

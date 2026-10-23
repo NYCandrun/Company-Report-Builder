@@ -2,8 +2,9 @@
 
 Give the agent one public company URL. This repository discovers the available
 evidence, plans work from the resulting corpus, and carries the run through a
-cited and visually reviewed company brief. Do not ask the user how many pages,
-sources, batches, or workers to use.
+cited, visually reviewed company brief and four evidence-bounded architecture
+diagrams. Do not ask the user how many pages, sources, batches, or workers to
+use.
 
 ## Run it
 
@@ -173,22 +174,39 @@ The controlled phases remain:
 bootstrap -> scope -> adaptive discovery and capture -> adaptive extraction
 -> fact filing -> initial synthesis -> cited-fact verification
 -> corrected synthesis -> independent skeptical review -> final brief
--> language, citation, and page-by-page visual review -> fixes and re-review
+-> gated architecture modeling -> four editable diagrams
+-> language, citation, and complete visual review -> fixes and re-review
 -> release acceptance
 ```
 
-The final-writing packet produces `05-synthesis/company-brief.md` and
-`05-synthesis/one-page.md`. Build HTML, PDFs, and page previews with:
+The final-writing packet produces `05-synthesis/company-brief.md`. The diagram
+packets first produce an auditable model registry, then four editable SVGs with
+fixed titles and subtitles. Build the company-brief HTML, PDF, and page previews
+with:
 
 ```bash
 python3 -m research_control render
 ```
 
+The fixed figure labels are:
+
+1. **Capability taxonomy / inventory** — What does this company offer, and how
+   are its capabilities organized?
+2. **Operating model / behavior** — How does the product turn an input or need
+   into an outcome?
+3. **Enterprise logical architecture / structure** — How are the major
+   functional domains organized, and how does the platform relate to its
+   environment?
+4. **Focused technical dependencies / receipts** — What consequential
+   technical relationship, limitation, or architectural distinction does the
+   research establish?
+
 Release remains fail-closed. It requires current phase gates, complete input
 accounting, independent review identities, resolvable fact/source citations,
-HTML and PDF outputs, a review record for every rendered page, and exact final
-hashes. If release cannot pass, report the concrete failed control and leave the
-run resumable.
+the company-brief HTML/PDF, all four SVGs, exact deterministic diagram titles,
+a review record for every rendered page and diagram, and exact final hashes.
+If release cannot pass, report the concrete failed control and leave the run
+resumable.
 
 ## Development verification
 

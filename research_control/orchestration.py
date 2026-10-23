@@ -35,7 +35,12 @@ TASK_SCHEMAS = {
     "devils_advocate": ["research_control/schemas/review-finding.schema.json"],
     "insider_review": ["research_control/schemas/review-finding.schema.json"],
     "editor_review": ["research_control/schemas/review-finding.schema.json"],
-    "visual_review": ["research_control/schemas/visual-review.schema.json"],
+    "visual_review": [
+        "research_control/schemas/visual-review.schema.json",
+        "research_control/schemas/diagram-review.schema.json",
+    ],
+    "diagram_modeler": ["research_control/schemas/diagram-models.schema.json"],
+    "diagram_builder": ["research_control/schemas/diagram-models.schema.json"],
 }
 RUN_DIRECTORIES = (
     "00-inputs",
@@ -165,7 +170,8 @@ def initialize(root: Path, company_url: str) -> dict[str, Any]:
         "# Runtime prompt changes\n\n"
         "The historical monolith is preserved in `prompt/PROMPT.md`. The runtime entrypoint is the concise "
         "repository `README.md`, backed by the constitution, executable workflow, scoped task packets, and "
-        "deterministic controls. Research scope and deliverables are unchanged.\n",
+        "deterministic controls. Research scope is unchanged. Version 2.1 replaces the one-page summary "
+        "with a model-gated package of four editable, evidence-bound architecture diagrams.\n",
     )
     atomic_write_text(root / document["global"]["ledger"], "")
     atomic_write_json(root / ACTIVE_PATH, {})
@@ -278,7 +284,9 @@ def _write_packet(root: Path, phase: dict[str, Any], task: dict[str, Any]) -> tu
         "company_url": load_state(root)["company_url"],
         "inputs": phase.get("inputs", []),
         "outputs": task.get("outputs", []),
-        "required_validators": [item["id"] for item in phase.get("validators", [])],
+        "required_validators": list(task.get(
+            "validators", [item["id"] for item in phase.get("validators", [])]
+        )),
         "required_reconciliations": [item["id"] for item in phase.get("reconciliations", [])],
         "depends_on": [f"{phase['id']}.{item}" for item in task.get("depends_on", [])],
         "prompt_files": [*task.get("cores", []), task["prompt"]],
@@ -453,7 +461,9 @@ def start_task(root: Path, task_id: str, worker_id: str) -> dict[str, Any]:
         "input_hashes": hash_patterns(root, [item["path"] for item in phase.get("inputs", []) if item.get("path")]),
         "exclusive_inputs": bool(task.get("exclusive_inputs", True)),
         "expected_output_patterns": task.get("outputs", []),
-        "required_validators": [item["id"] for item in phase.get("validators", [])],
+        "required_validators": list(task.get(
+            "validators", [item["id"] for item in phase.get("validators", [])]
+        )),
         "depends_on": [f"{phase_id}.{item}" for item in task.get("depends_on", [])],
         "independent": bool(task.get("independent")),
         "output_mode": task.get("output_mode", "create"),
@@ -490,6 +500,15 @@ def finish_task(root: Path, task_id: str) -> dict[str, Any]:
     outputs, missing = _resolved_outputs(root, record["expected_output_patterns"])
     if missing:
         raise ValueError(f"task outputs missing or empty: {', '.join(missing)}")
+    if record["task_type"] in {"diagram_modeler", "diagram_builder"}:
+        from research_control.checks import run_validator
+
+        phase = _phase(_workflow(root), record["phase"])
+        for validator_id in record.get("required_validators", []):
+            validation = run_validator(root, phase, validator_id)
+            if validation.get("status") != PASS:
+                details = validation.get("failures") or validation.get("unknowns") or ["validation did not pass"]
+                raise ValueError(f"{task_id}: {validator_id} failed: {'; '.join(details)}")
     terminal = {
         **record,
         "expected_outputs": outputs,

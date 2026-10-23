@@ -91,7 +91,9 @@ class AdaptivePlanner:
                     prompt_files=[*definition.get("cores", []), definition["prompt"]],
                     depends_on=dependencies,
                     schema_files=TASK_SCHEMAS.get(definition["task_type"], []),
-                    validators=[value["id"] for value in phase.get("validators", [])],
+                    validators=list(definition.get(
+                        "validators", [value["id"] for value in phase.get("validators", [])]
+                    )),
                     independent=bool(definition.get("independent")),
                     exclusive_inputs=bool(definition.get("exclusive_inputs", True)),
                     output_mode=definition.get("output_mode", "create"),
