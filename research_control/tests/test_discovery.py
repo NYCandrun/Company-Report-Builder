@@ -75,6 +75,41 @@ class DiscoveryTests(unittest.TestCase):
                 self.assertFalse(summary["complete"])
                 self.assertIn("video", summary["limitations"])
 
+    def test_explicit_retry_returns_only_blocked_channel_sources_to_frontier(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            shutil.copy2(SOURCE_ROOT / "WORKFLOW.yaml", root / "WORKFLOW.yaml")
+            with RuntimeStore(root) as store:
+                store.initialize(run_id="discover-retry", company_url="https://example.com")
+                engine = DiscoveryEngine(root, store)
+                engine.initialize()
+                result = engine.add_candidates(
+                    "company_site",
+                    ["https://example.com/about"],
+                    discovered_from="fixture",
+                    evidence="fixture branch",
+                    record_pass=False,
+                )
+                source_id = result["new_source_ids"][0]
+                store.update_source(
+                    source_id,
+                    status="blocked",
+                    metadata={"discovery_error": "temporary DNS failure", "fixture": True},
+                )
+                store.set_discovery_channel("company_site", "saturated", "stale empty-pass proof")
+
+                retried = engine.retry_blocked_sources(
+                    "company_site", evidence="approved public network is now available"
+                )
+
+                self.assertEqual([source_id], retried["source_ids"])
+                self.assertEqual("discovered", store.source(source_id)["status"])
+                self.assertTrue(store.source(source_id)["metadata"]["fixture"])
+                self.assertEqual("temporary DNS failure", store.source(source_id)["metadata"]["discovery_retry"]["prior_error"])
+                channel = store.discovery_channel("company_site")
+                self.assertEqual("open", channel["state"])
+                self.assertEqual(0, channel["consecutive_empty_passes"])
+
 
 if __name__ == "__main__":
     unittest.main()

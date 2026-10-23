@@ -502,6 +502,64 @@ class DiscoveryEngine:
         self.write_catalog()
         return result
 
+    def retry_blocked_sources(
+        self,
+        channel: str,
+        *,
+        evidence: str,
+        source_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Return explicitly selected transport-blocked sources to the frontier.
+
+        This is a controller-owned recovery path for a changed transport condition,
+        such as moving a run from a DNS-restricted sandbox to an approved public
+        network context. It never retries excluded, captured, or other terminal
+        dispositions implicitly.
+        """
+        if channel not in DISCOVERY_CHANNELS:
+            raise ValueError(f"unknown discovery channel: {channel}")
+        if not evidence.strip():
+            raise ValueError("retry evidence is required")
+        selected = set(source_ids or [])
+        if selected:
+            unknown = selected - {item["source_id"] for item in self.store.sources()}
+            if unknown:
+                raise KeyError(f"unknown source IDs: {', '.join(sorted(unknown))}")
+        candidates = [
+            source for source in self.store.sources(statuses={"blocked"})
+            if source["channel"] == channel and (not selected or source["source_id"] in selected)
+        ]
+        if selected:
+            ineligible = selected - {item["source_id"] for item in candidates}
+            if ineligible:
+                raise ValueError(
+                    "retry accepts only blocked sources in the selected channel: "
+                    + ", ".join(sorted(ineligible))
+                )
+        for source in candidates:
+            metadata = dict(source.get("metadata") or {})
+            metadata["discovery_retry"] = {
+                "at": utc_now(),
+                "evidence": evidence.strip(),
+                "prior_error": metadata.get("discovery_error", ""),
+            }
+            self.store.update_source(source["source_id"], status="discovered", metadata=metadata)
+        if candidates:
+            state = self.store.set_discovery_channel(
+                channel,
+                "open",
+                f"retrying {len(candidates)} blocked source(s): {evidence.strip()}",
+            )
+        else:
+            state = self.store.discovery_channel(channel)
+        self.write_catalog()
+        return {
+            "channel": channel,
+            "retried": len(candidates),
+            "source_ids": [item["source_id"] for item in candidates],
+            "channel_state": state,
+        }
+
     def write_catalog(self) -> None:
         sources = self.store.sources()
         atomic_write_jsonl(self.root / "tools/outputs/discovery/sources.jsonl", sources)

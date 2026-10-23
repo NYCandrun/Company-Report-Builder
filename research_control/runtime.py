@@ -931,10 +931,17 @@ class RuntimeStore:
             raise ValueError(f"unsupported discovery state: {state}")
         self.ensure_discovery_channel(channel)
         with self.connection:
-            self.connection.execute(
-                "UPDATE discovery_channels SET state=?, completion_evidence=?, updated_at=? WHERE channel=?",
-                (state, evidence, utc_now(), channel),
-            )
+            if state == "open":
+                self.connection.execute(
+                    "UPDATE discovery_channels SET state=?, consecutive_empty_passes=0, "
+                    "completion_evidence=?, updated_at=? WHERE channel=?",
+                    (state, evidence, utc_now(), channel),
+                )
+            else:
+                self.connection.execute(
+                    "UPDATE discovery_channels SET state=?, completion_evidence=?, updated_at=? WHERE channel=?",
+                    (state, evidence, utc_now(), channel),
+                )
         self.event("discovery_channel_updated", channel, {"state": state, "evidence": evidence})
         return self.discovery_channel(channel) or {}
 
