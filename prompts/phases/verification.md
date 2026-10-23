@@ -11,5 +11,7 @@ and runtime cores. For every assigned fact packet judge:
 Return exactly one verdict per assigned fact: `confirmed`, `corrected`,
 `unsupported`, or `source unreachable`. Prefer a narrower true correction to
 unsupported. Do not rewrite synthesis. Preserve the assigned order and IDs in
-the verdict file, then run the verdict schema check. Return only counts,
-problem IDs, path, and validator status.
+the verdict file. Every row includes `fact_id`, `verdict`, `reason`, and
+`evidence_paths`; corrected rows also include the corrected claim or receipt.
+Then run the verdict schema check. Return only counts, problem IDs, path, and
+validator status.

@@ -3,11 +3,12 @@
 ## Status and authority
 
 This constitution is the readable policy layer for the company-research
-system. It preserves the principles in the authoritative `README.md` without
-replacing that historical source. `WORKFLOW.yaml` is the canonical executable
-phase contract. The `research_control` package enforces deterministic parts of
-that contract. Bounded worker prompts apply the relevant portions of this
-constitution to each task.
+system. It preserves the principles in the original prompt, now archived
+byte-for-byte at `docs/legacy-prompt.md`. This constitution and `WORKFLOW.yaml`
+are the current policy and executable sources of truth. `README.md` is the
+operational launcher. The `research_control` package enforces deterministic
+parts of the contract, and bounded worker prompts apply the relevant portions
+of this constitution to each task.
 
 If policy and executable behavior appear to disagree, stop the affected phase,
 record the discrepancy, and repair the weaker side. Never silently narrow the

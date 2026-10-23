@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the traceability inventory from the authoritative README prompt.
+"""Build the traceability inventory from the preserved historical prompt.
 
 The source prompt is intentionally not edited.  This parser errs on the side of
 preservation: it inventories imperative prose, contract-like bullets, table
@@ -17,7 +17,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "README.md"
+SOURCE = ROOT / "docs/legacy-prompt.md"
 OUTPUT = ROOT / "REQUIREMENT_INVENTORY.csv"
 
 NORMATIVE = re.compile(
@@ -275,7 +275,7 @@ def build(status: str) -> int:
             dest = destination(block.section, block.text, klass)
             writer.writerow({
                 "requirement_id": f"REQ-{index:04d}",
-                "source_section": f"README.md:{block.line} | {block.section}",
+                "source_section": f"docs/legacy-prompt.md:{block.line} | {block.section}",
                 "source_text": block.text,
                 "requirement_summary": re.sub(r"[`*_]", "", block.text),
                 "assurance_layer": layer(block.section, block.text),

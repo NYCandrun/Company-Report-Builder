@@ -104,7 +104,13 @@ def _state_claims_complete_without_gate(root: Path, phase_id: str, gate_path: Pa
     return bool(pattern.search(text))
 
 
-def check_phase_gate(root: Path, phase_name: str, workflow_path: Path | None = None, write: bool = True) -> tuple[dict[str, Any], Path]:
+def check_phase_gate(
+    root: Path,
+    phase_name: str,
+    workflow_path: Path | None = None,
+    write: bool = True,
+    allow_completed_recheck: bool = False,
+) -> tuple[dict[str, Any], Path]:
     workflow_path = workflow_path or root / "WORKFLOW.yaml"
     document = workflow(workflow_path)
     phase = find_phase(document, phase_name)
@@ -178,12 +184,16 @@ def check_phase_gate(root: Path, phase_name: str, workflow_path: Path | None = N
             except Exception as error:
                 unknowns.append(f"worker ledger unreadable: {error}")
 
-    if _state_claims_complete_without_gate(root, phase["id"], gate_path):
+    if not allow_completed_recheck and _state_claims_complete_without_gate(root, phase["id"], gate_path):
         failures.append(f"WORKFLOW_STATE.md marks {phase['id']} complete without an existing passing gate")
 
     status = FAIL if failures else UNKNOWN if unknowns or checked < expected else PASS
     patterns = list(phase.get("stale_if", []))
-    patterns.extend([str(workflow_path.relative_to(root)), document["global"]["ledger"]])
+    # The gate validates the relevant ledger task types above. Do not hash the
+    # entire append-only ledger here: later phases append unrelated attempts and
+    # must not make an earlier gate stale. A final release refresh re-evaluates
+    # every gate against the complete current ledger.
+    patterns.append(str(workflow_path.relative_to(root)))
     for group, key in (("reconciliations", "required_reconciliations"), ("validators", "required_validators")):
         patterns.extend(filter(None, (_report_for_id(phase, group, item) for item in gate.get(key, []))))
     patterns.extend(filter(None, (_test_report(document, item) for item in gate.get("required_tests", []))))

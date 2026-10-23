@@ -5,6 +5,7 @@ Read `direction.md` in full plus the assigned extraction of every inference,
 files. For each, argue the strongest plausible alternative interpretation and
 name evidence that would distinguish them.
 
-Flag claims presented more confidently than their facts, but do not edit. One
-finding per assigned claim, including explicit `no issue` disposition where
-the review work list requires it. Preserve IDs for reconciliation.
+Flag claims presented more confidently than their facts, but do not edit. Write
+the assigned Markdown report and JSONL findings file. Use one finding per
+assigned claim, including an explicit clean record when the work list requires
+it. Preserve IDs for reconciliation.

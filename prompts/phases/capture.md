@@ -1,7 +1,9 @@
 TASK TYPE: CAPTURE WORK, NOT A STATUS QUESTION
 
-Read `prompts/core/runtime.md` and `prompts/core/evidence.md`, then process only
-the immutable source IDs or URLs in the assignment.
+Read `prompts/core/runtime.md` and `prompts/core/evidence.md`, `00-scope.md`,
+then process only the immutable source IDs or URLs in the assignment. The
+orchestrator may perform this task sequentially when the source list is still
+being discovered.
 
 For each item, write exactly one terminal disposition: `completed`,
 `duplicate`, `excluded`, or `blocked`, with reason and evidence path. A capture
@@ -15,7 +17,12 @@ reliably identified speakers/titles, title source, duration, method, known
 caption errors, and timestamps around every 30 to 60 seconds. Preserve
 one-word rolling-caption lines.
 
-Write only the assigned manifest part, blocked part, evidence paths, and
-scratch directory. Never append to the canonical manifest. Respect access and
-host pacing. Do not bypass restrictions. Return counts and paths only after the
-local capture validator passes.
+Parallel workers write only assigned manifest parts, blocked parts, evidence
+paths, and scratch directories. The orchestrator performs the deterministic
+single-writer merge into the canonical manifest. Respect access and host
+pacing. Do not bypass restrictions.
+
+The completed phase must include the canonical manifest, publish-date overlay,
+blocked log, coverage report, extraction work list, and one disposition per
+manifest source in `tools/outputs/capture-dispositions.jsonl`. Return counts and
+paths only after the local capture validator passes.

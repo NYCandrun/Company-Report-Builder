@@ -15,6 +15,8 @@ Section 7 uses neutral first person and topical headings, not assignments to
 employees. Section 8 uses reproducible counts and plain-language method names.
 The one-page has **Ten things to know** and its own source-number sequence.
 
-Do not expose fact IDs in rendered output, but do not remove them from Markdown.
-Do not place or review final source numbers manually. Run writing and fact-ID
-checks before return.
+Create separate citation maps for the company brief and one-page output plus an
+element-level exhibit map. Each citation record links rendered placement to
+fact IDs, source IDs, and the canonical deep URL. Do not expose fact IDs in
+rendered output, but do not remove them from Markdown. Do not review your own
+claim support. Run writing and fact-ID checks before return.

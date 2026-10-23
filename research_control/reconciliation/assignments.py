@@ -93,11 +93,17 @@ def reconcile_records(
 
 def validate_ledger(root: Path, records: list[dict[str, Any]], task_types: set[str] | None = None) -> dict[str, Any]:
     selected = [row for row in records if task_types is None or row.get("task_type") in task_types]
+    final_output_owner: dict[str, tuple[str, str]] = {}
+    for row in records:
+        task_id = str(row.get("task_id", ""))
+        mode = str(row.get("output_mode", "create"))
+        for output in row.get("expected_outputs", []):
+            final_output_owner[str(output)] = (task_id, mode)
     failures: list[str] = []
     unknowns: list[str] = []
     attempts: set[tuple[str, int]] = set()
-    exclusive_owner: dict[str, str] = {}
-    output_owner: dict[str, str] = {}
+    exclusive_owner: dict[tuple[str, str], str] = {}
+    output_owner: dict[str, tuple[str, str]] = {}
     by_task: dict[str, list[dict[str, Any]]] = defaultdict(list)
     if task_types:
         represented = {str(row.get("task_type")) for row in selected}
@@ -123,25 +129,17 @@ def validate_ledger(root: Path, records: list[dict[str, Any]], task_types: set[s
             failures.append(f"{task_id}: attempt must be positive")
         if row.get("exclusive_inputs"):
             for input_id in row.get("input_ids", []):
-                owner = exclusive_owner.get(input_id)
-                if owner is not None and owner != task_id:
+                ownership_key = (str(row.get("phase", "")), str(input_id))
+                owner = exclusive_owner.get(ownership_key)
+                if owner is not None and owner != task_id and owner not in row.get("depends_on", []):
                     failures.append(f"exclusive input {input_id} overlaps tasks {owner} and {task_id}")
-                exclusive_owner[input_id] = task_id
+                exclusive_owner[ownership_key] = task_id
+        output_mode = str(row.get("output_mode", "create"))
         for output in row.get("expected_outputs", []):
             owner = output_owner.get(output)
-            if owner is not None and owner != task_id:
-                failures.append(f"output path {output} overlaps tasks {owner} and {task_id}")
-            output_owner[output] = task_id
-        if row.get("status") == "succeeded":
-            if row.get("output_validation_status") != PASS:
-                failures.append(f"{task_id} attempt {key[1]}: succeeded without PASS output validation")
-            hashes = row.get("output_hashes", {})
-            for output in row.get("expected_outputs", []):
-                current = hash_path(root / output)
-                if current == "MISSING":
-                    failures.append(f"{task_id} attempt {key[1]}: required output absent {output}")
-                elif hashes.get(output) != current:
-                    failures.append(f"{task_id} attempt {key[1]}: missing or stale output hash for {output}")
+            if owner is not None and owner[0] != task_id and output_mode != "revise":
+                failures.append(f"output path {output} overlaps tasks {owner[0]} and {task_id}")
+            output_owner[output] = (task_id, output_mode)
 
     for task_id, attempts_for_task in by_task.items():
         ordered = sorted(attempts_for_task, key=lambda row: int(row.get("attempt", 0)))
@@ -150,6 +148,26 @@ def validate_ledger(root: Path, records: list[dict[str, Any]], task_types: set[s
             unknowns.append(f"{task_id}: latest attempt is {latest.get('status')!r}")
         elif latest.get("status") != "succeeded":
             failures.append(f"{task_id}: latest attempt ended {latest.get('status')}")
+        else:
+            attempt = int(latest.get("attempt", 0))
+            if latest.get("output_validation_status") != PASS:
+                failures.append(f"{task_id} attempt {attempt}: succeeded without PASS output validation")
+            if latest.get("track_input_staleness"):
+                current_inputs = hash_patterns(root, latest.get("input_patterns", []))
+                if current_inputs != latest.get("input_hashes", {}):
+                    failures.append(f"{task_id} attempt {attempt}: review inputs are stale")
+            hashes = latest.get("output_hashes", {})
+            for output in latest.get("expected_outputs", []):
+                # A later declared revision owns the current bytes. Earlier task
+                # hashes remain historical evidence rather than false staleness.
+                owner = final_output_owner.get(output)
+                if owner is not None and owner[0] != task_id:
+                    continue
+                current = hash_path(root / output)
+                if current == "MISSING":
+                    failures.append(f"{task_id} attempt {attempt}: required output absent {output}")
+                elif hashes.get(output) != current:
+                    failures.append(f"{task_id} attempt {attempt}: missing or stale output hash for {output}")
 
     status = FAIL if failures else UNKNOWN if unknowns else PASS
     return make_validation_report(

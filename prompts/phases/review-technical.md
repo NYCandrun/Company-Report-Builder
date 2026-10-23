@@ -6,5 +6,7 @@ relationship such as `X is part of Y`, `X runs on Y`, or `X leads to Y`. Check
 that human-delivered services are not described as software capabilities.
 
 Write one structured finding per problem with severity, artifact location,
-factual basis, proposed fix, and stable finding ID. Do not edit synthesis.
-Record `completed_zero` if the full assignment yields no findings.
+factual basis, proposed fix, and stable finding ID in both the assigned
+Markdown report and JSONL findings file. Do not edit synthesis. If the full
+assignment yields no findings, write a JSONL completion record with
+`status: clean` rather than leaving the file empty.

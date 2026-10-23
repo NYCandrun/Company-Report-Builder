@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a complete heading-level migration map for the README prompt."""
+"""Generate a complete heading-level migration map for the legacy prompt."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "README.md"
+SOURCE = ROOT / "docs/legacy-prompt.md"
 OUTPUT = ROOT / "MIGRATION_MAP.md"
 
 
@@ -113,9 +113,9 @@ def build() -> int:
     lines = [
         "# Migration map",
         "",
-        "`README.md` on `main` is the only normative source for this refactor. The historical prompt files are retained unchanged and are not merged into the effective requirements.",
+        "`docs/legacy-prompt.md` is the byte-for-byte original `README.md` from `airops/main` and remains the normative traceability baseline. Runtime authority now lives in `RESEARCH_CONSTITUTION.md`, `WORKFLOW.yaml`, scoped prompts, and deterministic controls.",
         "",
-        "Every README heading is represented below. Atomic requirements under each heading are traced separately in `REQUIREMENT_INVENTORY.csv`.",
+        "Every original README heading is represented below. Atomic requirements under each heading are traced separately in `REQUIREMENT_INVENTORY.csv`.",
         "",
         "| source | destination | wording retained | software enforcement | model-facing | schema | workflow | regression test | consolidation | equivalence rationale |",
         "|---|---|---|---|---|---|---|---|---|---|",
@@ -123,7 +123,7 @@ def build() -> int:
     for number, _level, path in rows:
         move = mapping(path)
         lines.append("| " + " | ".join(esc(x) for x in (
-            f"README.md:{number} — {path}", move["destination"], move["wording"],
+            f"docs/legacy-prompt.md:{number} — {path}", move["destination"], move["wording"],
             move["software"], move["model"], move["schema"], move["workflow"],
             move["test"], move["consolidation"], move["rationale"],
         )) + " |")
@@ -145,7 +145,7 @@ def build() -> int:
         "",
         "## Source and implementation discrepancies",
         "",
-        "1. `README.md` is 3,399 lines and includes Section 19. `prompt/PROMPT.md` and `prompt/revised_prompt.md` are shorter historical versions and are not identical to README, despite the old run's prompt-file mirroring rule.",
+        "1. `docs/legacy-prompt.md` is the preserved 3,399-line original README and includes Section 19. Runtime initialization copies it to `prompt/PROMPT.md` while the operational launcher is copied to `prompt/revised_prompt.md`.",
         "2. `WORKFLOW_STATE.md` names `prompt/PROMPT.md` as the prior run's governing prompt and also records later completion. That is historical run evidence, not authority for this refactor.",
         "3. The prior run marks phases complete without Section 19 gate reports, a worker ledger, reconciliations, or release acceptance. This refactor does not retroactively claim that the historical run passed the new control plane.",
         "4. Historical files use British spellings such as `organisation.md`, while current README requires American spelling. Existing user artifacts remain untouched; new contracts use American names and may declare legacy aliases explicitly.",

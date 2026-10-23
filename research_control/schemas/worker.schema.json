@@ -10,6 +10,7 @@
     "workflow_id": {"type": ["string", "null"]},
     "attempt": {"type": "integer", "minimum": 1},
     "task_type": {"type": "string", "minLength": 1},
+    "phase": {"type": "string"},
     "input_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
     "exclusive_inputs": {"type": "boolean"},
     "expected_outputs": {"type": "array", "items": {"type": "string"}, "minItems": 1, "uniqueItems": true},
@@ -19,7 +20,13 @@
     "finished_at": {"type": ["string", "null"]},
     "exit_status": {"type": ["integer", "string", "null"]},
     "output_validation_status": {"enum": ["PASS", "FAIL", "UNKNOWN", null]},
-    "output_hashes": {"type": "object", "additionalProperties": {"type": "string"}}
+    "output_hashes": {"type": "object", "additionalProperties": {"type": "string"}},
+    "output_mode": {"enum": ["create", "revise"]},
+    "independent": {"type": "boolean"},
+    "track_input_staleness": {"type": "boolean"},
+    "input_patterns": {"type": "array", "items": {"type": "string"}},
+    "input_hashes": {"type": "object", "additionalProperties": {"type": "string"}},
+    "depends_on": {"type": "array", "items": {"type": "string"}}
   },
   "additionalProperties": true
 }

@@ -51,6 +51,38 @@ def atomic_write_json(path: Path, value: Any) -> None:
         raise
 
 
+def atomic_write_text(path: Path, value: str) -> None:
+    """Write UTF-8 text atomically, including a final fsync."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(value)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except Exception:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def atomic_write_jsonl(path: Path, rows: Iterable[dict[str, Any]]) -> None:
+    text = "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows)
+    atomic_write_text(path, text)
+
+
+def append_jsonl(path: Path, row: dict[str, Any]) -> None:
+    """Append one durable JSON object. Callers retain single-writer ownership."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, sort_keys=True) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
 def brace_expand(pattern: str) -> list[str]:
     """Expand simple comma braces recursively without shell evaluation."""
     match_start = pattern.find("{")

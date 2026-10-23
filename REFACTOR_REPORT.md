@@ -2,22 +2,25 @@
 
 ## Architecture
 
-The refactor separates one 3,399-line mixed-concern prompt into four layers:
+The operational refactor separates one 3,399-line mixed-concern prompt into
+five layers:
 
-1. `RESEARCH_CONSTITUTION.md` explains the research, evidence, reasoning,
+1. `README.md` is the URL-only launcher and run loop for a coding agent.
+2. `RESEARCH_CONSTITUTION.md` explains the research, evidence, reasoning,
    writing, publication, independence, and completion principles that humans
    and reasoning models need to understand.
-2. `WORKFLOW.yaml` is the one canonical executable phase contract. It preserves
+3. `WORKFLOW.yaml` is the canonical executable phase and task contract. It preserves
    the real order: capture, facts, initial synthesis, cited-fact verification,
    corrected synthesis, independent review, company brief, publication checks,
    and release acceptance.
-3. `prompts/` gives each worker only its role, bounded inputs, output contract,
+4. `prompts/` gives each worker only its role, bounded inputs, output contract,
    relevant principles, and completion criteria. It keeps writing,
    verification, skeptical review, citation review, and visual review in
    independent contexts.
-4. `research_control/` enforces deterministic requirements with schemas,
-   validators, reconciliations, phase gates, hashes, stale-result detection,
-   concise reports, and exact-artifact release acceptance.
+5. `research_control/` initializes runs, generates task packets, records
+   bounded attempts, captures ordinary public pages, renders final artifacts,
+   and enforces schemas, validators, reconciliations, phase gates, hashes,
+   stale-result detection, and exact-artifact release acceptance.
 
 `WORKFLOW.yaml` uses JSON syntax, which is valid YAML 1.2. Python can therefore
 parse it without a third-party package. The deterministic integrity job needs
@@ -82,9 +85,9 @@ staleness, release acceptance, exact artifacts, negative tests, bounded retry,
 and concise-output rules all have explicit destinations.
 
 `MIGRATION_MAP.md` maps every source heading and documents behavioral
-equivalence. `REQUIREMENT_INVENTORY.csv` preserves exact README source text and
-line location for each atomic record. The original README and historical prompt
-files were not edited.
+equivalence. `REQUIREMENT_INVENTORY.csv` preserves exact original-README source
+text and line location for each atomic record. The byte-for-byte source prompt
+is preserved at `docs/legacy-prompt.md`; normal workers never load it.
 
 ## Scar tissue
 
@@ -214,63 +217,49 @@ The reusable package now enforces or provides canonical machinery for:
 The CLI prints only status, expected and checked counts, failure/exception
 counts, the report path, and bounded failing IDs. Full records stay on disk.
 
-## Unresolved issues
+## Operational status and boundaries
 
-These do not weaken the refactor, but they must be addressed before it replaces
-the current master prompt in production:
+The repository now supports the intended clean-room interaction: copy the
+template, give a supported coding agent one public company URL, and tell it to
+follow `README.md`. The agent uses `research_control` to initialize and resume
+the run, request permitted task packets, record attempts, run phase checks,
+render four final artifacts, and perform release acceptance.
 
-1. The completed historical AirOps run predates Section 19. It has no worker
-   ledger, structured reconciliations, current gate reports, or release
-   manifest. This refactor does not retroactively claim that run passed the new
-   control plane.
-2. Many existing one-off scripts write prose or Markdown rather than the common
-   validation schema. Their useful domain logic remains, but adapters must add
-   checker version, hashes, expected/checked counts, and explicit status.
-3. Historical artifacts use British file names such as `organisation.md`.
-   Existing user files were preserved. A new run should use American names;
-   migration of the historical corpus needs explicit aliases or a separate
-   approved rename plan.
-4. Semantic review files are still human-readable Markdown in the prior run.
-   New runs need structured finding/disposition companions so reconciliation
-   can prove every row was decided without weakening the readable reports.
-5. Capture- and build-specific legacy tools have not all been rewritten into
-   the package. They should emit or be wrapped by the new validation contract,
-   not be deleted solely for architectural neatness.
-6. The current research artifacts are a useful shadow-run fixture but are too
-   large for the fast unit suite. An integration workflow should exercise a
-   representative subset before a production cutover.
-7. The README remains the historical source of truth. This change intentionally
-   does not replace it with the refactored entry point.
+The runner deliberately does not attempt to replace model judgment with a
+universal crawler or scheduler. Coding-agent browsing and document tools remain
+responsible for unusual websites, PDFs, audio, video, transcription, and full
+visual inspection. The built-in capture helper handles ordinary public pages
+conservatively and rejects non-public network targets. The renderer prefers a
+local CSS-capable engine and PDF rasterizer when present, with deterministic
+PDF and SVG-preview fallbacks.
 
-## Recommended next steps
+The historical AirOps corpus predates this operational ledger and release
+manifest. It remains useful for a future live shadow comparison, but this
+refactor does not retroactively certify that historical run.
 
-1. Add thin structured-report adapters to the existing manifest, layer-1,
-   citation, exhibit, design, and PDF tools. Keep their current domain behavior.
-2. Instrument the orchestrator to register worker attempts before launch and to
-   write immutable input/disposition files for every bounded work list.
-3. Emit structured review findings and decisions alongside the existing
-   Markdown review reports.
-4. Run the new control plane in shadow mode against the AirOps corpus. Record
-   every mismatch between legacy `Done` claims and deterministic evidence.
-5. Repair only the mismatches or adapters exposed by that shadow run, then run
-   all five gates and release acceptance on a fresh end-to-end research run.
-6. Compare research scope, fact coverage, synthesis order, semantic review
-   findings, publication checks, and final artifacts against the original
-   prompt requirement by requirement.
-7. Only after that comparison passes, propose an explicit small entry prompt
-   that points to the constitution, workflow, and role prompt for the assigned
-   task. Preserve README as versioned historical policy rather than deleting
-   it.
+## Recommended production follow-up
+
+1. Run the launcher against two unrelated live companies in the supported agent
+   runtime, including one media-heavy site.
+2. Record access, transcription, and rendering exceptions exposed by those
+   runs as new stable failure fixtures rather than new monolithic prose.
+3. Add optional adapters for the runtime's preferred PDF, audio, video, and
+   browser capture tools where they materially improve receipts.
+4. Compare the first live results against the original prompt requirement by
+   requirement and retain the generated release manifests.
 
 ## Verification performed
 
-- 25 unit tests pass.
+- 29 unit and operational tests pass, including clean-room initialization,
+  interruption/retry behavior, publication rendering, private-network capture
+  rejection, and a synthetic URL-to-release lifecycle.
 - All five categorized suites pass: data integrity, evidence pipeline,
   citation integrity, execution integrity, and release integrity.
 - The traceability audit passes with 1,732 inventory rows, 202 mapped headings,
   and 68 unique failure IDs.
-- `WORKFLOW.yaml` and all eight schemas parse as valid JSON.
+- `WORKFLOW.yaml` and all twelve schemas parse as valid JSON.
 - The Python control package compiles without syntax errors.
 - Mechanical writing checks pass for the constitution and scoped prompts.
-- The GitHub Actions workflow runs the declarative, traceability, categorized,
-  and full-discovery checks without model secrets.
+- The GitHub Actions workflow runs the launcher preflight, declarative,
+  traceability, categorized, clean-room, and full-discovery checks without
+  model secrets.

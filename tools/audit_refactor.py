@@ -26,10 +26,14 @@ REQUIRED_PROMPTS = {
     *{f"prompts/phases/{name}.md" for name in (
         "capture", "extraction", "synthesis", "verification", "review-technical",
         "review-devils-advocate", "review-insider", "review-editor", "fixer",
-        "brief-writing", "citation-review", "visual-review",
+        "brief-writing", "citation-review", "visual-review", "scope", "filing",
+        "publication-build", "publication-fixer", "language-review", "orchestrator-review",
     )},
 }
-REQUIRED_SCHEMAS = {f"research_control/schemas/{name}.schema.json" for name in ("source", "fact", "worker", "disposition", "validation", "gate", "review-finding", "release")}
+REQUIRED_SCHEMAS = {f"research_control/schemas/{name}.schema.json" for name in (
+    "source", "fact", "worker", "disposition", "validation", "gate",
+    "review-finding", "release", "run", "task", "verification", "visual-review",
+)}
 
 
 def audit(require_preserved: bool = False) -> dict:
@@ -51,8 +55,8 @@ def audit(require_preserved: bool = False) -> dict:
         if require_preserved and row.get("preservation_status") != "preserved":
             failures.append(f"{label}: preservation status is not preserved")
 
-    headings = [line for line in (ROOT / "README.md").read_text(encoding="utf-8").splitlines() if re.match(r"^#{1,6} ", line)]
-    mapped = [line for line in (ROOT / "MIGRATION_MAP.md").read_text(encoding="utf-8").splitlines() if line.startswith("| README.md:")]
+    headings = [line for line in (ROOT / "docs/legacy-prompt.md").read_text(encoding="utf-8").splitlines() if re.match(r"^#{1,6} ", line)]
+    mapped = [line for line in (ROOT / "MIGRATION_MAP.md").read_text(encoding="utf-8").splitlines() if line.startswith("| docs/legacy-prompt.md:")]
     if len(headings) != len(mapped):
         failures.append(f"migration map has {len(mapped)} rows for {len(headings)} README headings")
 
@@ -74,6 +78,21 @@ def audit(require_preserved: bool = False) -> dict:
         missing = contract_fields - set(phase)
         if missing:
             failures.append(f"phase {phase.get('id')}: missing contract fields {sorted(missing)}")
+    profiles = workflow.get("execution_profiles", {})
+    if set(profiles) != set(phase_ids):
+        failures.append("execution profiles do not exactly cover workflow phases")
+    for phase_id, profile in profiles.items():
+        task_ids = [task.get("id") for task in profile.get("tasks", [])]
+        if len(task_ids) != len(set(task_ids)):
+            failures.append(f"execution profile {phase_id}: duplicate task IDs")
+        for task in profile.get("tasks", []):
+            label = f"{phase_id}.{task.get('id', 'unknown')}"
+            for field in ("id", "task_type", "prompt", "outputs"):
+                if not task.get(field):
+                    failures.append(f"execution task {label}: missing {field}")
+            for dependency in task.get("depends_on", []):
+                if dependency not in task_ids:
+                    failures.append(f"execution task {label}: unknown dependency {dependency}")
 
     for relative in sorted(REQUIRED_PROMPTS | REQUIRED_SCHEMAS):
         path = ROOT / relative
@@ -91,7 +110,7 @@ def audit(require_preserved: bool = False) -> dict:
         status=status, expected_count=len(inventory) + len(headings) + len(failure_ids),
         checked_count=len(inventory) + len(mapped) + len(set(failure_ids)), failures=failures,
         input_hashes=hash_patterns(ROOT, [
-            "README.md", "REQUIREMENT_INVENTORY.csv", "FAILURE_REGISTRY.md",
+            "README.md", "docs/legacy-prompt.md", "REQUIREMENT_INVENTORY.csv", "FAILURE_REGISTRY.md",
             "MIGRATION_MAP.md", "RESEARCH_CONSTITUTION.md", "WORKFLOW.yaml",
             "prompts/**", "research_control/schemas/**",
         ]),

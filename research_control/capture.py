@@ -1,0 +1,224 @@
+"""Conservative public-page capture helper used by the agent orchestrator."""
+
+from __future__ import annotations
+
+import csv
+import ipaddress
+import re
+import socket
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from html.parser import HTMLParser
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
+from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.robotparser import RobotFileParser
+
+from research_control.io import atomic_write_text, utc_now
+
+
+USER_AGENT = "CompanyResearchAgent/1.1 (+public-research; respects robots.txt)"
+MANIFEST_FIELDS = (
+    "id",
+    "grade",
+    "title",
+    "publisher",
+    "url",
+    "date published",
+    "date last modified",
+    "date captured",
+    "local file",
+    "method",
+    "notes",
+)
+
+
+class TextExtractor(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self.title_parts: list[str] = []
+        self.in_title = False
+        self.skip_depth = 0
+        self.meta: dict[str, str] = {}
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = {key.casefold(): value or "" for key, value in attrs}
+        if tag.casefold() in {"script", "style", "noscript", "svg"}:
+            self.skip_depth += 1
+        if tag.casefold() == "title":
+            self.in_title = True
+        if tag.casefold() == "meta":
+            key = attributes.get("property") or attributes.get("name") or attributes.get("itemprop")
+            if key and attributes.get("content"):
+                self.meta[key.casefold()] = attributes["content"].strip()
+        if tag.casefold() in {"p", "div", "section", "article", "li", "br", "h1", "h2", "h3", "h4", "tr"}:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.casefold() in {"script", "style", "noscript", "svg"} and self.skip_depth:
+            self.skip_depth -= 1
+        if tag.casefold() == "title":
+            self.in_title = False
+        if tag.casefold() in {"p", "div", "section", "article", "li", "h1", "h2", "h3", "h4", "tr"}:
+            self.parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if self.skip_depth:
+            return
+        if self.in_title:
+            self.title_parts.append(data)
+        self.parts.append(data)
+
+    def text(self) -> str:
+        value = " ".join(part.strip() for part in self.parts if part.strip())
+        value = re.sub(r"[ \t]+", " ", value)
+        value = re.sub(r"\s*\n\s*", "\n", value)
+        return value.strip() + "\n"
+
+    def title(self) -> str:
+        return re.sub(r"\s+", " ", " ".join(self.title_parts)).strip()
+
+
+def _robots_allowed(url: str) -> bool:
+    parsed = urlparse(url)
+    robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
+    parser = RobotFileParser()
+    parser.set_url(robots_url)
+    try:
+        parser.read()
+    except Exception:
+        # An unavailable robots file is not evidence of a prohibition. The
+        # caller still performs one paced public request and records failures.
+        return True
+    return parser.can_fetch(USER_AGENT, url)
+
+
+def _require_public_host(url: str) -> None:
+    hostname = urlparse(url).hostname
+    if not hostname:
+        raise ValueError("capture URL has no hostname")
+    try:
+        addresses = {item[4][0] for item in socket.getaddrinfo(hostname, None)}
+    except socket.gaierror as error:
+        raise ValueError(f"capture hostname cannot be resolved: {hostname}") from error
+    unsafe = [value for value in addresses if not ipaddress.ip_address(value).is_global]
+    if unsafe:
+        raise PermissionError(f"capture URL resolves to a non-public address: {hostname}")
+
+
+class PublicRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        _require_public_host(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _iso_date(value: str) -> str:
+    value = value.strip()
+    if not value:
+        return ""
+    match = re.search(r"\d{4}-\d{2}-\d{2}", value)
+    if match:
+        return match.group(0)
+    try:
+        return parsedate_to_datetime(value).date().isoformat()
+    except (TypeError, ValueError, OverflowError):
+        return ""
+
+
+def _manifest_rows(path: Path) -> list[dict[str, str]]:
+    if not path.is_file() or not path.stat().st_size:
+        return []
+    with path.open(encoding="utf-8-sig", newline="") as handle:
+        return [{key: value or "" for key, value in row.items()} for row in csv.DictReader(handle)]
+
+
+def _write_manifest(path: Path, rows: list[dict[str, str]]) -> None:
+    from io import StringIO
+
+    buffer = StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=MANIFEST_FIELDS, lineterminator="\n")
+    writer.writeheader()
+    writer.writerows(rows)
+    atomic_write_text(path, buffer.getvalue())
+
+
+def capture_url(
+    root: Path,
+    *,
+    url: str,
+    source_id: str,
+    grade: str,
+    title: str | None = None,
+    publisher: str | None = None,
+) -> dict[str, Any]:
+    if grade not in {"P", "S", "T", "I"}:
+        raise ValueError("grade must be P, S, T, or I")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", source_id):
+        raise ValueError("source ID may contain only letters, numbers, period, underscore, and hyphen")
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("capture URL must be absolute http(s)")
+    _require_public_host(url)
+    if not _robots_allowed(url):
+        raise PermissionError(f"robots.txt disallows capture: {url}")
+
+    request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/pdf,text/plain;q=0.9,*/*;q=0.5"})
+    with build_opener(PublicRedirectHandler()).open(request, timeout=30) as response:
+        body = response.read()
+        final_url = response.geturl()
+        content_type = response.headers.get_content_type()
+        modified_raw = response.headers.get("Last-Modified", "")
+        modified = _iso_date(modified_raw)
+    directory = root / "01-sources/captures" / source_id
+    directory.mkdir(parents=True, exist_ok=True)
+    method = "public HTTP capture"
+    date_published = ""
+    notes = ""
+    if content_type in {"text/html", "application/xhtml+xml"}:
+        raw_path = directory / "raw.html"
+        raw_path.write_bytes(body)
+        decoded = body.decode("utf-8", errors="replace")
+        extractor = TextExtractor()
+        extractor.feed(decoded)
+        text_path = directory / "content.txt"
+        atomic_write_text(text_path, extractor.text())
+        title = title or extractor.title() or final_url
+        for key in ("article:published_time", "datepublished", "date", "publish-date", "pubdate"):
+            if extractor.meta.get(key):
+                raw_date = extractor.meta[key]
+                date_published = _iso_date(raw_date)
+                if not date_published:
+                    notes = f"Unparsed publication-date metadata: {raw_date}"
+                break
+        local_files = f"{raw_path.relative_to(root)};{text_path.relative_to(root)}"
+    else:
+        suffix = ".pdf" if content_type == "application/pdf" else ".bin"
+        raw_path = directory / f"source{suffix}"
+        raw_path.write_bytes(body)
+        title = title or Path(parsed.path).name or final_url
+        local_files = str(raw_path.relative_to(root))
+        notes = f"Binary {content_type}; create a canonical text derivative before extraction."
+        method = f"public HTTP capture ({content_type})"
+
+    row = {
+        "id": source_id,
+        "grade": grade,
+        "title": title,
+        "publisher": publisher or parsed.netloc.removeprefix("www."),
+        "url": final_url,
+        "date published": date_published,
+        "date last modified": modified,
+        "date captured": datetime.now(timezone.utc).date().isoformat(),
+        "local file": local_files,
+        "method": method,
+        "notes": notes,
+    }
+    manifest = root / "01-sources/MANIFEST.csv"
+    rows = _manifest_rows(manifest)
+    if any(existing.get("id") == source_id for existing in rows):
+        raise ValueError(f"source ID already exists: {source_id}")
+    rows.append(row)
+    _write_manifest(manifest, rows)
+    return {"status": "captured", "source": row, "captured_at": utc_now()}

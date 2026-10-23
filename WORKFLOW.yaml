@@ -1,6 +1,8 @@
 {
   "schema_version": "1.0.0",
-  "source_of_truth": "README.md",
+  "source_of_truth": ["RESEARCH_CONSTITUTION.md", "WORKFLOW.yaml"],
+  "runtime_entrypoint": "README.md",
+  "legacy_traceability_source": "docs/legacy-prompt.md",
   "description": "Canonical executable phase and gate contract for company research.",
   "status_values": ["PASS", "FAIL", "UNKNOWN"],
   "disposition_values": ["completed", "completed_zero", "duplicate", "excluded", "blocked", "rejected"],
@@ -46,6 +48,238 @@
       "preserve_validated_outputs": true,
       "on_exhaustion": "blocked_or_unresolved"
     }
+  },
+  "execution_profiles": {
+    "bootstrap": {"automatic": true, "tasks": []},
+    "scope": {
+      "tasks": [
+        {
+          "id": "scope",
+          "task_type": "scope",
+          "prompt": "prompts/phases/scope.md",
+          "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md"],
+          "outputs": ["00-scope.md", "tools/outputs/input-classification.jsonl"],
+          "independent": false,
+          "exclusive_inputs": true
+        }
+      ]
+    },
+    "capture": {
+      "tasks": [
+        {
+          "id": "capture",
+          "task_type": "capture",
+          "prompt": "prompts/phases/capture.md",
+          "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md"],
+          "outputs": ["01-sources/MANIFEST.csv", "01-sources/publish-dates.csv", "01-sources/BLOCKED.md", "06-checks/coverage.md", "tools/lists/extraction-scope.csv", "tools/outputs/capture-dispositions.jsonl"],
+          "independent": false,
+          "exclusive_inputs": true
+        }
+      ]
+    },
+    "facts": {
+      "tasks": [
+        {
+          "id": "extract",
+          "task_type": "extraction",
+          "prompt": "prompts/phases/extraction.md",
+          "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md"],
+          "outputs": ["tools/candidates/all.jsonl", "tools/outputs/extraction-dispositions.jsonl"],
+          "independent": false,
+          "exclusive_inputs": true
+        },
+        {
+          "id": "file-facts",
+          "task_type": "filing",
+          "prompt": "prompts/phases/filing.md",
+          "depends_on": ["extract"],
+          "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md"],
+          "outputs": ["02-facts/*.md", "tools/outputs/filing-dispositions.jsonl", "06-checks/script-audits.md", "06-checks/duplicate-spot-check.md", "06-checks/filter-spot-check.md"],
+          "independent": false,
+          "exclusive_inputs": false
+        }
+      ]
+    },
+    "initial_synthesis": {
+      "tasks": [
+        {
+          "id": "synthesize",
+          "task_type": "synthesis",
+          "prompt": "prompts/phases/synthesis.md",
+          "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
+          "outputs": ["tools/digests/*.md", "03-timelines/*.md", "tools/outputs/currency.csv", "05-synthesis/{product-map,offering,customers-proof,competitors,glossary,messaging-timeline,organization,direction,open-questions}.md", "06-checks/currency-review.md"],
+          "independent": false,
+          "exclusive_inputs": true
+        }
+      ]
+    },
+    "verification": {
+      "tasks": [
+        {
+          "id": "verify-cited-facts",
+          "task_type": "verification",
+          "prompt": "prompts/phases/verification.md",
+          "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md"],
+          "outputs": ["tools/lists/cited-facts.txt", "tools/outputs/cited-facts/index.json", "06-checks/verification-cited.md", "tools/outputs/verification-verdicts.jsonl"],
+          "independent": true,
+          "exclusive_inputs": true
+        }
+      ]
+    },
+    "corrected_synthesis": {
+      "tasks": [
+        {
+          "id": "apply-verification",
+          "task_type": "verification_fixer",
+          "prompt": "prompts/phases/fixer.md",
+          "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
+          "outputs": ["05-synthesis/*.md", "06-checks/verification-corrections.md", "tools/outputs/verification-corrections.jsonl"],
+          "independent": true,
+          "exclusive_inputs": true,
+          "output_mode": "revise"
+        }
+      ]
+    },
+    "review": {
+      "tasks": [
+        {
+          "id": "technical",
+          "task_type": "technical_review",
+          "prompt": "prompts/phases/review-technical.md",
+          "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md"],
+          "outputs": ["06-checks/review-technical.md", "tools/outputs/review-findings-technical.jsonl"],
+          "independent": true,
+          "exclusive_inputs": false
+        },
+        {
+          "id": "devils-advocate",
+          "task_type": "devils_advocate",
+          "prompt": "prompts/phases/review-devils-advocate.md",
+          "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md"],
+          "outputs": ["06-checks/review-devils-advocate.md", "tools/outputs/review-findings-devils-advocate.jsonl"],
+          "independent": true,
+          "exclusive_inputs": false
+        },
+        {
+          "id": "insider",
+          "task_type": "insider_review",
+          "prompt": "prompts/phases/review-insider.md",
+          "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md"],
+          "outputs": ["06-checks/review-insider.md", "tools/outputs/review-findings-insider.jsonl"],
+          "independent": true,
+          "exclusive_inputs": false
+        },
+        {
+          "id": "editor",
+          "task_type": "editor_review",
+          "prompt": "prompts/phases/review-editor.md",
+          "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
+          "outputs": ["06-checks/review-editor.md", "tools/outputs/review-findings-editor.jsonl"],
+          "independent": true,
+          "exclusive_inputs": false
+        },
+        {
+          "id": "apply-review",
+          "task_type": "fixer",
+          "prompt": "prompts/phases/fixer.md",
+          "depends_on": ["technical", "devils-advocate", "insider", "editor"],
+          "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
+          "outputs": ["05-synthesis/{product-map,offering,customers-proof,competitors,glossary,messaging-timeline,organization,direction,open-questions}.md", "06-checks/review-decisions.md", "tools/outputs/review-decisions.jsonl"],
+          "independent": true,
+          "exclusive_inputs": true,
+          "output_mode": "revise"
+        }
+      ]
+    },
+    "final": {
+      "tasks": [
+        {
+          "id": "write-brief",
+          "task_type": "brief_writer",
+          "prompt": "prompts/phases/brief-writing.md",
+          "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
+          "outputs": ["05-synthesis/company-brief.md", "05-synthesis/one-page.md", "05-synthesis/design-notes.md", "05-synthesis/design/style.css", "tools/outputs/citation-map-company-brief.json", "tools/outputs/citation-map-one-page.json", "tools/outputs/exhibit-map.json"],
+          "independent": false,
+          "exclusive_inputs": true
+        },
+        {
+          "id": "assemble",
+          "task_type": "assembler",
+          "prompt": "prompts/phases/publication-build.md",
+          "depends_on": ["write-brief"],
+          "cores": ["prompts/core/runtime.md", "prompts/core/writing.md"],
+          "outputs": ["07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "07-final-report/one-page.pdf", "07-final-report/one-page.html", "tools/outputs/render-metadata.json"],
+          "independent": false,
+          "exclusive_inputs": false
+        }
+      ]
+    },
+    "publication_checks": {
+      "tasks": [
+        {
+          "id": "language",
+          "task_type": "language_review",
+          "prompt": "prompts/phases/language-review.md",
+          "cores": ["prompts/core/runtime.md", "prompts/core/writing.md"],
+          "outputs": ["06-checks/american-english.md", "tools/outputs/publication-findings-language.jsonl"],
+          "independent": true,
+          "exclusive_inputs": false,
+          "track_input_staleness": true
+        },
+        {
+          "id": "citation-a",
+          "task_type": "citation_claim_review",
+          "prompt": "prompts/phases/citation-review.md",
+          "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md"],
+          "outputs": ["06-checks/citation-claims-a.md", "tools/outputs/citation-check-a.md", "tools/outputs/publication-findings-citation-a.jsonl"],
+          "independent": true,
+          "exclusive_inputs": false,
+          "track_input_staleness": true
+        },
+        {
+          "id": "citation-b",
+          "task_type": "citation_claim_review",
+          "prompt": "prompts/phases/citation-review.md",
+          "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md"],
+          "outputs": ["06-checks/citation-claims-b.md", "tools/outputs/citation-check-b.md", "tools/outputs/exhibit-citation-check.md", "tools/outputs/publication-findings-citation-b.jsonl"],
+          "independent": true,
+          "exclusive_inputs": false,
+          "track_input_staleness": true
+        },
+        {
+          "id": "visual",
+          "task_type": "visual_review",
+          "prompt": "prompts/phases/visual-review.md",
+          "cores": ["prompts/core/runtime.md", "prompts/core/writing.md"],
+          "outputs": ["06-checks/visual-review.md", "06-checks/visual-review.json", "tools/outputs/publication-findings-visual.jsonl"],
+          "independent": true,
+          "exclusive_inputs": false,
+          "track_input_staleness": true
+        },
+        {
+          "id": "apply-publication-fixes",
+          "task_type": "publication_fixer",
+          "prompt": "prompts/phases/publication-fixer.md",
+          "depends_on": ["language", "citation-a", "citation-b", "visual"],
+          "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
+          "outputs": ["05-synthesis/company-brief.md", "05-synthesis/one-page.md", "05-synthesis/design-notes.md", "tools/outputs/citation-map-company-brief.json", "tools/outputs/citation-map-one-page.json", "tools/outputs/exhibit-map.json", "07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "07-final-report/one-page.pdf", "07-final-report/one-page.html", "tools/outputs/render-metadata.json", "06-checks/publication-decisions.md", "tools/outputs/publication-decisions.jsonl"],
+          "independent": true,
+          "exclusive_inputs": true,
+          "output_mode": "revise"
+        },
+        {
+          "id": "page-acceptance",
+          "task_type": "orchestrator_page_review",
+          "prompt": "prompts/phases/orchestrator-review.md",
+          "depends_on": ["language", "citation-a", "citation-b", "visual", "apply-publication-fixes"],
+          "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
+          "outputs": ["06-checks/final-report.md"],
+          "independent": false,
+          "exclusive_inputs": true
+        }
+      ]
+    },
+    "release_acceptance": {"automatic": true, "tasks": []}
   },
   "test_suites": [
     {
@@ -112,7 +346,10 @@
         {"id": "all_user_inputs", "path": "00-inputs/**", "required": false},
         {"id": "company_homepage", "kind": "captured_public_source", "required": true}
       ],
-      "outputs": [{"id": "scope_map", "path": "00-scope.md"}],
+      "outputs": [
+        {"id": "scope_map", "path": "00-scope.md"},
+        {"id": "input_classification", "path": "tools/outputs/input-classification.jsonl"}
+      ],
       "reconciliations": [
         {"id": "input_classification", "report": "tools/outputs/reconciliation/input-classification.json"}
       ],
@@ -268,7 +505,7 @@
       ],
       "tests": ["evidence_pipeline", "execution_integrity"],
       "completion": {"require_all": true, "required_worker_task_types": ["verification"], "state_update_after_gate": true},
-      "stale_if": ["05-synthesis/*.md", "02-facts/**", "tools/lists/cited-facts.txt", "tools/outputs/verification-verdicts.jsonl"],
+      "stale_if": ["05-synthesis/{product-map,offering,customers-proof,competitors,glossary,messaging-timeline,organization,direction,open-questions}.md", "02-facts/**", "tools/lists/cited-facts.txt", "tools/outputs/verification-verdicts.jsonl"],
       "downstream": ["corrected_synthesis"],
       "retry_policy": "global",
       "gate": {
@@ -339,7 +576,7 @@
       ],
       "tests": ["execution_integrity"],
       "completion": {"require_all": true, "required_worker_task_types": ["technical_review", "devils_advocate", "insider_review", "editor_review", "fixer"], "state_update_after_gate": true},
-      "stale_if": ["05-synthesis/*.md", "06-checks/review-*.md", "tools/outputs/cited-facts/**"],
+      "stale_if": ["05-synthesis/{product-map,offering,customers-proof,competitors,glossary,messaging-timeline,organization,direction,open-questions}.md", "06-checks/review-*.md", "tools/outputs/cited-facts/**"],
       "downstream": ["final"],
       "retry_policy": "global",
       "gate": {
@@ -393,6 +630,7 @@
         {"id": "exhibit_check", "path": "tools/outputs/exhibit-citation-check.md"},
         {"id": "claim_reviews", "path": "06-checks/citation-claims-*.md"},
         {"id": "visual_reviews", "path": "06-checks/visual-review*.md"},
+        {"id": "publication_decisions", "path": "06-checks/publication-decisions.md"},
         {"id": "final_report", "path": "06-checks/final-report.md"}
       ],
       "reconciliations": [
@@ -410,6 +648,7 @@
         {"id": "design_check", "report": "tools/outputs/validations/design.json", "assurance_layer": "publication_integrity"},
         {"id": "visual_audit", "report": "tools/outputs/validations/visual-audit.json", "assurance_layer": "publication_integrity"},
         {"id": "visual_records", "report": "tools/outputs/validations/visual-records.json", "assurance_layer": "execution_integrity"},
+        {"id": "publication_decisions", "report": "tools/outputs/validations/publication-decisions.json", "assurance_layer": "publication_integrity"},
         {"id": "artifact_binding", "report": "tools/outputs/validations/artifact-binding.json", "assurance_layer": "execution_integrity"}
       ],
       "semantic_reviews": [
@@ -428,10 +667,10 @@
         "name": "final",
         "required_paths": ["07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "07-final-report/one-page.pdf", "07-final-report/one-page.html", "06-checks/final-report.md"],
         "required_reconciliations": ["final_cited_facts", "citation_sources", "visual_pages"],
-        "required_validators": ["final_artifact_contract", "reader_facing_text", "american_english", "new_cited_fact_verification", "citation_structure", "exhibit_mapping", "design_check", "visual_audit", "visual_records", "artifact_binding"],
+        "required_validators": ["final_artifact_contract", "reader_facing_text", "american_english", "new_cited_fact_verification", "citation_structure", "exhibit_mapping", "design_check", "visual_audit", "visual_records", "publication_decisions", "artifact_binding"],
         "required_semantic_reviews": ["american_english_review", "citation_claim_a", "citation_claim_b", "visual_review", "orchestrator_page_review"],
         "required_tests": ["citation_integrity", "execution_integrity", "release_integrity"],
-        "required_worker_task_types": ["brief_writer", "assembler", "citation_claim_review", "visual_review"]
+        "required_worker_task_types": ["brief_writer", "assembler", "language_review", "citation_claim_review", "visual_review", "publication_fixer", "orchestrator_page_review"]
       }
     },
     {

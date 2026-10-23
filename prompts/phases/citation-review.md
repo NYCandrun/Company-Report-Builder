@@ -8,5 +8,6 @@ when unclear.
 Classify problems as `wrong statement`, `wrong citation`, or `too few
 citations`. Recommend the narrowest evidence-faithful fix. Do not infer support
 from a real URL alone. Do not edit publication files. Write one row per problem
-and explicit assigned/checked/problem counts. If no problems exist, write a
-valid zero-finding report rather than an empty file.
+and explicit assigned/checked/problem counts. Mirror each problem with a stable
+finding ID in the assigned `publication-findings-*.jsonl` file. If no problems
+exist, write a valid clean record rather than an empty file.

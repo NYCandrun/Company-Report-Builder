@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "verification.schema.json",
+  "title": "Cited-fact verification verdict",
+  "type": "object",
+  "required": ["fact_id", "verdict", "reason", "evidence_paths"],
+  "properties": {
+    "fact_id": {"type": "string", "minLength": 1},
+    "verdict": {"enum": ["confirmed", "corrected", "unsupported", "source unreachable"]},
+    "reason": {"type": "string", "minLength": 1},
+    "evidence_paths": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "corrected_claim": {"type": "string"}
+  },
+  "additionalProperties": true
+}

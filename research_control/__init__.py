@@ -1,6 +1,6 @@
 """Deterministic control plane for the company-research workflow."""
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 PASS = "PASS"
 FAIL = "FAIL"

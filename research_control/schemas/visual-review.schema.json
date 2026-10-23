@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "visual-review.schema.json",
+  "title": "Rendered-page visual review",
+  "type": "object",
+  "required": ["page", "status", "issues"],
+  "properties": {
+    "page": {"type": "integer", "minimum": 1},
+    "document": {"type": "string"},
+    "status": {"enum": ["clean", "issues"]},
+    "issues": {"type": "array", "items": {"type": "object"}}
+  },
+  "additionalProperties": true
+}
