@@ -1,9 +1,9 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "2.0.0",
   "source_of_truth": ["RESEARCH_CONSTITUTION.md", "WORKFLOW.yaml"],
   "runtime_entrypoint": "README.md",
   "legacy_traceability_source": "docs/legacy-prompt.md",
-  "description": "Canonical executable phase and gate contract for company research.",
+  "description": "Canonical adaptive execution, phase, and gate contract for company research.",
   "status_values": ["PASS", "FAIL", "UNKNOWN"],
   "disposition_values": ["completed", "completed_zero", "duplicate", "excluded", "blocked", "rejected"],
   "assurance_layers": {
@@ -43,11 +43,42 @@
     ],
     "retry_policy": {
       "scope": "failed_or_unaccounted_inputs_only",
-      "max_attempts_per_assignment": 2,
+      "max_attempts_per_assignment": 3,
       "preserve_prior_attempts": true,
       "preserve_validated_outputs": true,
       "on_exhaustion": "blocked_or_unresolved"
     }
+  },
+  "adaptive_runtime": {
+    "database": "tools/outputs/runtime.sqlite3",
+    "event_log": "tools/outputs/runtime-events.jsonl",
+    "planner": "corpus_driven",
+    "completion_basis": "channel_saturation_not_source_count",
+    "scheduler": {
+      "global_concurrency": 12,
+      "per_host_concurrency": 2,
+      "lease_seconds": 1800,
+      "max_attempts": 3,
+      "expired_lease_action": "targeted_retry"
+    },
+    "discovery": {
+      "required_channels": ["company_site", "sitemaps", "newsroom_blog", "docs_help", "careers", "video", "podcasts", "social", "code_packages", "independent_web"],
+      "saturation_empty_passes": 2,
+      "min_host_interval_seconds": 1.0,
+      "safety_circuit_breakers": {
+        "max_pages": 10000,
+        "max_bytes": 1000000000,
+        "max_elapsed_seconds": 14400,
+        "max_depth": 12
+      },
+      "on_circuit_breaker": "incomplete_never_complete"
+    },
+    "batching": {
+      "target_extraction_tokens": 70000,
+      "maximum_extraction_tokens": 90000,
+      "split_oversize_sources": true
+    },
+    "worker_outputs": "isolated_parts_then_single_writer_reducer"
   },
   "execution_profiles": {
     "bootstrap": {"automatic": true, "tasks": []},
@@ -282,6 +313,11 @@
     "release_acceptance": {"automatic": true, "tasks": []}
   },
   "test_suites": [
+    {
+      "id": "adaptive_runtime",
+      "report": "tools/outputs/tests/adaptive_runtime.json",
+      "covers": ["discovery saturation", "dynamic task counts", "token-sized batching", "leases", "host concurrency", "targeted retries", "stale invalidation"]
+    },
     {
       "id": "data_integrity",
       "report": "tools/outputs/tests/data_integrity.json",
@@ -692,7 +728,7 @@
         {"id": "release_acceptance", "report": "tools/outputs/validations/release-acceptance.json", "assurance_layer": "execution_integrity"}
       ],
       "semantic_reviews": [],
-      "tests": ["data_integrity", "evidence_pipeline", "citation_integrity", "execution_integrity", "release_integrity"],
+      "tests": ["adaptive_runtime", "data_integrity", "evidence_pipeline", "citation_integrity", "execution_integrity", "release_integrity"],
       "completion": {"require_all": true, "state_update_after_gate": true},
       "stale_if": ["WORKFLOW.yaml", "tools/outputs/gates/**", "tools/outputs/reconciliation/**", "tools/outputs/validations/**", "tools/outputs/tests/**", "01-sources/MANIFEST.csv", "02-facts/**", "05-synthesis/**", "07-final-report/**"],
       "downstream": [],

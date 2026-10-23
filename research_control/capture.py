@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from urllib.robotparser import RobotFileParser
 
-from research_control.io import atomic_write_text, utc_now
+from research_control.io import atomic_write_json, atomic_write_text, utc_now
 
 
 USER_AGENT = "CompanyResearchAgent/1.1 (+public-research; respects robots.txt)"
@@ -222,3 +222,118 @@ def capture_url(
     rows.append(row)
     _write_manifest(manifest, rows)
     return {"status": "captured", "source": row, "captured_at": utc_now()}
+
+
+def capture_source_part(
+    root: Path,
+    *,
+    url: str,
+    source_id: str,
+    grade: str = "P",
+    title: str | None = None,
+    publisher: str | None = None,
+) -> dict[str, Any]:
+    """Capture one source without touching a shared manifest.
+
+    Parallel workers use this entry point.  A single reducer later validates
+    the receipts and writes the canonical manifest and disposition files.
+    """
+    if grade not in {"P", "S", "T", "I"}:
+        raise ValueError("grade must be P, S, T, or I")
+    if not re.fullmatch(r"SRC-[A-F0-9]{12}|[A-Za-z0-9][A-Za-z0-9._-]*", source_id):
+        raise ValueError("source ID may contain only letters, numbers, period, underscore, and hyphen")
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("capture URL must be absolute http(s)")
+    _require_public_host(url)
+    if not _robots_allowed(url):
+        raise PermissionError(f"robots.txt disallows capture: {url}")
+
+    request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/pdf,text/plain;q=0.9,*/*;q=0.5"})
+    with build_opener(PublicRedirectHandler()).open(request, timeout=30) as response:
+        body = response.read()
+        final_url = response.geturl()
+        content_type = response.headers.get_content_type()
+        modified = _iso_date(response.headers.get("Last-Modified", ""))
+    directory = root / "01-sources/captures" / source_id
+    directory.mkdir(parents=True, exist_ok=True)
+    date_published = ""
+    notes = ""
+    canonical_text = False
+    if content_type in {"text/html", "application/xhtml+xml"}:
+        raw_path = directory / "raw.html"
+        raw_path.write_bytes(body)
+        extractor = TextExtractor()
+        extractor.feed(body.decode("utf-8", errors="replace"))
+        content = extractor.text()
+        text_path = directory / "content.txt"
+        atomic_write_text(text_path, content)
+        canonical_text = bool(content.strip())
+        title = title or extractor.title() or final_url
+        for key in ("article:published_time", "datepublished", "date", "publish-date", "pubdate"):
+            if extractor.meta.get(key):
+                raw_date = extractor.meta[key]
+                date_published = _iso_date(raw_date)
+                if not date_published:
+                    notes = f"Unparsed publication-date metadata: {raw_date}"
+                break
+        local_files = [str(raw_path.relative_to(root)), str(text_path.relative_to(root))]
+        method = "public HTTP capture"
+        token_estimate = max(1, len(content) // 4)
+    elif content_type.startswith("text/") or content_type in {"application/json", "application/xml", "application/rss+xml", "application/atom+xml"}:
+        suffix = ".xml" if "xml" in content_type else ".json" if content_type == "application/json" else ".txt"
+        raw_path = directory / f"raw{suffix}"
+        raw_path.write_bytes(body)
+        content = body.decode("utf-8", errors="replace")
+        text_path = directory / "content.txt"
+        atomic_write_text(text_path, content)
+        local_files = [str(raw_path.relative_to(root)), str(text_path.relative_to(root))]
+        title = title or Path(parsed.path).name or final_url
+        method = f"public HTTP capture ({content_type})"
+        token_estimate = max(1, len(content) // 4)
+        canonical_text = bool(content.strip())
+    else:
+        suffix = ".pdf" if content_type == "application/pdf" else ".bin"
+        raw_path = directory / f"source{suffix}"
+        raw_path.write_bytes(body)
+        local_files = [str(raw_path.relative_to(root))]
+        title = title or Path(parsed.path).name or final_url
+        method = f"public HTTP capture ({content_type})"
+        token_estimate = max(1, len(body) // 4)
+        notes = f"Binary {content_type}; worker must create a canonical text derivative before extraction."
+
+    source = {
+        "id": source_id,
+        "grade": grade,
+        "title": title,
+        "publisher": publisher or parsed.netloc.removeprefix("www."),
+        "url": final_url,
+        "date published": date_published,
+        "date last modified": modified,
+        "date captured": datetime.now(timezone.utc).date().isoformat(),
+        "local file": ";".join(local_files),
+        "method": method,
+        "notes": notes,
+    }
+    receipt = {
+        "schema_version": "1.0.0",
+        "task_type": "capture",
+        "source_id": source_id,
+        "status": "captured" if canonical_text else "needs_derivative",
+        "source": source,
+        "local_paths": local_files,
+        "content_bytes": len(body),
+        "estimated_tokens": token_estimate,
+        "canonical_text_ready": canonical_text,
+        "captured_at": utc_now(),
+        "disposition": {
+            "input_id": source_id,
+            "disposition": "completed" if canonical_text else "blocked",
+            "reason": "captured with canonical text" if canonical_text else notes,
+            "evidence_paths": local_files,
+            "output_ids": [source_id] if canonical_text else [],
+        },
+    }
+    receipt_path = root / "tools/outputs/worker-parts/capture" / f"{source_id}.json"
+    atomic_write_json(receipt_path, receipt)
+    return {**receipt, "receipt": str(receipt_path.relative_to(root))}

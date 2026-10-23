@@ -53,7 +53,7 @@ def complete_task(root: Path, task_id: str, worker_id: str, writer) -> None:
 
 
 def static_test_reports(root: Path) -> None:
-    for name in ("data_integrity", "evidence_pipeline", "citation_integrity", "execution_integrity", "release_integrity"):
+    for name in ("adaptive_runtime", "data_integrity", "evidence_pipeline", "citation_integrity", "execution_integrity", "release_integrity"):
         report = make_validation_report(
             checker=f"test_suite:{name}",
             checker_version="clean-room-fixture",

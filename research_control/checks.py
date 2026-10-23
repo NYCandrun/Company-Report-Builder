@@ -676,6 +676,24 @@ def _run_tests(root: Path, test_ids: list[str]) -> list[dict[str, Any]]:
 
 
 def _task_failures(root: Path, phase_id: str) -> tuple[list[str], list[str]]:
+    runtime_path = root / "tools/outputs/runtime.sqlite3"
+    if runtime_path.is_file():
+        from research_control.runtime import RuntimeStore
+
+        with RuntimeStore(root) as store:
+            store.invalidate_stale()
+            tasks = store.tasks(phase=phase_id)
+        failures = [
+            f"task did not succeed: {task['task_id']} ({task['state']})"
+            for task in tasks if task["state"] in {"failed", "blocked", "cancelled"}
+        ]
+        unknowns = [
+            f"task incomplete: {task['task_id']} ({task['state']})"
+            for task in tasks if task["state"] not in {"succeeded", "failed", "blocked", "cancelled"}
+        ]
+        if not tasks and phase_id not in {"bootstrap", "release_acceptance"}:
+            unknowns.append(f"adaptive planner registered no work for phase {phase_id}")
+        return failures, unknowns
     document = workflow(root / "WORKFLOW.yaml")
     tasks = document.get("execution_profiles", {}).get(phase_id, {}).get("tasks", [])
     ledger_path = root / document["global"]["ledger"]

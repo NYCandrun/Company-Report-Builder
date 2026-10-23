@@ -1,147 +1,203 @@
-# Company research agent
+# Adaptive company research agent
 
-This repository is an executable company-research system. Given a public
-company URL, carry the run from source capture through a cited, visually
-reviewed company brief. Do not stop after planning or scaffolding.
+Give the agent one public company URL. This repository discovers the available
+evidence, plans work from the resulting corpus, and carries the run through a
+cited and visually reviewed company brief. Do not ask the user how many pages,
+sources, batches, or workers to use.
 
-## Start here
+## Run it
 
-Take the company URL from the user's message. Then run, from the repository
-root:
+From a clean copy of this repository:
 
 ```bash
 python3 -m research_control preflight
-python3 -m research_control init --url "COMPANY_URL"
-python3 -m research_control check --phase bootstrap
-python3 -m research_control next
+python3 -m research_control run --url "COMPANY_URL"
 ```
 
-If a run already exists, do not initialize it again. Run `status` and resume:
+`run` initializes or resumes the durable scheduler, completes automatic
+controls, plans the current phase, and writes ready packets under
+`tools/outputs/task-packets/`. Continue executing the returned packets and
+rerunning:
 
 ```bash
-python3 -m research_control status
-python3 -m research_control next
+python3 -m research_control run
 ```
 
-`next` writes self-contained task packets under
-`tools/outputs/task-packets/`. Read and execute every pending packet for the
-current phase. A packet identifies its exact inputs, outputs, prompt bundle,
-validation requirements, and task ID.
-
-Before executing a packet:
-
-```bash
-python3 -m research_control task start TASK_ID --worker-id STABLE_WORKER_ID
-```
-
-After its outputs exist:
-
-```bash
-python3 -m research_control task finish TASK_ID
-```
-
-Use a different worker or genuinely separate context for every task marked
-`independent: true`. Parallelize only packets that `next` presents together.
-The orchestrator alone updates shared state and manifests.
-
-When all packets for the phase are finished, run:
-
-```bash
-python3 -m research_control check
-```
-
-If the check fails or is unknown, repair only the reported failures and rerun
-it. If it passes, run `next` again. Continue until the current phase is
-`release_acceptance`, then run:
+until it returns `release_ready`. Then run:
 
 ```bash
 python3 -m research_control release
 ```
 
-## Authority and context
+Do not stop at a plan, packet list, draft, or progress summary. Completion
+requires a passing `07-final-report/release-manifest.json` bound to the exact
+final artifact hashes.
 
-Read these files when beginning a run:
+If a run already exists, omit `--url`. Inspect it at any time with:
 
-1. `RESEARCH_CONSTITUTION.md` for research and evidence principles.
-2. `WORKFLOW.yaml` for phase order and artifact contracts.
-3. Only the task packet and files named by that packet while doing worker work.
+```bash
+python3 -m research_control status
+```
 
-Do not load `docs/legacy-prompt.md` during normal execution. It is the preserved
-historical policy and traceability baseline, not the runtime prompt. Consult it
-only to resolve a documented ambiguity, and record the resolution.
+## Execute task packets
 
-The workflow order is:
+Every packet is an immutable work assignment with exact inputs, output paths,
+prompts, schemas, dependencies, and validators. For each returned packet:
+
+```bash
+python3 -m research_control work claim TASK_ID --worker-id STABLE_WORKER_ID
+python3 -m research_control work start TASK_ID --worker-id STABLE_WORKER_ID
+# perform only the packet
+python3 -m research_control work succeed TASK_ID --worker-id STABLE_WORKER_ID \
+  --model MODEL --effort EFFORT
+```
+
+For long work, renew the lease:
+
+```bash
+python3 -m research_control work heartbeat TASK_ID --worker-id STABLE_WORKER_ID
+```
+
+On a recoverable failure:
+
+```bash
+python3 -m research_control work fail TASK_ID --worker-id STABLE_WORKER_ID \
+  --reason "CONCRETE REASON"
+```
+
+Add `--terminal` only when retrying cannot help. Expired leases are recovered
+automatically; `python3 -m research_control work recover` can run that check
+explicitly.
+
+Use a genuinely separate agent context and unique worker ID for every packet
+marked `independent: true`. Parallelize all ready independent packets when the
+host permits. The scheduler enforces global and per-host concurrency. Workers
+write isolated parts; reducer packets are the sole writers of canonical shared
+files.
+
+The packets are host-neutral. In Codex, use subagents for ready independent
+packets. In Claude Code, use isolated subagents. If no subagent facility exists,
+execute the same packets in separate contexts sequentially. Never improvise a
+different task graph because a host lacks a dispatch API.
+
+## Adaptive discovery
+
+Discovery has no source-count target. It begins with the supplied URL, expands
+the first-party link frontier, and examines these evidence channels:
+
+- company site and sitemaps;
+- newsroom, blog, resources, help, and documentation;
+- careers and recruiting systems;
+- video, podcasts, and social accounts;
+- public repositories and packages;
+- relevant independent reporting and analysis.
+
+Each applicable channel continues through materially different discovery
+passes until repeated passes add no new relevant sources. A channel may instead
+end as `not_applicable`, `blocked`, or `incomplete`, but only with evidence.
+All channels need terminal accounting, but only `saturated` and
+`not_applicable` count as complete coverage. A blocked channel remains a visible
+limitation, while `incomplete` prevents the discovery reducer from passing.
+Neither state may be relabeled because an arbitrary number of URLs was found.
+
+The configured page, byte, depth, elapsed-time, concurrency, and retry limits
+are circuit breakers. Reaching one produces an explicit incomplete or blocked
+state; it never manufactures completion.
+
+Useful discovery commands are embedded in discovery packets:
+
+```bash
+python3 -m research_control discovery crawl
+python3 -m research_control discovery add --channel CHANNEL --url URL \
+  --evidence "SEARCH OR SURFACE CHECKED"
+python3 -m research_control discovery close --channel CHANNEL \
+  --state not_applicable --evidence "WHY"
+python3 -m research_control discovery receipt --channel CHANNEL
+```
+
+The runtime canonicalizes and deduplicates URLs. Ordinary public pages can be
+captured into isolated parts with:
+
+```bash
+python3 -m research_control source capture --source-id SOURCE_ID
+```
+
+Use the host's browser, PDF, OCR, caption, transcription, repository, or media
+tools for formats that need them. Respect robots rules, rate limits, logins,
+paywalls, and bot challenges. Record inaccessible evidence; do not bypass the
+restriction.
+
+## Adaptive planning and scheduling
+
+The scheduler uses `tools/outputs/runtime.sqlite3` as its private transactional
+state and emits an append-only audit stream at
+`tools/outputs/runtime-events.jsonl`. It creates work only after the necessary
+scope or corpus information exists.
+
+- Discovery work expands until channel saturation.
+- One isolated capture task is created per relevant canonical source.
+- Captured text is assembled into canonical extracts.
+- Extraction work is packed by estimated token volume, and oversized sources
+  are split into explicit stable slices.
+- Failed or expired slices retry without repeating successful siblings.
+- Single-writer reducers reconcile parts into manifests, candidate stores,
+  dispositions, facts, reviews, and publication artifacts.
+- Input or output hash changes mark affected work stale and propagate
+  invalidation to its downstream consumers.
+
+Task states are:
 
 ```text
-bootstrap -> scope -> capture -> facts -> initial synthesis
-          -> cited-fact verification -> corrected synthesis
-          -> independent review -> final brief -> publication checks
-          -> release acceptance
+planned -> ready -> leased -> running -> validating -> succeeded
+                            \-> retryable -> ready
+                            \-> failed | blocked
+succeeded -> stale -> ready
 ```
 
-Earlier phase outputs may be prepared only where `WORKFLOW.yaml` explicitly
-allows it. Never publish or claim completion merely because an agent says work
-is done.
+Task counts therefore vary with the company and evidence actually found.
 
-## Research execution
+## Research and release contract
 
-- Use public sources only. Respect robots rules, rate limits, logins, paywalls,
-  and bot challenges. Record blocked sources rather than bypassing access.
-- Preserve every source locally and record its source ID, URL, date, grade,
-  capture method, and exact local receipt.
-- Use the runtime's browsing and document tools for discovery and unusual
-  formats. The included `capture` helper is appropriate for ordinary public
-  pages; it is not permission to bypass access controls.
-- Preserve partial, validated work. Retry only failed or unaccounted inputs.
-- Do not silently omit a source, assignment, finding, page, or zero-fact result.
-- Keep writing, cited-fact verification, skeptical review, citation-claim
-  review, and visual review in independent contexts as required by the task
-  packets.
-- Put detailed results in repository files. Keep worker returns concise.
+Read these in order when starting a run:
 
-## Rendering
+1. `RESEARCH_CONSTITUTION.md` — evidence and research principles.
+2. `WORKFLOW.yaml` — adaptive runtime settings, phase order, and gates.
+3. Only the task packet and files named by that packet while doing worker work.
 
-The final-writing packets create `05-synthesis/company-brief.md` and
-`05-synthesis/one-page.md`. Render them with:
+Do not load `docs/legacy-prompt.md` during normal work. It is the preserved
+historical policy and traceability baseline.
+
+The controlled phases remain:
+
+```text
+bootstrap -> scope -> adaptive discovery and capture -> adaptive extraction
+-> fact filing -> initial synthesis -> cited-fact verification
+-> corrected synthesis -> independent skeptical review -> final brief
+-> language, citation, and page-by-page visual review -> fixes and re-review
+-> release acceptance
+```
+
+The final-writing packet produces `05-synthesis/company-brief.md` and
+`05-synthesis/one-page.md`. Build HTML, PDFs, and page previews with:
 
 ```bash
 python3 -m research_control render
 ```
 
-This creates the required HTML and PDF files in `07-final-report/`. Inspect
-every rendered page and complete the visual-review packet before release.
+Release remains fail-closed. It requires current phase gates, complete input
+accounting, independent review identities, resolvable fact/source citations,
+HTML and PDF outputs, a review record for every rendered page, and exact final
+hashes. If release cannot pass, report the concrete failed control and leave the
+run resumable.
 
-## Completion
-
-The run is complete only when all of the following are true:
-
-- Every required phase check is `PASS` on current artifacts.
-- Every assigned input has one terminal disposition.
-- Required independent semantic reviews and their decisions exist.
-- Citations resolve from the final claim to a fact and captured source.
-- The company brief and one-page output exist as both HTML and PDF.
-- Every rendered page has a visual-review record.
-- `07-final-report/release-manifest.json` exists and records `PASS` for the
-  exact final artifact hashes.
-
-If release cannot pass, report `BLOCKED`, name the failing control and artifact,
-and leave the run resumable. Never substitute a progress summary for release
-acceptance.
-
-## Useful commands
+## Development verification
 
 ```bash
-python3 -m research_control status
-python3 -m research_control next
-python3 -m research_control check --phase PHASE
-python3 -m research_control task fail TASK_ID --reason "REASON"
-python3 -m research_control capture --url URL --source-id ID --grade P
-python3 -m research_control render
-python3 -m research_control release
 python3 -m unittest discover -s research_control/tests -v
+python3 tools/run_integrity_tests.py
+python3 tools/audit_refactor.py
 ```
 
-The control CLI has no required third-party Python packages. It uses a local
-CSS-capable PDF renderer and PDF rasterizer when available, with deterministic
-fallbacks. External browsing, transcription, and final visual inspection remain
-the responsibility of the supported coding-agent environment.
+The control runtime uses only Python's standard library. CSS-capable PDF tools,
+PDF rasterization, browser rendering, OCR, and transcription are used when the
+host provides them and are reported by `preflight` when absent.

@@ -17,10 +17,12 @@ five layers:
    relevant principles, and completion criteria. It keeps writing,
    verification, skeptical review, citation review, and visual review in
    independent contexts.
-5. `research_control/` initializes runs, generates task packets, records
-   bounded attempts, captures ordinary public pages, renders final artifacts,
-   and enforces schemas, validators, reconciliations, phase gates, hashes,
-   stale-result detection, and exact-artifact release acceptance.
+5. `research_control/` initializes runs and operates a SQLite-backed adaptive
+   scheduler. It discovers to per-channel saturation, plans per-source capture
+   and token-sized extraction work, leases and recovers tasks, merges isolated
+   parts through single-writer reducers, renders final artifacts, and enforces
+   schemas, validators, reconciliations, phase gates, hashes, stale-result
+   propagation, and exact-artifact release acceptance.
 
 `WORKFLOW.yaml` uses JSON syntax, which is valid YAML 1.2. Python can therefore
 parse it without a third-party package. The deterministic integrity job needs
@@ -212,10 +214,12 @@ The reusable package now enforces or provides canonical machinery for:
 - element-level exhibit fact mapping and complete page-review accounting;
 - final artifact existence and binding to validation hashes;
 - independent release acceptance and release-manifest creation only on `PASS`;
-- five categorized negative-test suites and a credential-free CI job.
+- six categorized negative-test suites and a credential-free CI job.
 
-The CLI prints only status, expected and checked counts, failure/exception
-counts, the report path, and bounded failing IDs. Full records stay on disk.
+Gate reporters print only status, expected and checked counts,
+failure/exception counts, the report path, and bounded failing IDs. Scheduler
+commands additionally return machine-readable work and state summaries. Full
+research records stay on disk.
 
 ## Operational status and boundaries
 
@@ -225,13 +229,15 @@ follow `README.md`. The agent uses `research_control` to initialize and resume
 the run, request permitted task packets, record attempts, run phase checks,
 render four final artifacts, and perform release acceptance.
 
-The runner deliberately does not attempt to replace model judgment with a
-universal crawler or scheduler. Coding-agent browsing and document tools remain
-responsible for unusual websites, PDFs, audio, video, transcription, and full
-visual inspection. The built-in capture helper handles ordinary public pages
-conservatively and rejects non-public network targets. The renderer prefers a
-local CSS-capable engine and PDF rasterizer when present, with deterministic
-PDF and SVG-preview fallbacks.
+The runner now supplies the durable scheduler and first-party public-web
+frontier. It does not pretend that a standard-library HTTP client can replace
+model judgment or host-native browser, search, PDF, audio, video,
+transcription, and visual-inspection tools. Instead, the planner issues bounded
+channel and source packets for those adapters, records their receipts, and
+refuses to treat access limits as complete coverage. The built-in capture
+helper handles ordinary public pages conservatively and rejects non-public
+network targets. The renderer prefers a local CSS-capable engine and PDF
+rasterizer when present, with deterministic PDF and SVG-preview fallbacks.
 
 The historical AirOps corpus predates this operational ledger and release
 manifest. It remains useful for a future live shadow comparison, but this
@@ -243,21 +249,23 @@ refactor does not retroactively certify that historical run.
    runtime, including one media-heavy site.
 2. Record access, transcription, and rendering exceptions exposed by those
    runs as new stable failure fixtures rather than new monolithic prose.
-3. Add optional adapters for the runtime's preferred PDF, audio, video, and
-   browser capture tools where they materially improve receipts.
+3. Add optional direct CLI adapters for preferred PDF, audio, video, browser,
+   and agent-host tools where they materially improve receipts; the portable
+   packet protocol remains the fallback.
 4. Compare the first live results against the original prompt requirement by
    requirement and retain the generated release manifests.
 
 ## Verification performed
 
-- 29 unit and operational tests pass, including clean-room initialization,
+- 37 unit and operational tests pass, including clean-room initialization,
   interruption/retry behavior, publication rendering, private-network capture
-  rejection, and a synthetic URL-to-release lifecycle.
-- All five categorized suites pass: data integrity, evidence pipeline,
-  citation integrity, execution integrity, and release integrity.
+  rejection, discovery saturation, corpus-sized task planning, host limits,
+  stale propagation, and a synthetic URL-to-release lifecycle.
+- All six categorized suites pass: adaptive runtime, data integrity, evidence
+  pipeline, citation integrity, execution integrity, and release integrity.
 - The traceability audit passes with 1,732 inventory rows, 202 mapped headings,
   and 68 unique failure IDs.
-- `WORKFLOW.yaml` and all twelve schemas parse as valid JSON.
+- `WORKFLOW.yaml` and all schemas parse as valid JSON.
 - The Python control package compiles without syntax errors.
 - Mechanical writing checks pass for the constitution and scoped prompts.
 - The GitHub Actions workflow runs the launcher preflight, declarative,

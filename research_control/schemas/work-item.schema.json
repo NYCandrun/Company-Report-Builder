@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "work-item.schema.json",
+  "title": "Durable adaptive work item",
+  "type": "object",
+  "required": ["task_id", "phase", "task_type", "state", "inputs", "outputs", "prompt_files", "depends_on"],
+  "properties": {
+    "task_id": {"type": "string", "minLength": 1},
+    "phase": {"type": "string", "minLength": 1},
+    "task_type": {"type": "string", "minLength": 1},
+    "state": {"enum": ["planned", "ready", "leased", "running", "validating", "succeeded", "retryable", "failed", "blocked", "stale", "cancelled"]},
+    "inputs": {"type": "array"},
+    "outputs": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "prompt_files": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "depends_on": {"type": "array", "items": {"type": "string"}},
+    "host_key": {"type": "string"},
+    "priority": {"type": "integer"},
+    "max_attempts": {"type": "integer", "minimum": 1}
+  },
+  "additionalProperties": true
+}

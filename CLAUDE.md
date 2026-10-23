@@ -1,7 +1,9 @@
 # Claude Code execution adapter
 
-Follow `README.md` as the operational entry point. Use isolated subagents for
-task packets marked independent, while retaining single-writer ownership of
-shared state. Continue until `research_control release` passes or a concrete
-external-access blocker is recorded. The preserved legacy prompt is not normal
-runtime context.
+Follow `README.md` as the operational entry point. Run the adaptive orchestrator
+with the supplied URL, use isolated subagents and unique worker IDs for every
+independent ready packet, then rerun the orchestrator until exact-artifact
+release passes. Do not invent source, page, batch, or worker quotas; discovery
+ends by evidenced channel saturation. Preserve single-writer reducer ownership,
+record concrete access blockers, and never edit scheduler state directly. The
+preserved legacy prompt is not normal runtime context.

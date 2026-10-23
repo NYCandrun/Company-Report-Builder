@@ -19,6 +19,11 @@ from research_control.reporting import make_validation_report, print_summary
 
 ROOT = Path(__file__).resolve().parents[1]
 CATEGORIES = {
+    "adaptive_runtime": [
+        "research_control.tests.test_runtime",
+        "research_control.tests.test_discovery",
+        "research_control.tests.test_adaptive_planner",
+    ],
     "data_integrity": ["research_control.tests.test_sources", "research_control.tests.test_facts"],
     "evidence_pipeline": ["research_control.tests.test_facts", "research_control.tests.test_reconciliation"],
     "citation_integrity": ["research_control.tests.test_citations"],

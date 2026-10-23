@@ -1,6 +1,6 @@
-"""Deterministic control plane for the company-research workflow."""
+"""Adaptive orchestrator and deterministic controls for company research."""
 
-__version__ = "1.1.0"
+__version__ = "2.0.0"
 
 PASS = "PASS"
 FAIL = "FAIL"

@@ -10,10 +10,12 @@ from pathlib import Path
 from typing import Any
 
 from research_control import PASS, __version__
-from research_control.capture import capture_url
+from research_control.adaptive import advance, complete_work, open_runtime, runtime_status
+from research_control.capture import capture_source_part, capture_url
 from research_control.checks import check_phase
+from research_control.discovery import DISCOVERY_CHANNELS, DiscoveryEngine
 from research_control.gates.release import check_release
-from research_control.io import load_json, workflow
+from research_control.io import workflow
 from research_control.orchestration import (
     current_phase,
     fail_task,
@@ -26,6 +28,7 @@ from research_control.orchestration import (
     status_summary,
 )
 from research_control.publication import render
+from research_control.reducers import reduce_capture_parts, reduce_discovery, reduce_extraction_parts
 from research_control.reporting import print_summary
 
 
@@ -63,6 +66,13 @@ def preflight(root: Path) -> int:
         "prompts/core/runtime.md",
         "prompts/core/evidence.md",
         "prompts/core/writing.md",
+        "prompts/phases/discovery.md",
+        "prompts/phases/discovery-reducer.md",
+        "prompts/phases/capture-source.md",
+        "prompts/phases/capture-reducer.md",
+        "prompts/phases/extraction-reducer.md",
+        "research_control/schemas/work-item.schema.json",
+        "research_control/schemas/discovery-pass.schema.json",
     ]
     failures = [f"missing required file: {relative}" for relative in required if not (root / relative).is_file()]
     warnings: list[str] = []
@@ -73,6 +83,16 @@ def preflight(root: Path) -> int:
     try:
         document = workflow(root / "WORKFLOW.yaml")
         profiles = document.get("execution_profiles", {})
+        adaptive = document.get("adaptive_runtime", {})
+        if adaptive.get("completion_basis") != "channel_saturation_not_source_count":
+            failures.append("adaptive runtime must use channel saturation rather than a source count")
+        scheduler = adaptive.get("scheduler", {})
+        for setting in ("global_concurrency", "per_host_concurrency", "lease_seconds", "max_attempts"):
+            if int(scheduler.get(setting, 0)) < 1:
+                failures.append(f"adaptive scheduler setting must be positive: {setting}")
+        batching = adaptive.get("batching", {})
+        if int(batching.get("target_extraction_tokens", 0)) > int(batching.get("maximum_extraction_tokens", 0)):
+            failures.append("target extraction tokens exceed the maximum")
         phase_ids = {phase["id"] for phase in document["phases"]}
         if phase_ids != set(profiles):
             failures.append(f"execution profiles do not match phases: {sorted(phase_ids ^ set(profiles))}")
@@ -122,8 +142,35 @@ def _parser() -> argparse.ArgumentParser:
     subparsers.add_parser("preflight", help="verify the copied template and local runtime")
     init = subparsers.add_parser("init", help="initialize a URL-only research run")
     init.add_argument("--url", required=True)
+    run = subparsers.add_parser("run", help="initialize or advance the adaptive research orchestrator")
+    run.add_argument("--url")
     subparsers.add_parser("next", help="write and list permitted task packets")
     subparsers.add_parser("status", help="show resumable run state")
+
+    work = subparsers.add_parser("work", help="operate the durable adaptive work queue")
+    work_sub = work.add_subparsers(dest="work_command", required=True)
+    work_claim = work_sub.add_parser("claim")
+    work_claim.add_argument("task_id")
+    work_claim.add_argument("--worker-id", required=True)
+    work_start = work_sub.add_parser("start")
+    work_start.add_argument("task_id")
+    work_start.add_argument("--worker-id", required=True)
+    work_heartbeat = work_sub.add_parser("heartbeat")
+    work_heartbeat.add_argument("task_id")
+    work_heartbeat.add_argument("--worker-id", required=True)
+    work_succeed = work_sub.add_parser("succeed")
+    work_succeed.add_argument("task_id")
+    work_succeed.add_argument("--worker-id", required=True)
+    work_succeed.add_argument("--model")
+    work_succeed.add_argument("--effort")
+    work_succeed.add_argument("--input-tokens", type=int)
+    work_succeed.add_argument("--output-tokens", type=int)
+    work_fail = work_sub.add_parser("fail")
+    work_fail.add_argument("task_id")
+    work_fail.add_argument("--worker-id", required=True)
+    work_fail.add_argument("--reason", required=True)
+    work_fail.add_argument("--terminal", action="store_true", help="do not retry this failure")
+    work_sub.add_parser("recover", help="recover expired leases")
 
     task = subparsers.add_parser("task", help="record task attempt lifecycle")
     task_sub = task.add_subparsers(dest="task_command", required=True)
@@ -147,6 +194,32 @@ def _parser() -> argparse.ArgumentParser:
     capture.add_argument("--title")
     capture.add_argument("--publisher")
 
+    discovery = subparsers.add_parser("discovery", help="record saturation-based source discovery")
+    discovery_sub = discovery.add_subparsers(dest="discovery_command", required=True)
+    discovery_sub.add_parser("crawl", help="crawl the public first-party frontier to saturation")
+    discovery_add = discovery_sub.add_parser("add", help="record one discovery pass and its newly found URLs")
+    discovery_add.add_argument("--channel", required=True, choices=DISCOVERY_CHANNELS)
+    discovery_add.add_argument("--url", action="append", default=[])
+    discovery_add.add_argument("--evidence", required=True)
+    discovery_add.add_argument("--discovered-from", default="agent-search")
+    discovery_close = discovery_sub.add_parser("close", help="close a channel with explicit evidence")
+    discovery_close.add_argument("--channel", required=True, choices=DISCOVERY_CHANNELS)
+    discovery_close.add_argument("--state", required=True, choices=["saturated", "not_applicable", "blocked", "incomplete"])
+    discovery_close.add_argument("--evidence", required=True)
+    discovery_receipt = discovery_sub.add_parser("receipt", help="write the current channel's worker receipt")
+    discovery_receipt.add_argument("--channel", required=True, choices=DISCOVERY_CHANNELS)
+
+    source = subparsers.add_parser("source", help="capture one scheduler-owned source into an isolated worker part")
+    source_sub = source.add_subparsers(dest="source_command", required=True)
+    source_capture = source_sub.add_parser("capture")
+    source_capture.add_argument("--source-id", required=True)
+    source_capture.add_argument("--grade", choices=["P", "S", "T", "I"])
+    source_capture.add_argument("--title")
+    source_capture.add_argument("--publisher")
+
+    reduce = subparsers.add_parser("reduce", help="merge isolated worker parts as the single writer")
+    reduce.add_argument("kind", choices=["discovery", "capture", "extraction"])
+
     subparsers.add_parser("render", help="build final HTML, PDF, and page previews")
     subparsers.add_parser("release", help="run independent exact-artifact release acceptance")
     return parser
@@ -162,12 +235,42 @@ def main() -> None:
             state = initialize(root, args.url)
             _print_json({"status": "initialized", "run_id": state["run_id"], "company_url": state["company_url"], "next": "python3 -m research_control check --phase bootstrap"})
             return
+        if args.command == "run":
+            _print_json(advance(root, args.url))
+            return
         if args.command == "next":
             result = next_packets(root)
             _print_json(result)
             return
         if args.command == "status":
-            _print_json(status_summary(root))
+            _print_json(runtime_status(root) if (root / "tools/outputs/runtime.sqlite3").is_file() else status_summary(root))
+            return
+        if args.command == "work":
+            if args.work_command == "recover":
+                with open_runtime(root) as store:
+                    _print_json({"recovered": store.recover_expired(), "runtime": store.summary()})
+                return
+            if args.work_command == "succeed":
+                telemetry = {
+                    key: value for key, value in {
+                        "model": args.model, "effort": args.effort,
+                        "input_tokens": args.input_tokens, "output_tokens": args.output_tokens,
+                    }.items() if value is not None
+                }
+                _print_json(complete_work(root, args.task_id, args.worker_id, telemetry=telemetry))
+                return
+            with open_runtime(root) as store:
+                if args.work_command == "claim":
+                    claimed = store.claim(args.worker_id, task_id=args.task_id)
+                    if claimed is None:
+                        raise ValueError(f"task is not currently claimable: {args.task_id}")
+                    _print_json(claimed)
+                elif args.work_command == "start":
+                    _print_json(store.start(args.task_id, args.worker_id))
+                elif args.work_command == "heartbeat":
+                    _print_json(store.heartbeat(args.task_id, args.worker_id))
+                elif args.work_command == "fail":
+                    _print_json(store.fail(args.task_id, args.worker_id, args.reason, retryable=not args.terminal))
             return
         if args.command == "task":
             if args.task_command == "start":
@@ -184,6 +287,62 @@ def main() -> None:
             raise SystemExit(0 if report["status"] == PASS else 1)
         if args.command == "capture":
             _print_json(capture_url(root, url=args.url, source_id=args.source_id, grade=args.grade, title=args.title, publisher=args.publisher))
+            return
+        if args.command == "discovery":
+            with open_runtime(root) as store:
+                engine = DiscoveryEngine(root, store)
+                engine.initialize()
+                if args.discovery_command == "crawl":
+                    passes = []
+                    while True:
+                        result = engine.crawl_company_site()
+                        passes.append(result)
+                        if result["status"] in {"saturated", "incomplete", "blocked"}:
+                            break
+                    _print_json({"status": passes[-1]["status"], "passes": passes})
+                elif args.discovery_command == "add":
+                    _print_json(engine.add_candidates(
+                        args.channel, args.url, discovered_from=args.discovered_from,
+                        evidence=args.evidence, record_pass=True,
+                    ))
+                elif args.discovery_command == "close":
+                    _print_json(engine.close_channel(args.channel, args.state, args.evidence))
+                else:
+                    channel = store.discovery_channel(args.channel)
+                    if not channel or channel["state"] == "open":
+                        raise ValueError(f"discovery channel is not terminal: {args.channel}")
+                    receipt = {
+                        "schema_version": "1.0.0", "channel": args.channel,
+                        "status": channel["state"], "passes": channel["total_passes"],
+                        "new_sources": channel["total_new_sources"],
+                        "evidence": channel["completion_evidence"],
+                    }
+                    path = root / "tools/outputs/worker-parts/discovery" / f"{args.channel.replace('_', '-')}.json"
+                    from research_control.io import atomic_write_json
+                    atomic_write_json(path, receipt)
+                    _print_json({**receipt, "receipt": str(path.relative_to(root))})
+            return
+        if args.command == "source":
+            with open_runtime(root) as store:
+                source_record = store.source(args.source_id)
+                if not source_record:
+                    raise KeyError(f"unknown source: {args.source_id}")
+                if source_record["channel"] in {"video", "podcasts"}:
+                    raise ValueError(
+                        f"{args.source_id}: media sources require caption/transcription capture and a manual receipt"
+                    )
+                grade = args.grade or ("S" if source_record["channel"] == "independent_web" else "P")
+                _print_json(capture_source_part(
+                    root, url=source_record["canonical_url"], source_id=args.source_id,
+                    grade=grade, title=args.title, publisher=args.publisher,
+                ))
+            return
+        if args.command == "reduce":
+            if args.kind == "extraction":
+                _print_json(reduce_extraction_parts(root))
+            else:
+                with open_runtime(root) as store:
+                    _print_json(reduce_discovery(root, store) if args.kind == "discovery" else reduce_capture_parts(root, store))
             return
         if args.command == "render":
             _print_json(render(root))

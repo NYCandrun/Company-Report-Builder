@@ -52,11 +52,17 @@ RUN_DIRECTORIES = (
     "tools/digests",
     "tools/lists",
     "tools/outputs/cited-facts",
+    "tools/outputs/discovery",
     "tools/outputs/gates",
     "tools/outputs/reconciliation",
     "tools/outputs/task-packets",
     "tools/outputs/tests",
     "tools/outputs/validations",
+    "tools/outputs/worker-parts/capture",
+    "tools/outputs/worker-parts/discovery",
+    "tools/outputs/worker-parts/extraction",
+    "tools/extracts/canonical",
+    "tools/extracts/slices",
 )
 
 

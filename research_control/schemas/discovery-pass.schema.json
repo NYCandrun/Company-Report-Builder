@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "discovery-pass.schema.json",
+  "title": "Discovery channel terminal receipt",
+  "type": "object",
+  "required": ["schema_version", "channel", "status", "passes", "new_sources", "evidence"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "channel": {"type": "string", "minLength": 1},
+    "status": {"enum": ["saturated", "not_applicable", "blocked", "incomplete"]},
+    "passes": {"type": "integer", "minimum": 0},
+    "new_sources": {"type": "integer", "minimum": 0},
+    "evidence": {"type": "string", "minLength": 1}
+  },
+  "additionalProperties": true
+}
