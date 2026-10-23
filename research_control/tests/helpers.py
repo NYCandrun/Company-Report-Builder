@@ -43,7 +43,6 @@ def minimal_gate_workflow(root: Path) -> Path:
     document = {
         "schema_version": "1.0.0",
         "global": {"ledger": "tools/outputs/worker-ledger.jsonl", "gate_directory": "tools/outputs/gates", "release_manifest": "07-final-report/release-manifest.json"},
-        "test_suites": [{"id": "execution_integrity", "report": "tools/outputs/tests/execution.json"}],
         "phases": [{
             "id": "capture", "depends_on": [], "stale_if": ["inputs.txt", "out/result.txt"],
             "reconciliations": [{"id": "work", "report": "tools/outputs/reconciliation/work.json"}],
@@ -51,7 +50,7 @@ def minimal_gate_workflow(root: Path) -> Path:
             "semantic_reviews": [{"id": "coverage", "path": "review.md", "role": "reviewer", "independent": True}],
             "gate": {"name": "capture", "required_paths": ["out/result.txt"],
                      "required_reconciliations": ["work"], "required_validators": ["records"],
-                     "required_semantic_reviews": ["coverage"], "required_tests": ["execution_integrity"],
+                     "required_semantic_reviews": ["coverage"],
                      "required_worker_task_types": ["capture"]},
         }],
     }
@@ -66,7 +65,7 @@ def populate_gate_fixture(root: Path) -> Path:
     (root / "out/result.txt").write_text("done\n", encoding="utf-8")
     (root / "inputs.txt").write_text("IN-1\n", encoding="utf-8")
     (root / "review.md").write_text("review complete\n", encoding="utf-8")
-    for relative in ("tools/outputs/reconciliation/work.json", "tools/outputs/validations/records.json", "tools/outputs/tests/execution.json"):
+    for relative in ("tools/outputs/reconciliation/work.json", "tools/outputs/validations/records.json"):
         write_json(root / relative, validation())
     write_jsonl(root / "tools/outputs/worker-ledger.jsonl", [worker(root)])
     return workflow

@@ -767,25 +767,6 @@ def run_reconciliation(root: Path, phase: dict[str, Any], reconciliation_id: str
     return _rename(_ledger(root), f"reconcile:{reconciliation_id}")
 
 
-def _run_tests(root: Path, test_ids: list[str]) -> list[dict[str, Any]]:
-    if not test_ids:
-        return []
-    from tools import run_integrity_tests as integrity
-
-    report_dir = root / "tools/outputs/tests"
-    reports: list[dict[str, Any]] = []
-    expected_version = checker_version(integrity)
-    for test_id in test_ids:
-        path = report_dir / f"{test_id}.json"
-        prior = load_json(path) if path.is_file() and path.stat().st_size else {}
-        current, _stale = report_inputs_current(root, prior) if prior else (False, [])
-        if prior.get("status") == PASS and prior.get("checker_version") == expected_version and current:
-            reports.append(prior)
-        else:
-            reports.append(integrity.run_category(test_id, report_dir))
-    return reports
-
-
 def _task_failures(root: Path, phase_id: str) -> tuple[list[str], list[str]]:
     runtime_path = root / "tools/outputs/runtime.sqlite3"
     if runtime_path.is_file():
@@ -866,7 +847,6 @@ def check_phase(
     root: Path,
     phase_id: str | None = None,
     update_state: bool = True,
-    run_tests: bool = True,
 ) -> tuple[dict[str, Any], Path]:
     document = workflow(root / "WORKFLOW.yaml")
     state = load_state(root)
@@ -904,9 +884,6 @@ def check_phase(
             report["cache_key"] = engine_key
             _write(root, item["report"], report)
         reports.append(report)
-    if run_tests:
-        reports.extend(_run_tests(root, phase.get("tests", [])))
-
     if phase.get("gate"):
         report, path = check_phase_gate(root, phase_id, allow_completed_recheck=not update_state)
     else:

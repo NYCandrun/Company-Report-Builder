@@ -1,9 +1,8 @@
 {
-  "schema_version": "2.3.0",
+  "schema_version": "2.4.0",
   "source_of_truth": ["RESEARCH_CONSTITUTION.md", "WORKFLOW.yaml"],
   "runtime_entrypoint": "README.md",
-  "legacy_traceability_source": "docs/legacy-prompt.md",
-  "description": "Canonical adaptive execution, shared transport cache, optional model routing, incremental publication, brand, diagram, phase, and gate contract for company research.",
+  "description": "Canonical adaptive execution, shared transport cache, optional model routing, incremental publication, brand, diagram, phase, and gate contract for company research. Framework regression tests run in CI rather than inside company research runs.",
   "status_values": ["PASS", "FAIL", "UNKNOWN"],
   "disposition_values": ["completed", "completed_zero", "duplicate", "excluded", "blocked", "rejected"],
   "assurance_layers": {
@@ -19,7 +18,6 @@
     "gate_directory": "tools/outputs/gates",
     "reconciliation_directory": "tools/outputs/reconciliation",
     "validation_directory": "tools/outputs/validations",
-    "test_directory": "tools/outputs/tests",
     "release_manifest": "07-final-report/release-manifest.json",
     "atomic_writes": true,
     "single_writer_shared_state": true,
@@ -404,38 +402,6 @@
     },
     "release_acceptance": {"automatic": true, "tasks": []}
   },
-  "test_suites": [
-    {
-      "id": "adaptive_runtime",
-      "report": "tools/outputs/tests/adaptive_runtime.json",
-      "covers": ["discovery saturation", "shared URL and response cache", "optional advisory model routing", "dynamic task counts", "token-sized batching", "leases", "host concurrency", "targeted retries", "stale invalidation"]
-    },
-    {
-      "id": "data_integrity",
-      "report": "tools/outputs/tests/data_integrity.json",
-      "covers": ["schemas", "unique IDs", "source paths", "fact receipts", "dates", "tags"]
-    },
-    {
-      "id": "evidence_pipeline",
-      "report": "tools/outputs/tests/evidence_pipeline.json",
-      "covers": ["caption parsing", "canonical copies", "filter misses", "candidate filing", "quote location"]
-    },
-    {
-      "id": "citation_integrity",
-      "report": "tools/outputs/tests/citation_integrity.json",
-      "covers": ["numbering", "notes", "source mapping", "fact placement", "exhibit mapping"]
-    },
-    {
-      "id": "execution_integrity",
-      "report": "tools/outputs/tests/execution_integrity.json",
-      "covers": ["ledger", "reconciliation", "fail-closed validation", "hash-reused validation", "gates", "staleness", "visual page accounting"]
-    },
-    {
-      "id": "release_integrity",
-      "report": "tools/outputs/tests/release_integrity.json",
-      "covers": ["exact artifacts", "current gate hashes", "release manifest", "fault isolation"]
-    }
-  ],
   "phases": [
     {
       "id": "bootstrap",
@@ -449,9 +415,6 @@
       "outputs": [
         {"id": "workflow_state", "path": "WORKFLOW_STATE.md"},
         {"id": "run_history", "path": "RUN_HISTORY.md"},
-        {"id": "prompt_original", "path": "prompt/PROMPT.md"},
-        {"id": "prompt_effective", "path": "prompt/revised_prompt.md"},
-        {"id": "prompt_changes", "path": "prompt/CHANGES.md"},
         {"id": "worker_ledger", "path": "tools/outputs/worker-ledger.jsonl"}
       ],
       "reconciliations": [],
@@ -460,9 +423,8 @@
         {"id": "tool_availability", "report": "tools/outputs/validations/tool-availability.json", "assurance_layer": "execution_integrity"}
       ],
       "semantic_reviews": [],
-      "tests": ["execution_integrity"],
       "completion": {"require_all": true, "state_update_after_gate": true},
-      "stale_if": ["README.md", "prompt/revised_prompt.md", "research_control/**", "WORKFLOW.yaml"],
+      "stale_if": ["README.md", "research_control/**", "WORKFLOW.yaml"],
       "downstream": ["scope"],
       "retry_policy": "global"
     },
@@ -487,7 +449,6 @@
       "semantic_reviews": [
         {"id": "scope_reasoning", "path": "00-scope.md", "role": "scope_reviewer", "independent": false}
       ],
-      "tests": [],
       "completion": {"require_all": true, "state_update_after_gate": true},
       "stale_if": ["00-inputs/**", "00-scope.md", "company_url"],
       "downstream": ["capture"],
@@ -523,7 +484,6 @@
       "semantic_reviews": [
         {"id": "coverage_review", "path": "06-checks/coverage.md", "role": "orchestrator", "independent": false}
       ],
-      "tests": ["data_integrity", "evidence_pipeline", "execution_integrity"],
       "completion": {"require_all": true, "required_worker_task_types": ["capture", "brand_guide"], "state_update_after_gate": true},
       "stale_if": ["00-scope.md", "01-sources/**", "04-competitors/*/01-sources/**", "05-synthesis/brand-guide/**", "07-final-report/brand-guide.*", "tools/capture*.py", "tools/merge*.py", "research_control/validators/{sources,brand}.py"],
       "downstream": ["facts"],
@@ -534,7 +494,6 @@
         "required_reconciliations": ["capture_sources", "capture_assignments"],
         "required_validators": ["source_records", "source_dates", "manifest_files", "capture_workers", "brand_capture_artifacts"],
         "required_semantic_reviews": ["coverage_review"],
-        "required_tests": ["data_integrity", "evidence_pipeline", "execution_integrity"],
         "required_worker_task_types": ["capture", "brand_guide"]
       }
     },
@@ -569,7 +528,6 @@
         {"id": "filter_spot_check", "path": "06-checks/filter-spot-check.md", "role": "evidence_reviewer", "independent": true},
         {"id": "script_audit", "path": "06-checks/script-audits.md", "role": "script_auditor", "independent": true}
       ],
-      "tests": ["data_integrity", "evidence_pipeline", "execution_integrity"],
       "completion": {"require_all": true, "required_worker_task_types": ["extraction", "filing"], "state_update_after_gate": true},
       "stale_if": ["01-sources/**", "02-facts/**", "04-competitors/*/02-facts/**", "tools/candidates/**", "tools/extracts/**", "research_control/validators/{facts,dates,tags,quotes}.py"],
       "downstream": ["initial_synthesis"],
@@ -580,7 +538,6 @@
         "required_reconciliations": ["source_extraction", "candidate_filing"],
         "required_validators": ["fact_records", "fact_quotes", "fact_dates", "fact_tags", "fact_source_ids", "fact_overstatement"],
         "required_semantic_reviews": ["duplicate_spot_check", "filter_spot_check", "script_audit"],
-        "required_tests": ["data_integrity", "evidence_pipeline", "execution_integrity"],
         "required_worker_task_types": ["extraction", "filing"]
       }
     },
@@ -606,7 +563,6 @@
       "semantic_reviews": [
         {"id": "timeline_currency_review", "path": "06-checks/currency-review.md", "role": "currency_reviewer", "independent": true}
       ],
-      "tests": ["data_integrity"],
       "completion": {"require_all": true, "state_update_after_gate": false},
       "stale_if": ["02-facts/**", "03-timelines/**", "tools/digests/**", "tools/outputs/currency.csv", "05-synthesis/*.md"],
       "downstream": ["verification"],
@@ -634,7 +590,6 @@
       "semantic_reviews": [
         {"id": "cited_fact_review", "path": "06-checks/verification-cited.md", "role": "verification_reviewer", "independent": true}
       ],
-      "tests": ["evidence_pipeline", "execution_integrity"],
       "completion": {"require_all": true, "required_worker_task_types": ["verification"], "state_update_after_gate": true},
       "stale_if": ["05-synthesis/{product-map,offering,customers-proof,competitors,glossary,messaging-timeline,organization,direction,open-questions}.md", "02-facts/**", "tools/lists/cited-facts.txt", "tools/outputs/verification-verdicts.jsonl"],
       "downstream": ["corrected_synthesis"],
@@ -645,7 +600,6 @@
         "required_reconciliations": ["cited_fact_verification"],
         "required_validators": ["verification_verdict_records", "corrected_fact_layer1"],
         "required_semantic_reviews": ["cited_fact_review"],
-        "required_tests": ["evidence_pipeline", "execution_integrity"],
         "required_worker_task_types": ["verification"]
       }
     },
@@ -670,7 +624,6 @@
       "semantic_reviews": [
         {"id": "dependent_copy_fix", "path": "06-checks/verification-corrections.md", "role": "fixer", "independent": true}
       ],
-      "tests": [],
       "completion": {"require_all": true, "state_update_after_gate": false},
       "stale_if": ["02-facts/**", "05-synthesis/*.md", "06-checks/verification-cited.md"],
       "downstream": ["review"],
@@ -705,7 +658,6 @@
         {"id": "skeptical_insider", "path": "06-checks/review-insider*.md", "role": "skeptical_insider", "independent": true},
         {"id": "editor", "path": "06-checks/review-editor*.md", "role": "editor", "independent": true}
       ],
-      "tests": ["execution_integrity"],
       "completion": {"require_all": true, "required_worker_task_types": ["technical_review", "devils_advocate", "insider_review", "editor_review", "fixer"], "state_update_after_gate": true},
       "stale_if": ["05-synthesis/{product-map,offering,customers-proof,competitors,glossary,messaging-timeline,organization,direction,open-questions}.md", "06-checks/review-*.md", "tools/outputs/cited-facts/**"],
       "downstream": ["final"],
@@ -716,7 +668,6 @@
         "required_reconciliations": ["review_findings"],
         "required_validators": ["review_records", "review_independence", "accepted_fixes"],
         "required_semantic_reviews": ["technical", "devils_advocate", "skeptical_insider", "editor"],
-        "required_tests": ["execution_integrity"],
         "required_worker_task_types": ["technical_review", "devils_advocate", "insider_review", "editor_review", "fixer"]
       }
     },
@@ -751,7 +702,6 @@
         {"id": "diagram_artifacts", "report": "tools/outputs/validations/diagram-artifacts.json", "assurance_layer": "publication_integrity"}
       ],
       "semantic_reviews": [],
-      "tests": ["data_integrity"],
       "completion": {"require_all": true, "state_update_after_gate": false},
       "stale_if": ["05-synthesis/**", "02-facts/**", "01-sources/MANIFEST.csv", "tools/brief_html/**", "07-final-report/**"],
       "downstream": ["publication_checks"],
@@ -808,7 +758,6 @@
         {"id": "visual_review", "path": "06-checks/visual-review*.md", "role": "visual_reviewer", "independent": true},
         {"id": "orchestrator_page_review", "path": "06-checks/final-report.md", "role": "orchestrator", "independent": false}
       ],
-      "tests": ["citation_integrity", "execution_integrity", "release_integrity"],
       "completion": {"require_all": true, "state_update_after_gate": true},
       "stale_if": ["05-synthesis/company-brief.md", "05-synthesis/brand-guide/**", "02-facts/**", "01-sources/MANIFEST.csv", "tools/outputs/citation-map-*.json", "tools/outputs/diagram-models.json", "tools/brief_html/**", "07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "07-final-report/brand-guide.*", "07-final-report/*.svg", "07-final-report/diagram-*.md"],
       "downstream": ["release_acceptance"],
@@ -819,7 +768,6 @@
         "required_reconciliations": ["final_cited_facts", "citation_sources", "visual_pages", "visual_diagrams"],
         "required_validators": ["final_artifact_contract", "reader_facing_text", "american_english", "new_cited_fact_verification", "citation_structure", "exhibit_mapping", "brand_artifacts", "brand_visual_records", "diagram_models", "diagram_style_spec", "diagram_artifacts", "diagram_visual_records", "design_check", "visual_audit", "visual_records", "publication_decisions", "artifact_binding"],
         "required_semantic_reviews": ["american_english_review", "citation_claim_a", "citation_claim_b", "visual_review", "orchestrator_page_review"],
-        "required_tests": ["citation_integrity", "execution_integrity", "release_integrity"],
         "required_worker_task_types": ["brief_writer", "diagram_modeler", "diagram_builder", "assembler", "language_review", "citation_claim_review", "visual_review", "publication_fixer", "orchestrator_page_review"]
       }
     },
@@ -844,9 +792,8 @@
         {"id": "release_acceptance", "report": "tools/outputs/validations/release-acceptance.json", "assurance_layer": "execution_integrity"}
       ],
       "semantic_reviews": [],
-      "tests": ["adaptive_runtime", "data_integrity", "evidence_pipeline", "citation_integrity", "execution_integrity", "release_integrity"],
       "completion": {"require_all": true, "state_update_after_gate": true},
-      "stale_if": ["WORKFLOW.yaml", "tools/outputs/gates/**", "tools/outputs/reconciliation/**", "tools/outputs/validations/**", "tools/outputs/tests/**", "01-sources/MANIFEST.csv", "02-facts/**", "05-synthesis/**", "07-final-report/**"],
+      "stale_if": ["WORKFLOW.yaml", "tools/outputs/gates/**", "tools/outputs/reconciliation/**", "tools/outputs/validations/**", "01-sources/MANIFEST.csv", "02-facts/**", "05-synthesis/**", "07-final-report/**"],
       "downstream": [],
       "retry_policy": "none"
     }

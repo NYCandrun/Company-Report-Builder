@@ -56,13 +56,6 @@ def _report_for_id(phase: dict[str, Any], group: str, record_id: str) -> str | N
     return None
 
 
-def _test_report(document: dict[str, Any], test_id: str) -> str | None:
-    for item in document.get("test_suites", []):
-        if item.get("id") == test_id:
-            return item.get("report")
-    return None
-
-
 def _load_required_report(root: Path, relative: str, label: str, failures: list[str], unknowns: list[str]) -> dict[str, Any] | None:
     path = root / relative
     if not path.is_file() or path.stat().st_size == 0:
@@ -148,15 +141,6 @@ def check_phase_gate(
             if _load_required_report(root, relative, f"{group} {record_id}", failures, unknowns) is not None:
                 checked += 1
 
-    for test_id in gate.get("required_tests", []):
-        expected += 1
-        relative = _test_report(document, test_id)
-        if not relative:
-            unknowns.append(f"test {test_id}: no report path in workflow")
-            continue
-        if _load_required_report(root, relative, f"test {test_id}", failures, unknowns) is not None:
-            checked += 1
-
     for review_id in gate.get("required_semantic_reviews", []):
         expected += 1
         review = next((item for item in phase.get("semantic_reviews", []) if item.get("id") == review_id), None)
@@ -196,7 +180,6 @@ def check_phase_gate(
     patterns.append(str(workflow_path.relative_to(root)))
     for group, key in (("reconciliations", "required_reconciliations"), ("validators", "required_validators")):
         patterns.extend(filter(None, (_report_for_id(phase, group, item) for item in gate.get(key, []))))
-    patterns.extend(filter(None, (_test_report(document, item) for item in gate.get("required_tests", []))))
     for review_id in gate.get("required_semantic_reviews", []):
         review = next((item for item in phase.get("semantic_reviews", []) if item.get("id") == review_id), None)
         if review:

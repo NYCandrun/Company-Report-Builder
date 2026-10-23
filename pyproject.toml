@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "company-research-control"
-version = "2.3.0"
+version = "2.4.0"
 description = "Adaptive agent-native company research orchestrator with deterministic release controls"
 requires-python = ">=3.11"
 dependencies = []

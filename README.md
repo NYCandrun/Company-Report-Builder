@@ -198,9 +198,6 @@ Read these in order when starting a run:
 2. `WORKFLOW.yaml` — adaptive runtime settings, phase order, and gates.
 3. Only the task packet and files named by that packet while doing worker work.
 
-Do not load `docs/legacy-prompt.md` during normal work. It is the preserved
-historical policy and traceability baseline.
-
 The controlled phases remain:
 
 ```text
@@ -255,14 +252,7 @@ diagram, brand-guide viewport, and brand-guide PDF page, and exact final hashes.
 If release cannot pass, report the concrete failed control and leave the run
 resumable.
 
-## Development verification
-
-```bash
-python3 -m unittest discover -s research_control/tests -v
-python3 tools/run_integrity_tests.py
-python3 tools/audit_refactor.py
-```
-
 The control runtime uses only Python's standard library. CSS-capable PDF tools,
 PDF rasterization, browser rendering, OCR, and transcription are used when the
-host provides them and are reported by `preflight` when absent.
+host provides them and are reported by `preflight` when absent. Framework
+regression suites run in repository CI, not inside individual company runs.

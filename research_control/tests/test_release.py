@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -23,14 +24,12 @@ class ReleaseTests(unittest.TestCase):
         write_json(root / "tools/outputs/validations/artifact-binding.json", binding)
         if include_visual:
             write_json(root / "tools/outputs/validations/visual-records.json", validation())
-        write_json(root / "tools/outputs/tests/release.json", validation())
         gate = validation()
         gate.update({"gate": "final", "phase": "publication_checks", "dependency_gates": []})
         write_json(root / "tools/outputs/gates/final.json", gate)
         document = {
             "schema_version": "1.0.0",
             "global": {"ledger": "tools/outputs/worker-ledger.jsonl", "gate_directory": "tools/outputs/gates", "release_manifest": "07-final-report/release-manifest.json"},
-            "test_suites": [{"id": "release_integrity", "report": "tools/outputs/tests/release.json"}],
             "phases": [{
                 "id": "publication_checks", "depends_on": [], "gate": {"name": "final"},
                 "reconciliations": [],
@@ -49,6 +48,7 @@ class ReleaseTests(unittest.TestCase):
             report, _, manifest = check_release(root, workflow)
             self.assertEqual(PASS, report["status"])
             self.assertTrue(manifest.is_file())
+            self.assertNotIn("tests", json.loads(manifest.read_text(encoding="utf-8")))
 
     def test_changed_final_artifact_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

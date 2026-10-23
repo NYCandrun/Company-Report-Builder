@@ -42,18 +42,12 @@ def _print_json(value: Any) -> None:
 
 
 def _refresh_release_evidence(root: Path) -> None:
-    """Rebuild deterministic evidence once, without mutating completed state."""
-    from tools.run_integrity_tests import CATEGORIES, run_category
-
-    for category in CATEGORIES:
-        report = run_category(category, root / "tools/outputs/tests")
-        if report["status"] != PASS:
-            raise ValueError(f"integrity suite failed during release refresh: {category}")
+    """Rebuild company-run validation evidence without mutating completed state."""
     document = workflow(root / "WORKFLOW.yaml")
     for phase in document["phases"]:
         if phase["id"] == "release_acceptance":
             continue
-        report, _path = check_phase(root, phase["id"], update_state=False, run_tests=False)
+        report, _path = check_phase(root, phase["id"], update_state=False)
         if report["status"] != PASS:
             raise ValueError(f"phase evidence is not releasable: {phase['id']}={report['status']}")
 
@@ -63,7 +57,6 @@ def preflight(root: Path) -> int:
         "README.md",
         "RESEARCH_CONSTITUTION.md",
         "WORKFLOW.yaml",
-        "docs/legacy-prompt.md",
         "prompts/core/runtime.md",
         "prompts/core/evidence.md",
         "prompts/core/writing.md",

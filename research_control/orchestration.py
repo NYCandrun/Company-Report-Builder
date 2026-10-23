@@ -53,7 +53,6 @@ RUN_DIRECTORIES = (
     "05-synthesis/brand-guide/evidence/screenshots",
     "06-checks",
     "07-final-report",
-    "prompt",
     "scratchpad",
     "tools/candidates",
     "tools/digests",
@@ -63,7 +62,6 @@ RUN_DIRECTORIES = (
     "tools/outputs/gates",
     "tools/outputs/reconciliation",
     "tools/outputs/task-packets",
-    "tools/outputs/tests",
     "tools/outputs/validations",
     "tools/outputs/web-cache/objects",
     "tools/outputs/worker-parts/capture",
@@ -165,18 +163,6 @@ def initialize(root: Path, company_url: str) -> dict[str, Any]:
         },
     }
 
-    legacy = root / document.get("legacy_traceability_source", "docs/legacy-prompt.md")
-    atomic_write_text(root / "prompt/PROMPT.md", legacy.read_text(encoding="utf-8"))
-    atomic_write_text(root / "prompt/revised_prompt.md", (root / "README.md").read_text(encoding="utf-8"))
-    atomic_write_text(
-        root / "prompt/CHANGES.md",
-        "# Runtime prompt changes\n\n"
-        "The historical monolith is preserved in `prompt/PROMPT.md`. The runtime entrypoint is the concise "
-        "repository `README.md`, backed by the constitution, executable workflow, scoped task packets, and "
-        "deterministic controls. Research scope is unchanged. Version 2.3 adds a shared transport cache and "
-        "URL lead ledger for concurrent research/brand discovery, optional advisory model routing, and "
-        "hash-scoped publication rebuild and visual review.\n",
-    )
     atomic_write_text(root / document["global"]["ledger"], "")
     atomic_write_json(root / ACTIVE_PATH, {})
     save_state(root, state)

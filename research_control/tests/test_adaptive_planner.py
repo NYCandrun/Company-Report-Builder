@@ -20,7 +20,7 @@ SOURCE_ROOT = Path(__file__).resolve().parents[2]
 def copy_template(target: Path) -> None:
     for name in ("README.md", "RESEARCH_CONSTITUTION.md", "WORKFLOW.yaml", "pyproject.toml"):
         shutil.copy2(SOURCE_ROOT / name, target / name)
-    for name in ("docs", "prompts", "research_control", "tools"):
+    for name in ("prompts", "research_control", "tools"):
         shutil.copytree(SOURCE_ROOT / name, target / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
 
 

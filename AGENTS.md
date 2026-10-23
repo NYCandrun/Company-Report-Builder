@@ -11,7 +11,7 @@ Do not ask the user for source, page, batch, or worker counts. Discovery ends by
 documented channel saturation. Numeric limits are safety breakers and must
 produce incomplete status when reached.
 
-Do not read the legacy prompt during normal work, skip a failed control, edit
-scheduler state directly, or claim completion without a passing release
-manifest. When repository instructions and a packet conflict, block that packet
-and report the conflict; unrelated ready work may continue.
+Do not skip a failed control, edit scheduler state directly, or claim completion
+without a passing release manifest. When repository instructions and a packet
+conflict, block that packet and report the conflict; unrelated ready work may
+continue.

@@ -27,7 +27,6 @@ from research_control.orchestration import (
     start_task,
 )
 from research_control.publication import make_pdf, render
-from research_control.reporting import make_validation_report
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[2]
@@ -36,7 +35,7 @@ SOURCE_ROOT = Path(__file__).resolve().parents[2]
 def copy_template(target: Path) -> None:
     for name in ("README.md", "RESEARCH_CONSTITUTION.md", "WORKFLOW.yaml", "pyproject.toml"):
         shutil.copy2(SOURCE_ROOT / name, target / name)
-    for name in ("docs", "prompts", "research_control", "tools"):
+    for name in ("prompts", "research_control", "tools"):
         shutil.copytree(SOURCE_ROOT / name, target / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
 
 
@@ -52,18 +51,6 @@ def complete_task(root: Path, task_id: str, worker_id: str, writer) -> None:
     start_task(root, task_id, worker_id)
     writer()
     finish_task(root, task_id)
-
-
-def static_test_reports(root: Path) -> None:
-    for name in ("adaptive_runtime", "data_integrity", "evidence_pipeline", "citation_integrity", "execution_integrity", "release_integrity"):
-        report = make_validation_report(
-            checker=f"test_suite:{name}",
-            checker_version="clean-room-fixture",
-            status=PASS,
-            expected_count=1,
-            checked_count=1,
-        )
-        atomic_write_json(root / f"tools/outputs/tests/{name}.json", report)
 
 
 def write_diagram_models(root: Path) -> None:
@@ -169,13 +156,14 @@ class OperationalRunTests(unittest.TestCase):
         root = Path(directory)
         copy_template(root)
         initialize(root, "https://acme.example")
-        static_test_reports(root)
         return root
 
     def test_init_packet_and_resume(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.prepared(directory)
-            report, _ = check_phase(root, "bootstrap", run_tests=False)
+            self.assertFalse((root / "prompt").exists())
+            self.assertFalse((root / "tools/outputs/tests").exists())
+            report, _ = check_phase(root, "bootstrap")
             self.assertEqual(PASS, report["status"])
             packet = next_packets(root)
             self.assertEqual("scope", packet["phase"])
@@ -216,7 +204,7 @@ class OperationalRunTests(unittest.TestCase):
     def test_clean_room_url_to_release_control_path(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = self.prepared(directory)
-            report, _ = check_phase(root, "bootstrap", run_tests=False)
+            report, _ = check_phase(root, "bootstrap")
             self.assertEqual(PASS, report["status"])
 
             complete_task(
@@ -232,7 +220,7 @@ class OperationalRunTests(unittest.TestCase):
                     "reason": "no user inputs", "evidence_paths": ["00-scope.md"], "output_ids": [],
                 }]),
             )
-            report, _ = check_phase(root, "scope", run_tests=False)
+            report, _ = check_phase(root, "scope")
             self.assertEqual(PASS, report["status"])
 
             def write_capture() -> None:
@@ -263,7 +251,7 @@ class OperationalRunTests(unittest.TestCase):
 
             complete_task(root, "capture.capture", "capture-worker", write_capture)
             complete_task(root, "capture.brand-guide", "brand-guide-worker", lambda: write_brand_guide(root))
-            report, _ = check_phase(root, "capture", run_tests=False)
+            report, _ = check_phase(root, "capture")
             self.assertEqual(PASS, report["status"], report)
 
             def write_extraction() -> None:
@@ -300,7 +288,7 @@ class OperationalRunTests(unittest.TestCase):
                 text(root, "06-checks/filter-spot-check.md", "# Filter spot check\n\nNo misses.\n")
 
             complete_task(root, "facts.file-facts", "filing-worker", write_facts)
-            report, _ = check_phase(root, "facts", run_tests=False)
+            report, _ = check_phase(root, "facts")
             self.assertEqual(PASS, report["status"], report)
 
             synthesis_names = (
@@ -317,7 +305,7 @@ class OperationalRunTests(unittest.TestCase):
                 text(root, "06-checks/currency-review.md", "# Currency review\n\nACME-001 is current as of 2026-01-01.\n")
 
             complete_task(root, "initial_synthesis.synthesize", "synthesis-worker", write_synthesis)
-            report, _ = check_phase(root, "initial_synthesis", run_tests=False)
+            report, _ = check_phase(root, "initial_synthesis")
             self.assertEqual(PASS, report["status"], report)
 
             def write_verification() -> None:
@@ -330,7 +318,7 @@ class OperationalRunTests(unittest.TestCase):
                 }])
 
             complete_task(root, "verification.verify-cited-facts", "verification-worker", write_verification)
-            report, _ = check_phase(root, "verification", run_tests=False)
+            report, _ = check_phase(root, "verification")
             self.assertEqual(PASS, report["status"], report)
 
             def write_corrections() -> None:
@@ -341,7 +329,7 @@ class OperationalRunTests(unittest.TestCase):
                 }])
 
             complete_task(root, "corrected_synthesis.apply-verification", "verification-fixer", write_corrections)
-            report, _ = check_phase(root, "corrected_synthesis", run_tests=False)
+            report, _ = check_phase(root, "corrected_synthesis")
             self.assertEqual(PASS, report["status"], report)
 
             reviews = (
@@ -370,7 +358,7 @@ class OperationalRunTests(unittest.TestCase):
                     jsonl(root, "tools/outputs/review-decisions.jsonl", [{"review_id": "all", "status": "clean"}]),
                 ),
             )
-            report, _ = check_phase(root, "review", run_tests=False)
+            report, _ = check_phase(root, "review")
             self.assertEqual(PASS, report["status"], report)
 
             citation_map = {
@@ -392,7 +380,7 @@ class OperationalRunTests(unittest.TestCase):
             complete_task(root, "final.model-diagrams", "diagram-modeler", lambda: write_diagram_models(root))
             complete_task(root, "final.build-diagrams", "diagram-builder", lambda: write_diagram_artifacts(root))
             complete_task(root, "final.assemble", "assembler", lambda: render(root))
-            report, _ = check_phase(root, "final", run_tests=False)
+            report, _ = check_phase(root, "final")
             self.assertEqual(PASS, report["status"], report)
 
             complete_task(
@@ -529,7 +517,7 @@ class OperationalRunTests(unittest.TestCase):
             )
             complete_task(root, "publication_checks.visual", "visual-reviewer", write_visual)
             complete_task(root, "publication_checks.page-acceptance", "orchestrator", lambda: text(root, "06-checks/final-report.md", "# Final report\n\nAll current artifacts and pages reviewed.\n"))
-            report, _ = check_phase(root, "publication_checks", run_tests=False)
+            report, _ = check_phase(root, "publication_checks")
             self.assertEqual(PASS, report["status"], report)
             self.assertEqual("release_acceptance", current_phase(root))
 

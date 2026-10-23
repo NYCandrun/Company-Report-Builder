@@ -51,8 +51,6 @@ def _all_required_reports(document: dict[str, Any]) -> list[tuple[str, str]]:
                 if phase["id"] == "release_acceptance" and item["id"] == "release_acceptance":
                     continue
                 reports.append((f"{phase['id']}:{group}:{item['id']}", item["report"]))
-    for test in document.get("test_suites", []):
-        reports.append((f"test:{test['id']}", test["report"]))
     return reports
 
 
@@ -104,7 +102,6 @@ def check_release(root: Path, workflow_path: Path | None = None, write_manifest:
             unknowns.extend(f"gate {gate_name}: {item}" for item in errors or ["not current"])
 
     report_summaries: dict[str, Any] = {}
-    test_summaries: dict[str, Any] = {}
     for label, relative in _all_required_reports(document):
         expected += 1
         path = root / relative
@@ -127,8 +124,7 @@ def check_release(root: Path, workflow_path: Path | None = None, write_manifest:
         elif report.get("status") != PASS:
             unknowns.append(f"{label}: {report.get('status')}")
         checked += 1
-        target = test_summaries if label.startswith("test:") else report_summaries
-        target[label] = {"status": report.get("status"), "path": relative, "hash": sha256_file(path)}
+        report_summaries[label] = {"status": report.get("status"), "path": relative, "hash": sha256_file(path)}
 
     expected += 1
     ledger_path = root / document["global"]["ledger"]
@@ -195,7 +191,6 @@ def check_release(root: Path, workflow_path: Path | None = None, write_manifest:
             ]),
             "gates": gate_summaries,
             "reconciliations": {key: value for key, value in report_summaries.items() if ":reconciliations:" in key},
-            "tests": test_summaries,
             "visual_review": visual,
             "exceptions": exceptions,
             "validated_content_commit": _git_commit(root),
