@@ -1,5 +1,16 @@
 # Refactor report
 
+## Version 2.2 brand-guide integration
+
+One independent brand-guide packet now starts with adaptive capture and runs in
+parallel with source discovery. It produces final HTML/PDF guides plus a small
+audit folder. The existing diagram builder reads the guide only for
+presentation, records a concise style map, and retains the separately validated
+architecture model as its sole factual source. The existing visual-review gate
+now covers guide desktop/mobile views, every guide PDF page, standalone 165 mm
+diagrams, and their placement in the report. No separate style-agent phase or
+hash-binding subsystem was added.
+
 ## Version 2.1 publication revision
 
 The original one-page summary contract is deliberately superseded. The

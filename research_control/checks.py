@@ -26,7 +26,7 @@ from research_control.io import (
 from research_control.orchestration import ACTIVE_PATH, all_task_definitions, load_state, set_phase_result
 from research_control.reconciliation.assignments import reconcile_records, validate_ledger
 from research_control.reporting import make_validation_report
-from research_control.validators import citations, dates, diagrams, exhibits, facts, quotes, sources, tags, visual_records, writing_rules
+from research_control.validators import brand, citations, dates, diagrams, exhibits, facts, quotes, sources, tags, visual_records, writing_rules
 
 
 FACT_ID = re.compile(r"\b[A-Z][A-Z0-9-]*-[A-Z]*\d+[a-z]?\b")
@@ -337,7 +337,7 @@ def _final_artifacts(root: Path) -> list[str]:
 
 
 def _validate_reader_facing(root: Path) -> dict[str, Any]:
-    paths = _paths(root, ["07-final-report/company-brief.html", *(spec["path"] for spec in DIAGRAM_SPECS)])
+    paths = _paths(root, ["07-final-report/company-brief.html", "07-final-report/brand-guide.html", *(spec["path"] for spec in DIAGRAM_SPECS)])
     failures: list[str] = []
     prohibited = ("02-facts/", "tools/outputs/", "scratchpad/", "remove-before-sharing", "source_id", "fact_id")
     for path in paths:
@@ -358,9 +358,9 @@ def _validate_reader_facing(root: Path) -> dict[str, Any]:
         visible = re.sub(r"<[^>]+>", " ", text)
         for fact_id in FACT_ID.findall(visible):
             failures.append(f"{path.relative_to(root)}: exposes fact ID {fact_id}")
-    expected = 1 + len(DIAGRAM_SPECS)
-    unknowns = [] if len(paths) == expected else [f"expected one HTML brief and four SVG diagrams, found {len(paths)} artifacts"]
-    return _report(root, "reader_facing_text", ["07-final-report/company-brief.html", "07-final-report/*.svg"], expected, len(paths), failures, unknowns)
+    expected = 2 + len(DIAGRAM_SPECS)
+    unknowns = [] if len(paths) == expected else [f"expected two HTML documents and four SVG diagrams, found {len(paths)} artifacts"]
+    return _report(root, "reader_facing_text", ["07-final-report/{company-brief,brand-guide}.html", "07-final-report/*.svg"], expected, len(paths), failures, unknowns)
 
 
 def _validate_american_english(root: Path) -> dict[str, Any]:
@@ -470,6 +470,12 @@ def _validate_design(root: Path) -> dict[str, Any]:
             text = path.read_text(encoding="utf-8", errors="replace").casefold()
             if "<style" not in text and "stylesheet" not in text:
                 failures.append(f"{relative}: no stylesheet")
+    brief_path = root / "07-final-report/company-brief.html"
+    if brief_path.is_file():
+        brief = brief_path.read_text(encoding="utf-8", errors="replace")
+        for spec in DIAGRAM_SPECS:
+            if f'data-report-diagram="{spec["id"]}"' not in brief:
+                failures.append(f"company-brief.html does not place {spec['id']} in the target report layout")
     if failures:
         report["status"] = FAIL
         report["failure_count"] = len(failures)
@@ -579,6 +585,12 @@ def run_validator(root: Path, phase: dict[str, Any], validator_id: str) -> dict[
             source_ids,
             verified,
         )
+    if validator_id in {"brand_capture_artifacts", "brand_artifacts"}:
+        return _rename(brand.validate_artifacts(root), validator_id)
+    if validator_id == "brand_visual_records":
+        return brand.validate_visual_records(root)
+    if validator_id == "diagram_style_spec":
+        return diagrams.validate_style_spec(root)
     if validator_id == "diagram_artifacts":
         return diagrams.validate_artifacts(root)
     if validator_id == "diagram_visual_records":

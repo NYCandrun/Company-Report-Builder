@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from research_control.hashing import sha256_file
+from research_control.diagram_contract import DIAGRAM_SPECS
 from research_control.io import atomic_write_json, atomic_write_text, utc_now
 
 
@@ -30,6 +31,10 @@ table { width: 100%; border-collapse: collapse; margin: 24px 0; font-size: 14px;
 th, td { padding: 9px 10px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
 th { background: #f5f7fb; }
 blockquote { margin-left: 0; padding-left: 18px; border-left: 3px solid var(--accent); color: var(--muted); }
+.architecture-figures { margin-top: 56px; }
+.architecture-figures figure { margin: 32px 0; break-inside: avoid; page-break-inside: avoid; }
+.architecture-figures svg { display: block; width: 100%; max-width: 165mm; height: auto; margin: 0 auto; }
+.architecture-figures figcaption { margin: 10px auto 0; max-width: 165mm; color: var(--muted); font-size: 13px; }
 .meta { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
 @media print { body { background: white; } main { width: auto; margin: 0; padding: 36pt 42pt; box-shadow: none; } }
 """.strip()
@@ -123,6 +128,32 @@ def markdown_to_html(markdown: str, title: str, css: str) -> str:
         f"<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{html.escape(title)}</title>"
         f"<style>{css}</style></head><body><main><div class=\"meta\">Company research</div>{''.join(body)}</main></body></html>\n"
     )
+
+
+def _diagram_gallery(root: Path) -> str:
+    available = [(spec, root / spec["path"]) for spec in DIAGRAM_SPECS if (root / spec["path"]).is_file()]
+    if not available:
+        return ""
+    if len(available) != len(DIAGRAM_SPECS):
+        missing = [spec["path"] for spec in DIAGRAM_SPECS if not (root / spec["path"]).is_file()]
+        raise FileNotFoundError(f"diagram set is incomplete: {', '.join(missing)}")
+    figures: list[str] = [
+        '<section class="architecture-figures" aria-labelledby="architecture-figures-title">',
+        '<h2 id="architecture-figures-title">Architecture diagrams</h2>',
+    ]
+    for spec, path in available:
+        if not path.is_file() or not path.stat().st_size:
+            raise FileNotFoundError(f"diagram missing or empty: {spec['path']}")
+        svg = path.read_text(encoding="utf-8", errors="strict")
+        svg = re.sub(r"^\s*<\?xml[^>]*>\s*", "", svg)
+        figures.extend([
+            f'<figure data-report-diagram="{html.escape(spec["id"], quote=True)}">',
+            svg,
+            f'<figcaption><strong>{html.escape(spec["title"])}</strong> - {html.escape(spec["subtitle"])}</figcaption>',
+            '</figure>',
+        ])
+    figures.append('</section>')
+    return "".join(figures)
 
 
 def _plain_lines(markdown: str, width: int = 86) -> list[str]:
@@ -301,7 +332,9 @@ def render(root: Path) -> dict[str, Any]:
         html_path = output_dir / f"{slug}.html"
         pdf_path = output_dir / f"{slug}.pdf"
         title = "Company brief"
-        atomic_write_text(html_path, markdown_to_html(markdown, title, css))
+        document = markdown_to_html(markdown, title, css)
+        document = document.replace("</main>", _diagram_gallery(root) + "</main>", 1)
+        atomic_write_text(html_path, document)
         pdf_renderer, pages = render_pdf(html_path, markdown, pdf_path)
         preview_format, previews = make_page_previews(pdf_path, markdown, preview_dir, slug)
         metadata["documents"][slug] = {

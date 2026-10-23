@@ -1,9 +1,9 @@
 {
-  "schema_version": "2.1.0",
+  "schema_version": "2.2.0",
   "source_of_truth": ["RESEARCH_CONSTITUTION.md", "WORKFLOW.yaml"],
   "runtime_entrypoint": "README.md",
   "legacy_traceability_source": "docs/legacy-prompt.md",
-  "description": "Canonical adaptive execution, phase, and gate contract for company research.",
+  "description": "Canonical adaptive execution, brand, diagram, phase, and gate contract for company research.",
   "status_values": ["PASS", "FAIL", "UNKNOWN"],
   "disposition_values": ["completed", "completed_zero", "duplicate", "excluded", "blocked", "rejected"],
   "assurance_layers": {
@@ -105,6 +105,21 @@
           "outputs": ["01-sources/MANIFEST.csv", "01-sources/publish-dates.csv", "01-sources/BLOCKED.md", "06-checks/coverage.md", "tools/lists/extraction-scope.csv", "tools/outputs/capture-dispositions.jsonl"],
           "independent": false,
           "exclusive_inputs": true
+        },
+        {
+          "id": "brand-guide",
+          "task_type": "brand_guide",
+          "prompt": "prompts/phases/brand-guide.md",
+          "cores": ["prompts/core/runtime.md"],
+          "inputs": [
+            {"id": "company_url", "kind": "runtime_value", "required": true},
+            {"id": "scope_map", "path": "00-scope.md", "required": true}
+          ],
+          "outputs": ["07-final-report/brand-guide.html", "07-final-report/brand-guide.pdf", "05-synthesis/brand-guide/evidence/source-map.md", "05-synthesis/brand-guide/evidence/design-observations.md", "05-synthesis/brand-guide/evidence/asset-manifest.csv", "05-synthesis/brand-guide/evidence/screenshots", "05-synthesis/brand-guide/evidence/acceptance-check.md"],
+          "independent": true,
+          "exclusive_inputs": false,
+          "track_input_staleness": true,
+          "validators": ["brand_capture_artifacts"]
         }
       ]
     },
@@ -229,6 +244,13 @@
           "task_type": "brief_writer",
           "prompt": "prompts/phases/brief-writing.md",
           "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
+          "inputs": [
+            {"id": "reviewed_synthesis", "path": "05-synthesis/*.md", "required": true},
+            {"id": "verified_facts", "path": "02-facts/**", "required": true},
+            {"id": "source_manifest", "path": "01-sources/MANIFEST.csv", "required": true},
+            {"id": "verification_verdicts", "path": "tools/outputs/verification-verdicts.jsonl", "required": true},
+            {"id": "brand_guide", "path": "07-final-report/brand-guide.html", "required": true}
+          ],
           "outputs": ["05-synthesis/company-brief.md", "05-synthesis/design-notes.md", "05-synthesis/design/style.css", "tools/outputs/citation-map-company-brief.json", "tools/outputs/exhibit-map.json"],
           "independent": false,
           "exclusive_inputs": true,
@@ -239,6 +261,13 @@
           "task_type": "diagram_modeler",
           "prompt": "prompts/phases/diagram-modeling.md",
           "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
+          "inputs": [
+            {"id": "reviewed_synthesis", "path": "05-synthesis/*.md", "required": true},
+            {"id": "verified_facts", "path": "02-facts/**", "required": true},
+            {"id": "source_manifest", "path": "01-sources/MANIFEST.csv", "required": true},
+            {"id": "verification_verdicts", "path": "tools/outputs/verification-verdicts.jsonl", "required": true},
+            {"id": "reviewed_timelines", "path": "03-timelines/*.md", "required": false}
+          ],
           "outputs": ["07-final-report/diagram-models.md", "tools/outputs/diagram-models.json"],
           "independent": true,
           "exclusive_inputs": false,
@@ -250,17 +279,28 @@
           "prompt": "prompts/phases/diagram-building.md",
           "depends_on": ["write-brief", "model-diagrams"],
           "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
-          "outputs": ["07-final-report/01-product-capability-map.svg", "07-final-report/02-operating-model.svg", "07-final-report/03-enterprise-logical-architecture.svg", "07-final-report/04-technical-dependency-map.svg", "07-final-report/diagram-captions.md"],
+          "inputs": [
+            {"id": "diagram_model", "path": "07-final-report/diagram-models.md", "required": true},
+            {"id": "diagram_model_registry", "path": "tools/outputs/diagram-models.json", "required": true},
+            {"id": "brand_guide", "path": "07-final-report/brand-guide.html", "required": true},
+            {"id": "brief", "path": "05-synthesis/company-brief.md", "required": true}
+          ],
+          "outputs": ["07-final-report/diagram-style-spec.md", "07-final-report/01-product-capability-map.svg", "07-final-report/02-operating-model.svg", "07-final-report/03-enterprise-logical-architecture.svg", "07-final-report/04-technical-dependency-map.svg", "07-final-report/diagram-captions.md"],
           "independent": false,
           "exclusive_inputs": false,
-          "validators": ["diagram_models", "diagram_artifacts"]
+          "validators": ["diagram_models", "diagram_style_spec", "diagram_artifacts"]
         },
         {
           "id": "assemble",
           "task_type": "assembler",
           "prompt": "prompts/phases/publication-build.md",
-          "depends_on": ["write-brief"],
+          "depends_on": ["write-brief", "build-diagrams"],
           "cores": ["prompts/core/runtime.md", "prompts/core/writing.md"],
+          "inputs": [
+            {"id": "brief", "path": "05-synthesis/company-brief.md", "required": true},
+            {"id": "diagrams", "path": "07-final-report/{01-product-capability-map,02-operating-model,03-enterprise-logical-architecture,04-technical-dependency-map}.svg", "required": true},
+            {"id": "diagram_captions", "path": "07-final-report/diagram-captions.md", "required": true}
+          ],
           "outputs": ["07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "tools/outputs/render-metadata.json"],
           "independent": false,
           "exclusive_inputs": false,
@@ -316,7 +356,7 @@
           "prompt": "prompts/phases/publication-fixer.md",
           "depends_on": ["language", "citation-a", "citation-b", "visual"],
           "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
-          "outputs": ["05-synthesis/company-brief.md", "05-synthesis/design-notes.md", "tools/outputs/citation-map-company-brief.json", "tools/outputs/exhibit-map.json", "tools/outputs/diagram-models.json", "07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "07-final-report/diagram-models.md", "07-final-report/01-product-capability-map.svg", "07-final-report/02-operating-model.svg", "07-final-report/03-enterprise-logical-architecture.svg", "07-final-report/04-technical-dependency-map.svg", "07-final-report/diagram-captions.md", "tools/outputs/render-metadata.json", "06-checks/publication-decisions.md", "tools/outputs/publication-decisions.jsonl"],
+          "outputs": ["05-synthesis/company-brief.md", "05-synthesis/design-notes.md", "05-synthesis/brand-guide/evidence/**", "tools/outputs/citation-map-company-brief.json", "tools/outputs/exhibit-map.json", "tools/outputs/diagram-models.json", "07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "07-final-report/brand-guide.pdf", "07-final-report/brand-guide.html", "07-final-report/diagram-models.md", "07-final-report/diagram-style-spec.md", "07-final-report/01-product-capability-map.svg", "07-final-report/02-operating-model.svg", "07-final-report/03-enterprise-logical-architecture.svg", "07-final-report/04-technical-dependency-map.svg", "07-final-report/diagram-captions.md", "tools/outputs/render-metadata.json", "06-checks/publication-decisions.md", "tools/outputs/publication-decisions.jsonl"],
           "independent": true,
           "exclusive_inputs": true,
           "output_mode": "revise"
@@ -436,7 +476,9 @@
         {"id": "source_manifest", "path": "01-sources/MANIFEST.csv"},
         {"id": "publish_dates", "path": "01-sources/publish-dates.csv"},
         {"id": "blocked_log", "path": "01-sources/BLOCKED.md"},
-        {"id": "coverage", "path": "06-checks/coverage.md"}
+        {"id": "coverage", "path": "06-checks/coverage.md"},
+        {"id": "brand_guide", "path": "07-final-report/brand-guide.{html,pdf}"},
+        {"id": "brand_evidence", "path": "05-synthesis/brand-guide/evidence/**"}
       ],
       "reconciliations": [
         {"id": "capture_sources", "report": "tools/outputs/reconciliation/capture-sources.json"},
@@ -446,24 +488,25 @@
         {"id": "source_records", "report": "tools/outputs/validations/source-records.json", "assurance_layer": "data_integrity"},
         {"id": "source_dates", "report": "tools/outputs/validations/source-dates.json", "assurance_layer": "evidence_validity"},
         {"id": "manifest_files", "report": "tools/outputs/validations/manifest-files.json", "assurance_layer": "data_integrity"},
-        {"id": "capture_workers", "report": "tools/outputs/validations/capture-workers.json", "assurance_layer": "execution_integrity"}
+        {"id": "capture_workers", "report": "tools/outputs/validations/capture-workers.json", "assurance_layer": "execution_integrity"},
+        {"id": "brand_capture_artifacts", "report": "tools/outputs/validations/brand-capture-artifacts.json", "assurance_layer": "publication_integrity"}
       ],
       "semantic_reviews": [
         {"id": "coverage_review", "path": "06-checks/coverage.md", "role": "orchestrator", "independent": false}
       ],
       "tests": ["data_integrity", "evidence_pipeline", "execution_integrity"],
-      "completion": {"require_all": true, "required_worker_task_types": ["capture"], "state_update_after_gate": true},
-      "stale_if": ["00-scope.md", "01-sources/**", "04-competitors/*/01-sources/**", "tools/capture*.py", "tools/merge*.py", "research_control/validators/sources.py"],
+      "completion": {"require_all": true, "required_worker_task_types": ["capture", "brand_guide"], "state_update_after_gate": true},
+      "stale_if": ["00-scope.md", "01-sources/**", "04-competitors/*/01-sources/**", "05-synthesis/brand-guide/**", "07-final-report/brand-guide.*", "tools/capture*.py", "tools/merge*.py", "research_control/validators/{sources,brand}.py"],
       "downstream": ["facts"],
       "retry_policy": "global",
       "gate": {
         "name": "capture",
-        "required_paths": ["01-sources/MANIFEST.csv", "01-sources/publish-dates.csv", "01-sources/BLOCKED.md", "06-checks/coverage.md"],
+        "required_paths": ["01-sources/MANIFEST.csv", "01-sources/publish-dates.csv", "01-sources/BLOCKED.md", "06-checks/coverage.md", "07-final-report/brand-guide.html", "07-final-report/brand-guide.pdf", "05-synthesis/brand-guide/evidence/acceptance-check.md"],
         "required_reconciliations": ["capture_sources", "capture_assignments"],
-        "required_validators": ["source_records", "source_dates", "manifest_files", "capture_workers"],
+        "required_validators": ["source_records", "source_dates", "manifest_files", "capture_workers", "brand_capture_artifacts"],
         "required_semantic_reviews": ["coverage_review"],
         "required_tests": ["data_integrity", "evidence_pipeline", "execution_integrity"],
-        "required_worker_task_types": ["capture"]
+        "required_worker_task_types": ["capture", "brand_guide"]
       }
     },
     {
@@ -658,7 +701,8 @@
         {"id": "source_manifest", "path": "01-sources/MANIFEST.csv", "required": true},
         {"id": "verification_verdicts", "path": "tools/outputs/verification-verdicts.jsonl", "required": true},
         {"id": "reviewed_timelines", "path": "03-timelines/*.md", "required": false},
-        {"id": "design_system", "path": "05-synthesis/design/**", "required": true}
+        {"id": "design_system", "path": "05-synthesis/design/**", "required": true},
+        {"id": "brand_guide", "path": "07-final-report/brand-guide.html", "required": true}
       ],
       "outputs": [
         {"id": "brief_markdown", "path": "05-synthesis/company-brief.md"},
@@ -666,6 +710,7 @@
         {"id": "brief_html", "path": "07-final-report/company-brief.html"},
         {"id": "diagram_models", "path": "07-final-report/diagram-models.md"},
         {"id": "diagram_model_registry", "path": "tools/outputs/diagram-models.json"},
+        {"id": "diagram_style", "path": "07-final-report/diagram-style-spec.md"},
         {"id": "diagram_svgs", "path": "07-final-report/{01-product-capability-map,02-operating-model,03-enterprise-logical-architecture,04-technical-dependency-map}.svg"},
         {"id": "diagram_captions", "path": "07-final-report/diagram-captions.md"},
         {"id": "design_notes", "path": "05-synthesis/design-notes.md"}
@@ -673,6 +718,7 @@
       "reconciliations": [],
       "validators": [
         {"id": "diagram_models", "report": "tools/outputs/validations/diagram-models.json", "assurance_layer": "reasoning_quality"},
+        {"id": "diagram_style_spec", "report": "tools/outputs/validations/diagram-style-spec.json", "assurance_layer": "publication_integrity"},
         {"id": "diagram_artifacts", "report": "tools/outputs/validations/diagram-artifacts.json", "assurance_layer": "publication_integrity"}
       ],
       "semantic_reviews": [],
@@ -689,7 +735,8 @@
       "inputs": [
         {"id": "predesign_reference", "kind": "git_commit_or_checksum", "required": true},
         {"id": "brief_artifacts", "path": "07-final-report/company-brief.{pdf,html}", "required": true},
-        {"id": "diagram_artifacts", "path": "07-final-report/{diagram-models.md,diagram-captions.md,01-product-capability-map.svg,02-operating-model.svg,03-enterprise-logical-architecture.svg,04-technical-dependency-map.svg}", "required": true},
+        {"id": "brand_artifacts", "path": "07-final-report/brand-guide.{pdf,html}", "required": true},
+        {"id": "diagram_artifacts", "path": "07-final-report/{diagram-models.md,diagram-style-spec.md,diagram-captions.md,01-product-capability-map.svg,02-operating-model.svg,03-enterprise-logical-architecture.svg,04-technical-dependency-map.svg}", "required": true},
         {"id": "citation_maps", "path": "tools/outputs/citation-map-*.json", "required": true}
       ],
       "outputs": [
@@ -714,6 +761,9 @@
         {"id": "citation_structure", "report": "tools/outputs/validations/citations.json", "assurance_layer": "publication_integrity"},
         {"id": "exhibit_mapping", "report": "tools/outputs/validations/exhibits.json", "assurance_layer": "publication_integrity"},
         {"id": "diagram_models", "report": "tools/outputs/validations/diagram-models.json", "assurance_layer": "reasoning_quality"},
+        {"id": "brand_artifacts", "report": "tools/outputs/validations/brand-artifacts.json", "assurance_layer": "publication_integrity"},
+        {"id": "brand_visual_records", "report": "tools/outputs/validations/brand-visual-records.json", "assurance_layer": "execution_integrity"},
+        {"id": "diagram_style_spec", "report": "tools/outputs/validations/diagram-style-spec.json", "assurance_layer": "publication_integrity"},
         {"id": "diagram_artifacts", "report": "tools/outputs/validations/diagram-artifacts.json", "assurance_layer": "publication_integrity"},
         {"id": "diagram_visual_records", "report": "tools/outputs/validations/diagram-visual-records.json", "assurance_layer": "execution_integrity"},
         {"id": "design_check", "report": "tools/outputs/validations/design.json", "assurance_layer": "publication_integrity"},
@@ -731,14 +781,14 @@
       ],
       "tests": ["citation_integrity", "execution_integrity", "release_integrity"],
       "completion": {"require_all": true, "state_update_after_gate": true},
-      "stale_if": ["05-synthesis/company-brief.md", "02-facts/**", "01-sources/MANIFEST.csv", "tools/outputs/citation-map-*.json", "tools/outputs/diagram-models.json", "tools/brief_html/**", "07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "07-final-report/*.svg", "07-final-report/diagram-*.md"],
+      "stale_if": ["05-synthesis/company-brief.md", "05-synthesis/brand-guide/**", "02-facts/**", "01-sources/MANIFEST.csv", "tools/outputs/citation-map-*.json", "tools/outputs/diagram-models.json", "tools/brief_html/**", "07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "07-final-report/brand-guide.*", "07-final-report/*.svg", "07-final-report/diagram-*.md"],
       "downstream": ["release_acceptance"],
       "retry_policy": "global",
       "gate": {
         "name": "final",
-        "required_paths": ["07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "07-final-report/diagram-models.md", "07-final-report/01-product-capability-map.svg", "07-final-report/02-operating-model.svg", "07-final-report/03-enterprise-logical-architecture.svg", "07-final-report/04-technical-dependency-map.svg", "07-final-report/diagram-captions.md", "06-checks/final-report.md"],
+        "required_paths": ["07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "07-final-report/brand-guide.pdf", "07-final-report/brand-guide.html", "07-final-report/diagram-models.md", "07-final-report/diagram-style-spec.md", "07-final-report/01-product-capability-map.svg", "07-final-report/02-operating-model.svg", "07-final-report/03-enterprise-logical-architecture.svg", "07-final-report/04-technical-dependency-map.svg", "07-final-report/diagram-captions.md", "06-checks/final-report.md"],
         "required_reconciliations": ["final_cited_facts", "citation_sources", "visual_pages", "visual_diagrams"],
-        "required_validators": ["final_artifact_contract", "reader_facing_text", "american_english", "new_cited_fact_verification", "citation_structure", "exhibit_mapping", "diagram_models", "diagram_artifacts", "diagram_visual_records", "design_check", "visual_audit", "visual_records", "publication_decisions", "artifact_binding"],
+        "required_validators": ["final_artifact_contract", "reader_facing_text", "american_english", "new_cited_fact_verification", "citation_structure", "exhibit_mapping", "brand_artifacts", "brand_visual_records", "diagram_models", "diagram_style_spec", "diagram_artifacts", "diagram_visual_records", "design_check", "visual_audit", "visual_records", "publication_decisions", "artifact_binding"],
         "required_semantic_reviews": ["american_english_review", "citation_claim_a", "citation_claim_b", "visual_review", "orchestrator_page_review"],
         "required_tests": ["citation_integrity", "execution_integrity", "release_integrity"],
         "required_worker_task_types": ["brief_writer", "diagram_modeler", "diagram_builder", "assembler", "language_review", "citation_claim_review", "visual_review", "publication_fixer", "orchestrator_page_review"]
@@ -754,7 +804,8 @@
         {"id": "all_reconciliations", "path": "tools/outputs/reconciliation/*.json", "required": true},
         {"id": "all_validations", "path": "tools/outputs/validations/*.json", "required": true},
         {"id": "brief_artifacts", "path": "07-final-report/company-brief.{pdf,html}", "required": true},
-        {"id": "diagram_artifacts", "path": "07-final-report/{diagram-models.md,diagram-captions.md,01-product-capability-map.svg,02-operating-model.svg,03-enterprise-logical-architecture.svg,04-technical-dependency-map.svg}", "required": true}
+        {"id": "brand_artifacts", "path": "07-final-report/brand-guide.{pdf,html}", "required": true},
+        {"id": "diagram_artifacts", "path": "07-final-report/{diagram-models.md,diagram-style-spec.md,diagram-captions.md,01-product-capability-map.svg,02-operating-model.svg,03-enterprise-logical-architecture.svg,04-technical-dependency-map.svg}", "required": true}
       ],
       "outputs": [
         {"id": "release_manifest", "path": "07-final-report/release-manifest.json"}

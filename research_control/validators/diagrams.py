@@ -13,7 +13,9 @@ from research_control.diagram_contract import (
     DIAGRAM_MODEL_JSON,
     DIAGRAM_MODEL_MARKDOWN,
     DIAGRAM_SPECS,
+    DIAGRAM_STYLE_MARKDOWN,
 )
+from research_control.brand_contract import BRAND_GUIDE_HTML
 from research_control.io import load_json
 
 from .common import report_for
@@ -210,8 +212,31 @@ def _visible_text(root: ET.Element) -> str:
     return re.sub(r"\s+", " ", " ".join(chunks)).strip()
 
 
+def validate_style_spec(root: Path) -> dict[str, Any]:
+    patterns = [DIAGRAM_MODEL_JSON, BRAND_GUIDE_HTML, DIAGRAM_STYLE_MARKDOWN]
+    failures: list[str] = []
+    markdown_path = root / DIAGRAM_STYLE_MARKDOWN
+    markdown = markdown_path.read_text(encoding="utf-8", errors="replace") if markdown_path.is_file() else ""
+    if not markdown.strip():
+        failures.append(f"missing or empty diagram style specification: {DIAGRAM_STYLE_MARKDOWN}")
+    else:
+        for heading in ("Inputs and scope", "Semantic mapping", "Connector channels", "Typography and spacing", "Designed extensions"):
+            if heading.casefold() not in markdown.casefold():
+                failures.append(f"diagram-style-spec.md lacks {heading!r}")
+        folded = markdown.casefold()
+        if "presentation" not in folded or "not evidence" not in folded:
+            failures.append("diagram-style-spec.md does not state that brand guidance is presentation-only and not evidence")
+        for required in (
+            "line pattern", "arrowhead", "written edge label", "barred endpoint",
+            "boundary annotation", "fill", "grayscale", "165 mm",
+        ):
+            if required not in folded:
+                failures.append(f"diagram-style-spec.md lacks required visual-channel guidance {required!r}")
+    return report_for(sys.modules[__name__], "diagram_style_spec", root, patterns, 1, int(bool(markdown.strip())), failures)
+
+
 def validate_artifacts(root: Path) -> dict[str, Any]:
-    patterns = [DIAGRAM_MODEL_JSON, DIAGRAM_CAPTIONS, *(spec["path"] for spec in DIAGRAM_SPECS)]
+    patterns = [DIAGRAM_MODEL_JSON, DIAGRAM_STYLE_MARKDOWN, DIAGRAM_CAPTIONS, *(spec["path"] for spec in DIAGRAM_SPECS)]
     data, failures = _model_data(root)
     captions_path = root / DIAGRAM_CAPTIONS
     captions = captions_path.read_text(encoding="utf-8", errors="replace") if captions_path.is_file() else ""
@@ -220,6 +245,11 @@ def validate_artifacts(root: Path) -> dict[str, Any]:
     diagrams = {
         str(item.get("id")): item
         for item in (data or {}).get("diagrams", [])
+        if isinstance(item, dict) and item.get("id")
+    }
+    entities = {
+        str(item.get("id")): item
+        for item in (data or {}).get("entities", [])
         if isinstance(item, dict) and item.get("id")
     }
     checked = 0
@@ -241,27 +271,60 @@ def validate_artifacts(root: Path) -> dict[str, Any]:
         if not svg.get("viewBox"):
             failures.append(f"{spec['path']}: missing viewBox")
         tags = [element.tag.rsplit("}", 1)[-1] for element in svg.iter()]
-        if "image" in tags:
-            failures.append(f"{spec['path']}: embedded raster/image elements are prohibited")
+        prohibited = sorted(set(tags) & {"image", "foreignObject", "script"})
+        if prohibited:
+            failures.append(f"{spec['path']}: prohibited SVG elements: {', '.join(prohibited)}")
         if "text" not in tags:
             failures.append(f"{spec['path']}: contains no editable text elements")
+        children = list(svg)
+        child_tags = [item.tag.rsplit("}", 1)[-1] for item in children[:2]]
+        if child_tags != ["title", "desc"]:
+            failures.append(f"{spec['path']}: first two SVG children must be title then desc for logical reading order")
+        elif not (children[0].text or "").strip() or not (children[1].text or "").strip():
+            failures.append(f"{spec['path']}: title and desc must be nonempty")
+        serialized = ET.tostring(svg, encoding="unicode")
+        if "font-family" not in serialized or not re.search(r"(?:sans-serif|serif|monospace|system-ui)", serialized, re.I):
+            failures.append(f"{spec['path']}: no dependable font fallback is declared")
+        for element in svg.iter():
+            for attribute, value in element.attrib.items():
+                if attribute.rsplit("}", 1)[-1] == "href" and re.match(r"^(?:https?:)?//", value.strip(), re.I):
+                    failures.append(f"{spec['path']}: remote SVG dependency is prohibited")
+        if re.search(r"(?:@import|url\(\s*['\"]?(?:https?:)?//)", serialized, re.I):
+            failures.append(f"{spec['path']}: remote CSS dependency is prohibited")
         visible = _visible_text(svg)
         for required in (spec["title"], spec["subtitle"]):
             if required not in visible:
                 failures.append(f"{spec['path']}: missing deterministic visible text {required!r}")
 
-        represented = {
+        represented_entities = {
             value
             for element in svg.iter()
-            for value in [element.get("data-model-id", "").strip()]
+            for value in [element.get("data-entity-id", "").strip()]
+            if value
+        }
+        represented_relationships = {
+            value
+            for element in svg.iter()
+            for value in [element.get("data-relationship-id", "").strip()]
             if value
         }
         model = diagrams.get(spec["id"], {})
-        required_ids = set(_strings(model.get("entity_ids", []))) | set(_strings(model.get("relationship_ids", [])))
-        for stable_id in sorted(required_ids - represented):
-            failures.append(f"{spec['path']}: model ID {stable_id} is not represented by data-model-id")
-        for stable_id in sorted(represented - required_ids):
-            failures.append(f"{spec['path']}: data-model-id {stable_id} is absent from the approved model")
+        required_entities = set(_strings(model.get("entity_ids", [])))
+        required_relationships = set(_strings(model.get("relationship_ids", [])))
+        for stable_id in sorted(required_entities - represented_entities):
+            failures.append(f"{spec['path']}: entity {stable_id} is not represented by data-entity-id")
+        for stable_id in sorted(represented_entities - required_entities):
+            failures.append(f"{spec['path']}: data-entity-id {stable_id} is absent from the approved model")
+        for stable_id in sorted(required_relationships - represented_relationships):
+            failures.append(f"{spec['path']}: relationship {stable_id} is not represented by data-relationship-id")
+        for stable_id in sorted(represented_relationships - required_relationships):
+            failures.append(f"{spec['path']}: data-relationship-id {stable_id} is absent from the approved model")
+        for element in svg.iter():
+            entity_id = element.get("data-entity-id", "").strip()
+            if entity_id and entity_id in entities:
+                label = str(entities[entity_id].get("label", "")).strip()
+                if label and label not in _visible_text(element):
+                    failures.append(f"{spec['path']}: entity {entity_id} does not visibly retain canonical label {label!r}")
 
         if captions:
             for required in (spec["title"], spec["subtitle"]):

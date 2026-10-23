@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from research_control.discovery import DISCOVERY_CHANNELS, DiscoveryEngine
+from research_control.brand_contract import BRAND_TASK_OUTPUTS
 from research_control.io import atomic_write_text, load_json, workflow
 from research_control.orchestration import TASK_SCHEMAS, current_phase, load_state
 from research_control.runtime import DISCOVERY_TERMINAL, RuntimeStore, WorkItem
@@ -86,7 +87,7 @@ class AdaptivePlanner:
                     task_id=task_id,
                     phase=phase_id,
                     task_type=definition["task_type"],
-                    inputs=list(phase.get("inputs", [])),
+                    inputs=list(definition.get("inputs", phase.get("inputs", []))),
                     outputs=list(definition["outputs"]),
                     prompt_files=[*definition.get("cores", []), definition["prompt"]],
                     depends_on=dependencies,
@@ -106,6 +107,32 @@ class AdaptivePlanner:
 
     def _plan_capture(self) -> list[str]:
         created: list[str] = []
+        state = load_state(self.root)
+        self._add(
+            WorkItem(
+                task_id="capture.brand-guide",
+                phase="capture",
+                task_type="brand_guide",
+                inputs=[
+                    {"id": "company_url", "value": state["company_url"]},
+                    {"id": "scope_map", "path": "00-scope.md", "required": True},
+                ],
+                outputs=list(BRAND_TASK_OUTPUTS),
+                prompt_files=["prompts/core/runtime.md", "prompts/phases/brand-guide.md"],
+                schema_files=[],
+                validators=["brand_capture_artifacts"],
+                host_key=state["company_host"],
+                priority=5,
+                independent=True,
+                exclusive_inputs=False,
+                track_input_staleness=True,
+                metadata={
+                    "schedule": "concurrent_with_discovery_and_capture",
+                    "factual_scope": "presentation_only",
+                },
+            ),
+            created,
+        )
         engine = DiscoveryEngine(self.root, self.store)
         engine.initialize()
         discovery_ids: list[str] = []

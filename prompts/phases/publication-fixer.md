@@ -14,5 +14,10 @@ diagram changes, revalidate its model, regenerate the SVG from that model, and
 preserve its deterministic title/subtitle. The subsequent independent
 re-review must bind to all accepted source and artifact hashes.
 
+For accepted brand-guide findings, revise the authored brand-guide HTML,
+regenerate its PDF from the same print mode, update its acceptance evidence,
+and rerender the affected desktop, mobile, and PDF views. Brand changes may
+alter presentation only; they may not alter the architecture model.
+
 Do not perform the re-review yourself. The prior reviewers must rerun against
 the new artifact hashes before page acceptance.

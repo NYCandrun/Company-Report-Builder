@@ -7,6 +7,7 @@ from typing import Final
 
 DIAGRAM_MODEL_MARKDOWN: Final = "07-final-report/diagram-models.md"
 DIAGRAM_MODEL_JSON: Final = "tools/outputs/diagram-models.json"
+DIAGRAM_STYLE_MARKDOWN: Final = "07-final-report/diagram-style-spec.md"
 DIAGRAM_CAPTIONS: Final = "07-final-report/diagram-captions.md"
 
 DIAGRAM_SPECS: Final = (
@@ -39,11 +40,14 @@ DIAGRAM_SPECS: Final = (
 DIAGRAM_PATHS: Final = tuple(spec["path"] for spec in DIAGRAM_SPECS)
 DIAGRAM_DELIVERABLES: Final = (
     DIAGRAM_MODEL_MARKDOWN,
+    DIAGRAM_STYLE_MARKDOWN,
     *DIAGRAM_PATHS,
     DIAGRAM_CAPTIONS,
 )
 FINAL_ARTIFACTS: Final = (
     "07-final-report/company-brief.pdf",
     "07-final-report/company-brief.html",
+    "07-final-report/brand-guide.html",
+    "07-final-report/brand-guide.pdf",
     *DIAGRAM_DELIVERABLES,
 )

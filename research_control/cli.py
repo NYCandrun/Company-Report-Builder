@@ -71,6 +71,7 @@ def preflight(root: Path) -> int:
         "prompts/phases/capture-source.md",
         "prompts/phases/capture-reducer.md",
         "prompts/phases/extraction-reducer.md",
+        "prompts/phases/brand-guide.md",
         "prompts/phases/diagram-modeling.md",
         "prompts/phases/diagram-building.md",
         "research_control/schemas/work-item.schema.json",

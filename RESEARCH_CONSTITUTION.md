@@ -37,6 +37,11 @@ The repository has three durable layers:
 3. Sense-making built only on the fact store, culminating in the company brief
    and an auditable four-diagram architecture package.
 
+A separate public-evidence brand branch runs concurrently with capture and
+produces the release brand guide. It may shape typography, color, spacing,
+diagram styling, and report presentation, but it never supplies company or
+architecture facts.
+
 The repository must be reproducible from the effective prompt, company URL,
 user-provided inputs, captured public sources, and dependencies created or
 declared during the run. Incidental local files or conventions are not valid
@@ -282,6 +287,12 @@ and H/U possibilities never masquerade as established architecture. Grade-I
 material may remain in a private working brief but is removed from any
 externally shared version unless explicitly authorized.
 
+The brand guide is delivered in HTML and PDF. Its editorial-diagram section
+supplies visual ingredients only. Before drawing, the diagram builder records a
+small semantic style map; line pattern, arrowhead, written qualifier, boundary
+annotation, and fill/accent remain separate channels. Any convention not found
+in public brand evidence is labeled as a designed extension.
+
 Fonts are embedded only when legally permitted and technically available.
 Design notes record input-guide choices, public-identity choices, exclusions,
 substitutions, and licensing constraints. The design should be company-specific
@@ -294,7 +305,8 @@ exhibits, and unexplained gaps. They do not replace visual judgment. A separate
 high-reasoning reviewer opens every rendered page in order with no sampling and
 records one row for every clean or defective page. The same reviewer opens all
 four SVGs at 165 mm publication width and records one row per diagram. The
-orchestrator also views every page and diagram for visual quality, presumptive
+reviewer also checks the brand guide at desktop/mobile widths and every page of
+its PDF. The orchestrator also views every page and diagram for visual quality, presumptive
 employment language, exposed internals, stale counts, and stale metadata.
 
 Fix systemic layout causes before isolated symptoms. After material pagination
@@ -336,7 +348,8 @@ The effective dependency order is:
 
 1. Bootstrap the repository, tools, state, and bounded task contracts.
 2. Map scope and public source channels.
-3. Capture and reconcile the source record.
+3. Capture and reconcile the source record while an independent brand-guide
+   worker inspects, builds, renders, and checks the public visual system.
 4. Extract, file, and mechanically validate facts.
 5. Produce initial synthesis from script-checked facts.
 6. Model-verify every fact cited by that synthesis.
@@ -345,7 +358,8 @@ The effective dependency order is:
 9. Disposition every finding and apply accepted fixes.
 10. Write and assemble the company brief; reconstruct and validate the four
     architecture information models before drawing.
-11. Build the four editable SVGs, then run publication, citation, claim,
+11. Map brand presentation onto the validated model, build the four editable
+    SVGs, then run publication, citation, claim,
     design, and complete page-and-diagram visual checks.
 12. Independently accept the exact release artifacts.
 

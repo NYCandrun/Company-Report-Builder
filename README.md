@@ -2,9 +2,9 @@
 
 Give the agent one public company URL. This repository discovers the available
 evidence, plans work from the resulting corpus, and carries the run through a
-cited, visually reviewed company brief and four evidence-bounded architecture
-diagrams. Do not ask the user how many pages, sources, batches, or workers to
-use.
+cited, visually reviewed company brief, public-evidence brand guide, and four
+evidence-bounded architecture diagrams. Do not ask the user how many pages,
+sources, batches, or workers to use.
 
 ## Run it
 
@@ -157,6 +157,12 @@ succeeded -> stale -> ready
 
 Task counts therefore vary with the company and evidence actually found.
 
+At the start of capture, the scheduler also launches one independent brand-guide
+packet. It inspects the company's public visual system while discovery and
+source capture continue, so the work normally overlaps the longest research
+stage instead of becoming a serial phase. The brand packet is presentation-only:
+it cannot add facts to the company record or architecture model.
+
 ## Research and release contract
 
 Read these in order when starting a run:
@@ -171,18 +177,22 @@ historical policy and traceability baseline.
 The controlled phases remain:
 
 ```text
-bootstrap -> scope -> adaptive discovery and capture -> adaptive extraction
+bootstrap -> scope -> adaptive discovery and capture + concurrent brand guide -> adaptive extraction
 -> fact filing -> initial synthesis -> cited-fact verification
 -> corrected synthesis -> independent skeptical review -> final brief
--> gated architecture modeling -> four editable diagrams
+-> gated architecture modeling -> branded four-diagram build
 -> language, citation, and complete visual review -> fixes and re-review
 -> release acceptance
 ```
 
-The final-writing packet produces `05-synthesis/company-brief.md`. The diagram
-packets first produce an auditable model registry, then four editable SVGs with
-fixed titles and subtitles. Build the company-brief HTML, PDF, and page previews
-with:
+The brand packet produces `07-final-report/brand-guide.html` and
+`07-final-report/brand-guide.pdf`, with auditable visual evidence under
+`05-synthesis/brand-guide/evidence/`. The final-writing packet produces
+`05-synthesis/company-brief.md`. The diagram packets first produce an auditable
+model registry, then a concise `diagram-style-spec.md` from the guide's
+presentation language, and finally four editable SVGs with fixed titles and
+subtitles. The brand guide never supplies architecture facts. Build the
+company-brief HTML, PDF, and page previews with:
 
 ```bash
 python3 -m research_control render
@@ -201,10 +211,14 @@ The fixed figure labels are:
    technical relationship, limitation, or architectural distinction does the
    research establish?
 
+The assembler places all four SVGs into the company-brief HTML so they are also
+reviewed in the target report layout.
+
 Release remains fail-closed. It requires current phase gates, complete input
 accounting, independent review identities, resolvable fact/source citations,
-the company-brief HTML/PDF, all four SVGs, exact deterministic diagram titles,
-a review record for every rendered page and diagram, and exact final hashes.
+the company-brief and brand-guide HTML/PDF pairs, all four SVGs, exact
+deterministic diagram titles, a review record for every rendered report page,
+diagram, brand-guide viewport, and brand-guide PDF page, and exact final hashes.
 If release cannot pass, report the concrete failed control and leave the run
 resumable.
 

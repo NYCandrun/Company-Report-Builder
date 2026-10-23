@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from research_control.discovery import DISCOVERY_CHANNELS, DiscoveryEngine
-from research_control.io import atomic_write_json
+from research_control.io import atomic_write_json, workflow
 from research_control.orchestration import initialize, load_state, save_state
 from research_control.planner import AdaptivePlanner
 from research_control.reducers import reduce_capture_parts, reduce_discovery
@@ -24,6 +24,16 @@ def copy_template(target: Path) -> None:
 
 
 class AdaptivePlannerTests(unittest.TestCase):
+    def test_brand_input_is_presentation_only_and_no_extra_phase_is_added(self) -> None:
+        document = workflow(SOURCE_ROOT / "WORKFLOW.yaml")
+        final_tasks = {item["id"]: item for item in document["execution_profiles"]["final"]["tasks"]}
+        model_inputs = {item["id"] for item in final_tasks["model-diagrams"]["inputs"]}
+        build_inputs = {item["id"] for item in final_tasks["build-diagrams"]["inputs"]}
+        self.assertNotIn("brand_guide", model_inputs)
+        self.assertIn("brand_guide", build_inputs)
+        self.assertNotIn("adapt-diagram-style", final_tasks)
+        self.assertIn("07-final-report/diagram-style-spec.md", final_tasks["build-diagrams"]["outputs"])
+
     def test_new_first_party_branch_reopens_a_saturated_channel(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -79,7 +89,11 @@ class AdaptivePlannerTests(unittest.TestCase):
                     discovered_from="homepage", evidence="fixture links", record_pass=False,
                 )
                 first_plan = AdaptivePlanner(root, store).reconcile()
-                self.assertEqual(len(DISCOVERY_CHANNELS), first_plan["task_count"])
+                self.assertEqual(len(DISCOVERY_CHANNELS) + 1, first_plan["task_count"])
+                brand = store.task("capture.brand-guide")
+                self.assertIsNotNone(brand)
+                self.assertTrue(brand["independent"])
+                self.assertEqual("concurrent_with_discovery_and_capture", brand["metadata"]["schedule"])
 
                 for channel in DISCOVERY_CHANNELS:
                     engine.add_candidates(

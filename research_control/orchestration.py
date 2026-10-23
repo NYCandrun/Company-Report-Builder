@@ -49,6 +49,7 @@ RUN_DIRECTORIES = (
     "03-timelines",
     "04-competitors",
     "05-synthesis/design",
+    "05-synthesis/brand-guide/evidence/screenshots",
     "06-checks",
     "07-final-report",
     "prompt",
@@ -170,8 +171,8 @@ def initialize(root: Path, company_url: str) -> dict[str, Any]:
         "# Runtime prompt changes\n\n"
         "The historical monolith is preserved in `prompt/PROMPT.md`. The runtime entrypoint is the concise "
         "repository `README.md`, backed by the constitution, executable workflow, scoped task packets, and "
-        "deterministic controls. Research scope is unchanged. Version 2.1 replaces the one-page summary "
-        "with a model-gated package of four editable, evidence-bound architecture diagrams.\n",
+        "deterministic controls. Research scope is unchanged. Version 2.2 adds a concurrent public-evidence "
+        "brand-guide branch and applies its presentation language to the model-gated architecture diagrams.\n",
     )
     atomic_write_text(root / document["global"]["ledger"], "")
     atomic_write_json(root / ACTIVE_PATH, {})
@@ -282,7 +283,7 @@ def _write_packet(root: Path, phase: dict[str, Any], task: dict[str, Any]) -> tu
         "output_mode": task.get("output_mode", "create"),
         "track_input_staleness": bool(task.get("track_input_staleness")),
         "company_url": load_state(root)["company_url"],
-        "inputs": phase.get("inputs", []),
+        "inputs": task.get("inputs", phase.get("inputs", [])),
         "outputs": task.get("outputs", []),
         "required_validators": list(task.get(
             "validators", [item["id"] for item in phase.get("validators", [])]
@@ -310,7 +311,7 @@ def _write_packet(root: Path, phase: dict[str, Any], task: dict[str, Any]) -> tu
         "## Inputs",
         "",
     ]
-    for item in phase.get("inputs", []):
+    for item in packet["inputs"]:
         location = item.get("path", item.get("kind", "runtime value"))
         lines.append(f"- `{item['id']}`: `{location}` (required: {bool(item.get('required'))})")
     lines.extend(["", "## Exact outputs", ""])
@@ -456,9 +457,9 @@ def start_task(root: Path, task_id: str, worker_id: str) -> dict[str, Any]:
         "attempt": attempt,
         "phase": phase_id,
         "task_type": task["task_type"],
-        "input_ids": [item["id"] for item in phase.get("inputs", [])],
-        "input_patterns": [item["path"] for item in phase.get("inputs", []) if item.get("path")],
-        "input_hashes": hash_patterns(root, [item["path"] for item in phase.get("inputs", []) if item.get("path")]),
+        "input_ids": [item["id"] for item in task.get("inputs", phase.get("inputs", []))],
+        "input_patterns": [item["path"] for item in task.get("inputs", phase.get("inputs", [])) if item.get("path")],
+        "input_hashes": hash_patterns(root, [item["path"] for item in task.get("inputs", phase.get("inputs", [])) if item.get("path")]),
         "exclusive_inputs": bool(task.get("exclusive_inputs", True)),
         "expected_output_patterns": task.get("outputs", []),
         "required_validators": list(task.get(
@@ -500,7 +501,7 @@ def finish_task(root: Path, task_id: str) -> dict[str, Any]:
     outputs, missing = _resolved_outputs(root, record["expected_output_patterns"])
     if missing:
         raise ValueError(f"task outputs missing or empty: {', '.join(missing)}")
-    if record["task_type"] in {"diagram_modeler", "diagram_builder"}:
+    if record["task_type"] in {"brand_guide", "diagram_modeler", "diagram_builder"}:
         from research_control.checks import run_validator
 
         phase = _phase(_workflow(root), record["phase"])

@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from research_control import FAIL, PASS
-from research_control.diagram_contract import DIAGRAM_CAPTIONS, DIAGRAM_MODEL_JSON, DIAGRAM_MODEL_MARKDOWN, DIAGRAM_SPECS
+from research_control.diagram_contract import DIAGRAM_CAPTIONS, DIAGRAM_MODEL_JSON, DIAGRAM_MODEL_MARKDOWN, DIAGRAM_SPECS, DIAGRAM_STYLE_MARKDOWN
 from research_control.io import atomic_write_json, atomic_write_text
 from research_control.validators import diagrams
 
@@ -38,13 +38,23 @@ def write_models(root: Path, value: dict) -> None:
 
 
 def write_artifacts(root: Path) -> None:
+    atomic_write_text(
+        root / DIAGRAM_STYLE_MARKDOWN,
+        "# Diagram style specification\n\n## Inputs and scope\nPresentation only; not evidence.\n\n"
+        "## Semantic mapping\nFill encodes identity.\n\n## Connector channels\nLine pattern, arrowhead, "
+        "written edge label, barred endpoint, and boundary annotation remain separate.\n\n"
+        "## Typography and spacing\nUse 165 mm width and grayscale-safe spacing.\n\n"
+        "## Designed extensions\nNone required.\n",
+    )
     captions: list[str] = []
     for spec in DIAGRAM_SPECS:
         atomic_write_text(
             root / spec["path"],
             '<svg xmlns="http://www.w3.org/2000/svg" width="165mm" height="90mm" viewBox="0 0 660 360">'
+            f'<title>{spec["title"]}</title><desc>{spec["subtitle"]}</desc>'
+            '<style>text{font-family:Arial,Helvetica,sans-serif}</style>'
             f'<text>{spec["title"]}</text><text>{spec["subtitle"]}</text>'
-            '<g data-model-id="ENT-001"><rect width="100" height="50"/><text>Product</text></g></svg>\n',
+            '<g data-entity-id="ENT-001"><rect width="100" height="50"/><text>Product</text></g></svg>\n',
         )
         captions.extend([spec["title"], spec["subtitle"]])
     atomic_write_text(root / DIAGRAM_CAPTIONS, "\n\n".join(captions) + "\n")
@@ -90,7 +100,7 @@ class DiagramValidatorTests(unittest.TestCase):
             report = diagrams.validate_artifacts(root)
             self.assertEqual(FAIL, report["status"])
             self.assertTrue(any("width must be exactly 165mm" in item for item in report["failures"]))
-            self.assertTrue(any("embedded raster/image" in item for item in report["failures"]))
+            self.assertTrue(any("prohibited SVG elements" in item for item in report["failures"]))
 
 
 if __name__ == "__main__":

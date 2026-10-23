@@ -684,3 +684,23 @@ deterministic checker cannot establish meaning.
 - **Enforcement:** Release schema and acceptance checker.
 - **Regression test:** `test_exception_requires_reason_and_evidence_path`.
 - **Notes:** Exceptions cannot override failed required controls.
+
+## F069 — Brand styling becomes architecture evidence
+
+- **Observed or anticipated failure:** A visual specimen, color grouping, or nearby label in the brand guide creates a product, boundary, or relationship in a diagram.
+- **What goes wrong:** Presentation silently changes the validated information model.
+- **Invariant:** The brand guide supplies presentation only; diagram facts come only from the validated model registry.
+- **Current source:** RESEARCH_CONSTITUTION.md Visual integrity; prompts/phases/diagram-building.md.
+- **Enforcement:** Task-specific inputs, model validation, stable SVG entity/relationship IDs, and diagram-style-spec review.
+- **Regression test:** `test_valid_models_and_editable_svgs_pass` plus operational packet separation.
+- **Notes:** Designed visual extensions are allowed only when labeled and do not alter model semantics.
+
+## F070 — Brand-guide work serializes the research run
+
+- **Observed or anticipated failure:** Brand research waits for company research or becomes a new blocking phase at the end.
+- **What goes wrong:** The added output materially lengthens wall-clock runtime without needing factual synthesis.
+- **Invariant:** One independent brand-guide packet starts with capture and runs alongside discovery and source capture.
+- **Current source:** README Adaptive planning and scheduling; WORKFLOW.yaml capture profile.
+- **Enforcement:** Adaptive planner priority and independent task metadata.
+- **Regression test:** `test_task_count_follows_discovered_corpus_and_content_volume`.
+- **Notes:** The capture gate still waits if the brand branch is genuinely the slower required output.

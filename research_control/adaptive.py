@@ -139,7 +139,7 @@ def complete_work(
 
 
 def _validate_semantic_receipt(root: Path, store: RuntimeStore, task: dict[str, Any]) -> None:
-    if task["task_type"] in {"diagram_modeler", "diagram_builder"}:
+    if task["task_type"] in {"brand_guide", "diagram_modeler", "diagram_builder"}:
         document = workflow(root / "WORKFLOW.yaml")
         phase = next(item for item in document["phases"] if item["id"] == task["phase"])
         for validator_id in task.get("validators", []):

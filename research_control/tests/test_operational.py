@@ -13,7 +13,7 @@ from research_control import PASS
 from research_control.checks import check_phase
 from research_control.capture import capture_url
 from research_control.cli import _refresh_release_evidence
-from research_control.diagram_contract import DIAGRAM_CAPTIONS, DIAGRAM_MODEL_JSON, DIAGRAM_MODEL_MARKDOWN, DIAGRAM_SPECS
+from research_control.diagram_contract import DIAGRAM_CAPTIONS, DIAGRAM_MODEL_JSON, DIAGRAM_MODEL_MARKDOWN, DIAGRAM_SPECS, DIAGRAM_STYLE_MARKDOWN
 from research_control.gates.release import check_release
 from research_control.io import atomic_write_json, atomic_write_jsonl, atomic_write_text
 from research_control.orchestration import (
@@ -25,7 +25,7 @@ from research_control.orchestration import (
     next_packets,
     start_task,
 )
-from research_control.publication import render
+from research_control.publication import make_pdf, render
 from research_control.reporting import make_validation_report
 
 
@@ -106,13 +106,24 @@ def write_diagram_models(root: Path) -> None:
 
 
 def write_diagram_artifacts(root: Path) -> None:
+    text(
+        root,
+        DIAGRAM_STYLE_MARKDOWN,
+        "# Diagram style specification\n\n## Inputs and scope\nPresentation only; not evidence.\n\n"
+        "## Semantic mapping\nFill encodes identity.\n\n## Connector channels\nLine pattern, arrowhead, "
+        "written edge label, barred endpoint, and boundary annotation remain separate.\n\n"
+        "## Typography and spacing\nUse 165 mm width and grayscale-safe spacing.\n\n"
+        "## Designed extensions\nNone required.\n",
+    )
     captions = ["# Diagram captions", ""]
     for spec in DIAGRAM_SPECS:
         svg = (
             '<svg xmlns="http://www.w3.org/2000/svg" width="165mm" height="90mm" viewBox="0 0 660 360">'
+            f'<title>{spec["title"]}</title><desc>{spec["subtitle"]}</desc>'
+            '<style>text{font-family:Arial,Helvetica,sans-serif}</style>'
             f'<text x="20" y="30">{spec["title"]}</text>'
             f'<text x="20" y="55">{spec["subtitle"]}</text>'
-            '<g data-model-id="ENT-001"><rect x="20" y="90" width="300" height="80" />'
+            '<g data-entity-id="ENT-001"><rect x="20" y="90" width="300" height="80" />'
             '<text x="35" y="135">Acme workflow software</text></g></svg>\n'
         )
         text(root, spec["path"], svg)
@@ -125,6 +136,22 @@ def write_diagram_artifacts(root: Path) -> None:
             "",
         ])
     text(root, DIAGRAM_CAPTIONS, "\n".join(captions))
+
+
+def write_brand_guide(root: Path) -> None:
+    text(
+        root,
+        "07-final-report/brand-guide.html",
+        "<!doctype html><html lang=\"en-US\"><head><style>body{font-family:Arial,sans-serif}</style></head>"
+        "<body><h1>Acme brand guide</h1><h2>Editorial diagrams and architecture graphics</h2>"
+        "<p>Designed extension for diagrams.</p></body></html>\n",
+    )
+    make_pdf("# Acme brand guide\n\nEditorial diagrams and architecture graphics.\n", root / "07-final-report/brand-guide.pdf")
+    text(root, "05-synthesis/brand-guide/evidence/source-map.md", "# Source map\n\nhttps://acme.example - primary marketing.\n")
+    text(root, "05-synthesis/brand-guide/evidence/design-observations.md", "# Design observations\n\nObserved restrained blue and neutral palette.\n")
+    text(root, "05-synthesis/brand-guide/evidence/asset-manifest.csv", "Source URL,Type,Usage,Evidence label,Dimensions,Delivery,Notes\nhttps://acme.example/logo.svg,logo,identity,Observed,unknown,remote,fixture\n")
+    text(root, "05-synthesis/brand-guide/evidence/acceptance-check.md", "# Acceptance check\n\nPASS - desktop, mobile, and PDF inspected.\n")
+    text(root, "05-synthesis/brand-guide/evidence/screenshots/guide-desktop.png", "fixture image\n")
 
 
 class OperationalRunTests(unittest.TestCase):
@@ -231,6 +258,7 @@ class OperationalRunTests(unittest.TestCase):
                 }])
 
             complete_task(root, "capture.capture", "capture-worker", write_capture)
+            complete_task(root, "capture.brand-guide", "brand-guide-worker", lambda: write_brand_guide(root))
             report, _ = check_phase(root, "capture", run_tests=False)
             self.assertEqual(PASS, report["status"], report)
 
@@ -411,6 +439,13 @@ class OperationalRunTests(unittest.TestCase):
                         {"diagram": spec["id"], "review_width_mm": 165, "status": "clean", "issues": []}
                         for spec in DIAGRAM_SPECS
                     ],
+                    "brand_guide": {
+                        "html": [
+                            {"viewport": "desktop", "status": "clean", "issues": []},
+                            {"viewport": "mobile", "status": "clean", "issues": []},
+                        ],
+                        "pdf_pages": [{"page": 1, "status": "clean", "issues": []}],
+                    },
                 })
                 jsonl(root, "tools/outputs/publication-findings-visual.jsonl", [{"review_id": "visual", "status": "clean"}])
 

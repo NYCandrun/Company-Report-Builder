@@ -4,6 +4,11 @@ Read the evidence, writing, and runtime cores. Use only reviewed synthesis and
 verified facts. Follow the assigned word budget and exhibit specifications.
 Keep fact IDs beside the exact supported words in Markdown.
 
+Use `07-final-report/brand-guide.html` only to derive the brief's typography,
+color, spacing, and print presentation. It is not factual evidence and must not
+change the research claims, architecture, or citations. Record any designed
+extension in `05-synthesis/design-notes.md`.
+
 The brief is titled `company brief`, says **Focus: Product marketing**, and
 does not presume employment. Answer in order: products and architecture;
 buyers and buying motion; positioning and change; direction; competitors;
