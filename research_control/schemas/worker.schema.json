@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "worker.schema.json",
+  "title": "Worker attempt",
+  "type": "object",
+  "required": ["worker_id", "task_id", "attempt", "task_type", "input_ids", "exclusive_inputs", "expected_outputs", "required_validators", "status"],
+  "properties": {
+    "worker_id": {"type": "string", "minLength": 1},
+    "task_id": {"type": "string", "minLength": 1},
+    "workflow_id": {"type": ["string", "null"]},
+    "attempt": {"type": "integer", "minimum": 1},
+    "task_type": {"type": "string", "minLength": 1},
+    "input_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "exclusive_inputs": {"type": "boolean"},
+    "expected_outputs": {"type": "array", "items": {"type": "string"}, "minItems": 1, "uniqueItems": true},
+    "required_validators": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "status": {"enum": ["queued", "running", "succeeded", "failed", "blocked"]},
+    "started_at": {"type": ["string", "null"]},
+    "finished_at": {"type": ["string", "null"]},
+    "exit_status": {"type": ["integer", "string", "null"]},
+    "output_validation_status": {"enum": ["PASS", "FAIL", "UNKNOWN", null]},
+    "output_hashes": {"type": "object", "additionalProperties": {"type": "string"}}
+  },
+  "additionalProperties": true
+}

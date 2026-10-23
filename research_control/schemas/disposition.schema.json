@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "disposition.schema.json",
+  "title": "Assigned input disposition",
+  "type": "object",
+  "required": ["assignment_id", "input_id", "disposition", "reason"],
+  "properties": {
+    "assignment_id": {"type": "string", "minLength": 1},
+    "input_id": {"type": "string", "minLength": 1},
+    "disposition": {"enum": ["completed", "completed_zero", "duplicate", "excluded", "blocked", "rejected"]},
+    "reason": {"type": "string", "minLength": 1},
+    "evidence_paths": {"type": "array", "items": {"type": "string"}},
+    "output_ids": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": true
+}

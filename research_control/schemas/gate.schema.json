@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gate.schema.json",
+  "title": "Phase gate report",
+  "allOf": [{"$ref": "validation.schema.json"}],
+  "type": "object",
+  "required": ["gate", "phase", "dependency_gates"],
+  "properties": {
+    "gate": {"type": "string", "minLength": 1},
+    "phase": {"type": "string", "minLength": 1},
+    "dependency_gates": {"type": "array", "items": {"type": "string"}}
+  }
+}

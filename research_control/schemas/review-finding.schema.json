@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "review-finding.schema.json",
+  "title": "Semantic review finding",
+  "type": "object",
+  "required": ["finding_id", "review_id", "artifact", "location", "severity", "finding", "status"],
+  "properties": {
+    "finding_id": {"type": "string", "minLength": 1},
+    "review_id": {"type": "string", "minLength": 1},
+    "artifact": {"type": "string", "minLength": 1},
+    "location": {"type": "string", "minLength": 1},
+    "severity": {"enum": ["mandatory", "major", "minor", "note"]},
+    "finding": {"type": "string", "minLength": 1},
+    "recommended_fix": {"type": "string"},
+    "status": {"enum": ["open", "apply", "apply_in_part", "reject", "closed"]},
+    "decision_reason": {"type": "string"},
+    "evidence_paths": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": true
+}

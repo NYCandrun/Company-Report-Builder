@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "release.schema.json",
+  "title": "Accepted research release",
+  "type": "object",
+  "required": ["schema_version", "status", "acceptance_timestamp", "checker_version", "git_commit", "artifacts", "evidence_hashes", "gates", "reconciliations", "tests", "visual_review", "exceptions"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "status": {"const": "PASS"},
+    "acceptance_timestamp": {"type": "string", "minLength": 1},
+    "checker_version": {"type": "string", "minLength": 1},
+    "git_commit": {"type": ["string", "null"]},
+    "artifacts": {"type": "object", "minProperties": 4, "additionalProperties": {"type": "string"}},
+    "evidence_hashes": {"type": "object", "additionalProperties": {"type": "string"}},
+    "gates": {"type": "object"},
+    "reconciliations": {"type": "object"},
+    "tests": {"type": "object"},
+    "visual_review": {"type": "object"},
+    "exceptions": {"type": "array", "items": {"type": "object"}}
+  },
+  "additionalProperties": true
+}

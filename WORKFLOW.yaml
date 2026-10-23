@@ -1,0 +1,463 @@
+{
+  "schema_version": "1.0.0",
+  "source_of_truth": "README.md",
+  "description": "Canonical executable phase and gate contract for company research.",
+  "status_values": ["PASS", "FAIL", "UNKNOWN"],
+  "disposition_values": ["completed", "completed_zero", "duplicate", "excluded", "blocked", "rejected"],
+  "assurance_layers": {
+    "data_integrity": "Structured research records are mechanically valid.",
+    "evidence_validity": "Evidence supports the factual claim being used.",
+    "reasoning_quality": "Valid facts justify the interpretation or conclusion.",
+    "publication_integrity": "Reader-facing words and visuals stay within evidentiary support.",
+    "execution_integrity": "Current evidence proves required work ran completely on current artifacts."
+  },
+  "global": {
+    "fail_closed": true,
+    "ledger": "tools/outputs/worker-ledger.jsonl",
+    "gate_directory": "tools/outputs/gates",
+    "reconciliation_directory": "tools/outputs/reconciliation",
+    "validation_directory": "tools/outputs/validations",
+    "test_directory": "tools/outputs/tests",
+    "release_manifest": "07-final-report/release-manifest.json",
+    "atomic_writes": true,
+    "single_writer_shared_state": true,
+    "required_language": "American English",
+    "allowed_independent_preparation": [
+      "verification tooling",
+      "merge tooling",
+      "filter spot-check tooling",
+      "competitor capture",
+      "design template",
+      "rendering tools",
+      "phase briefs",
+      "work-list generation",
+      "deterministic checks"
+    ],
+    "independent_role_pairs": [
+      ["writer", "verification_reviewer"],
+      ["synthesis_writer", "devils_advocate"],
+      ["citation_placer", "citation_claim_reviewer"],
+      ["page_author", "visual_reviewer"]
+    ],
+    "retry_policy": {
+      "scope": "failed_or_unaccounted_inputs_only",
+      "max_attempts_per_assignment": 2,
+      "preserve_prior_attempts": true,
+      "preserve_validated_outputs": true,
+      "on_exhaustion": "blocked_or_unresolved"
+    }
+  },
+  "test_suites": [
+    {
+      "id": "data_integrity",
+      "report": "tools/outputs/tests/data_integrity.json",
+      "covers": ["schemas", "unique IDs", "source paths", "fact receipts", "dates", "tags"]
+    },
+    {
+      "id": "evidence_pipeline",
+      "report": "tools/outputs/tests/evidence_pipeline.json",
+      "covers": ["caption parsing", "canonical copies", "filter misses", "candidate filing", "quote location"]
+    },
+    {
+      "id": "citation_integrity",
+      "report": "tools/outputs/tests/citation_integrity.json",
+      "covers": ["numbering", "notes", "source mapping", "fact placement", "exhibit mapping"]
+    },
+    {
+      "id": "execution_integrity",
+      "report": "tools/outputs/tests/execution_integrity.json",
+      "covers": ["ledger", "reconciliation", "fail-closed validation", "gates", "staleness", "visual page accounting"]
+    },
+    {
+      "id": "release_integrity",
+      "report": "tools/outputs/tests/release_integrity.json",
+      "covers": ["exact artifacts", "current gate hashes", "release manifest", "fault isolation"]
+    }
+  ],
+  "phases": [
+    {
+      "id": "bootstrap",
+      "depends_on": [],
+      "allowed_preparatory_work": [],
+      "inputs": [
+        {"id": "effective_prompt", "path": "README.md", "required": true},
+        {"id": "user_inputs", "path": "00-inputs", "required": false},
+        {"id": "company_url", "kind": "runtime_value", "required": true}
+      ],
+      "outputs": [
+        {"id": "workflow_state", "path": "WORKFLOW_STATE.md"},
+        {"id": "run_history", "path": "RUN_HISTORY.md"},
+        {"id": "prompt_original", "path": "prompt/PROMPT.md"},
+        {"id": "prompt_effective", "path": "prompt/revised_prompt.md"},
+        {"id": "prompt_changes", "path": "prompt/CHANGES.md"},
+        {"id": "worker_ledger", "path": "tools/outputs/worker-ledger.jsonl"}
+      ],
+      "reconciliations": [],
+      "validators": [
+        {"id": "bootstrap_paths", "report": "tools/outputs/validations/bootstrap-paths.json", "assurance_layer": "execution_integrity"},
+        {"id": "tool_availability", "report": "tools/outputs/validations/tool-availability.json", "assurance_layer": "execution_integrity"}
+      ],
+      "semantic_reviews": [],
+      "tests": ["execution_integrity"],
+      "completion": {"require_all": true, "state_update_after_gate": true},
+      "stale_if": ["README.md", "prompt/revised_prompt.md", "research_control/**", "WORKFLOW.yaml"],
+      "downstream": ["scope"],
+      "retry_policy": "global"
+    },
+    {
+      "id": "scope",
+      "depends_on": ["bootstrap"],
+      "allowed_preparatory_work": ["capture tooling", "work-list generators", "design template"],
+      "inputs": [
+        {"id": "all_user_inputs", "path": "00-inputs/**", "required": false},
+        {"id": "company_homepage", "kind": "captured_public_source", "required": true}
+      ],
+      "outputs": [{"id": "scope_map", "path": "00-scope.md"}],
+      "reconciliations": [
+        {"id": "input_classification", "report": "tools/outputs/reconciliation/input-classification.json"}
+      ],
+      "validators": [
+        {"id": "scope_contract", "report": "tools/outputs/validations/scope-contract.json", "assurance_layer": "data_integrity"}
+      ],
+      "semantic_reviews": [
+        {"id": "scope_reasoning", "path": "00-scope.md", "role": "scope_reviewer", "independent": false}
+      ],
+      "tests": [],
+      "completion": {"require_all": true, "state_update_after_gate": true},
+      "stale_if": ["00-inputs/**", "00-scope.md", "company_url"],
+      "downstream": ["capture"],
+      "retry_policy": "global"
+    },
+    {
+      "id": "capture",
+      "depends_on": ["scope"],
+      "allowed_preparatory_work": ["verification tooling", "merge tooling", "competitor capture", "design template", "rendering tools", "phase briefs"],
+      "inputs": [
+        {"id": "scope_map", "path": "00-scope.md", "required": true},
+        {"id": "capture_assignments", "kind": "ledger_assignments", "task_types": ["capture"], "required": true}
+      ],
+      "outputs": [
+        {"id": "source_manifest", "path": "01-sources/MANIFEST.csv"},
+        {"id": "publish_dates", "path": "01-sources/publish-dates.csv"},
+        {"id": "blocked_log", "path": "01-sources/BLOCKED.md"},
+        {"id": "coverage", "path": "06-checks/coverage.md"}
+      ],
+      "reconciliations": [
+        {"id": "capture_sources", "report": "tools/outputs/reconciliation/capture-sources.json"},
+        {"id": "capture_assignments", "report": "tools/outputs/reconciliation/capture-assignments.json"}
+      ],
+      "validators": [
+        {"id": "source_records", "report": "tools/outputs/validations/source-records.json", "assurance_layer": "data_integrity"},
+        {"id": "source_dates", "report": "tools/outputs/validations/source-dates.json", "assurance_layer": "evidence_validity"},
+        {"id": "manifest_files", "report": "tools/outputs/validations/manifest-files.json", "assurance_layer": "data_integrity"},
+        {"id": "capture_workers", "report": "tools/outputs/validations/capture-workers.json", "assurance_layer": "execution_integrity"}
+      ],
+      "semantic_reviews": [
+        {"id": "coverage_review", "path": "06-checks/coverage.md", "role": "orchestrator", "independent": false}
+      ],
+      "tests": ["data_integrity", "evidence_pipeline", "execution_integrity"],
+      "completion": {"require_all": true, "required_worker_task_types": ["capture"], "state_update_after_gate": true},
+      "stale_if": ["00-scope.md", "01-sources/**", "04-competitors/*/01-sources/**", "tools/capture*.py", "tools/merge*.py", "research_control/validators/sources.py"],
+      "downstream": ["facts"],
+      "retry_policy": "global",
+      "gate": {
+        "name": "capture",
+        "required_paths": ["01-sources/MANIFEST.csv", "01-sources/publish-dates.csv", "01-sources/BLOCKED.md", "06-checks/coverage.md"],
+        "required_reconciliations": ["capture_sources", "capture_assignments"],
+        "required_validators": ["source_records", "source_dates", "manifest_files", "capture_workers"],
+        "required_semantic_reviews": ["coverage_review"],
+        "required_tests": ["data_integrity", "evidence_pipeline", "execution_integrity"],
+        "required_worker_task_types": ["capture"]
+      }
+    },
+    {
+      "id": "facts",
+      "depends_on": ["capture"],
+      "allowed_preparatory_work": ["synthesis digest tooling", "timeline tooling", "competitor matrix tooling", "glossary tooling"],
+      "inputs": [
+        {"id": "source_manifest", "path": "01-sources/MANIFEST.csv", "required": true},
+        {"id": "extraction_scope", "path": "tools/lists/extraction-scope.csv", "required": true},
+        {"id": "extraction_assignments", "kind": "ledger_assignments", "task_types": ["extraction", "filing"], "required": true}
+      ],
+      "outputs": [
+        {"id": "fact_store", "path": "02-facts/*.md"},
+        {"id": "competitor_fact_store", "path": "04-competitors/*/02-facts/*.md"},
+        {"id": "script_audits", "path": "06-checks/script-audits.md"}
+      ],
+      "reconciliations": [
+        {"id": "source_extraction", "report": "tools/outputs/reconciliation/source-extraction.json"},
+        {"id": "candidate_filing", "report": "tools/outputs/reconciliation/candidate-filing.json"}
+      ],
+      "validators": [
+        {"id": "fact_records", "report": "tools/outputs/validations/fact-records.json", "assurance_layer": "data_integrity"},
+        {"id": "fact_quotes", "report": "tools/outputs/validations/fact-quotes.json", "assurance_layer": "evidence_validity"},
+        {"id": "fact_dates", "report": "tools/outputs/validations/fact-dates.json", "assurance_layer": "evidence_validity"},
+        {"id": "fact_tags", "report": "tools/outputs/validations/fact-tags.json", "assurance_layer": "evidence_validity"},
+        {"id": "fact_source_ids", "report": "tools/outputs/validations/fact-source-ids.json", "assurance_layer": "data_integrity"},
+        {"id": "fact_overstatement", "report": "tools/outputs/validations/fact-overstatement.json", "assurance_layer": "evidence_validity"}
+      ],
+      "semantic_reviews": [
+        {"id": "duplicate_spot_check", "path": "06-checks/duplicate-spot-check.md", "role": "evidence_reviewer", "independent": true},
+        {"id": "filter_spot_check", "path": "06-checks/filter-spot-check.md", "role": "evidence_reviewer", "independent": true},
+        {"id": "script_audit", "path": "06-checks/script-audits.md", "role": "script_auditor", "independent": true}
+      ],
+      "tests": ["data_integrity", "evidence_pipeline", "execution_integrity"],
+      "completion": {"require_all": true, "required_worker_task_types": ["extraction", "filing"], "state_update_after_gate": true},
+      "stale_if": ["01-sources/**", "02-facts/**", "04-competitors/*/02-facts/**", "tools/candidates/**", "tools/extracts/**", "research_control/validators/{facts,dates,tags,quotes}.py"],
+      "downstream": ["initial_synthesis"],
+      "retry_policy": "global",
+      "gate": {
+        "name": "facts",
+        "required_paths": ["tools/lists/extraction-scope.csv", "02-facts", "06-checks/script-audits.md"],
+        "required_reconciliations": ["source_extraction", "candidate_filing"],
+        "required_validators": ["fact_records", "fact_quotes", "fact_dates", "fact_tags", "fact_source_ids", "fact_overstatement"],
+        "required_semantic_reviews": ["duplicate_spot_check", "filter_spot_check", "script_audit"],
+        "required_tests": ["data_integrity", "evidence_pipeline", "execution_integrity"],
+        "required_worker_task_types": ["extraction", "filing"]
+      }
+    },
+    {
+      "id": "initial_synthesis",
+      "depends_on": ["facts"],
+      "allowed_preparatory_work": ["verification packets", "review work lists", "design template"],
+      "inputs": [
+        {"id": "fact_digests", "path": "tools/digests/*.md", "required": true},
+        {"id": "timeline_drafts", "path": "03-timelines/*.md", "required": true},
+        {"id": "currency_file", "path": "tools/outputs/currency.csv", "required": true}
+      ],
+      "outputs": [
+        {"id": "synthesis_files", "path": "05-synthesis/{product-map,offering,customers-proof,competitors,glossary,messaging-timeline,organization,direction,open-questions}.md"}
+      ],
+      "reconciliations": [
+        {"id": "synthesis_assignments", "report": "tools/outputs/reconciliation/synthesis-assignments.json"}
+      ],
+      "validators": [
+        {"id": "synthesis_fact_ids", "report": "tools/outputs/validations/synthesis-fact-ids.json", "assurance_layer": "data_integrity"},
+        {"id": "synthesis_writing_rules", "report": "tools/outputs/validations/synthesis-writing.json", "assurance_layer": "publication_integrity"}
+      ],
+      "semantic_reviews": [
+        {"id": "timeline_currency_review", "path": "06-checks/currency-review.md", "role": "currency_reviewer", "independent": true}
+      ],
+      "tests": ["data_integrity"],
+      "completion": {"require_all": true, "state_update_after_gate": false},
+      "stale_if": ["02-facts/**", "03-timelines/**", "tools/digests/**", "tools/outputs/currency.csv", "05-synthesis/*.md"],
+      "downstream": ["verification"],
+      "retry_policy": "global"
+    },
+    {
+      "id": "verification",
+      "depends_on": ["initial_synthesis"],
+      "allowed_preparatory_work": ["review packets", "brief template", "render tooling"],
+      "inputs": [
+        {"id": "cited_fact_ids", "path": "tools/lists/cited-facts.txt", "required": true},
+        {"id": "verification_packets", "path": "tools/outputs/cited-facts/**", "required": true}
+      ],
+      "outputs": [
+        {"id": "verification_report", "path": "06-checks/verification-cited.md"},
+        {"id": "verification_verdicts", "path": "tools/outputs/verification-verdicts.jsonl"}
+      ],
+      "reconciliations": [
+        {"id": "cited_fact_verification", "report": "tools/outputs/reconciliation/cited-fact-verification.json"}
+      ],
+      "validators": [
+        {"id": "verification_verdict_records", "report": "tools/outputs/validations/verification-verdicts.json", "assurance_layer": "evidence_validity"},
+        {"id": "corrected_fact_layer1", "report": "tools/outputs/validations/corrected-fact-layer1.json", "assurance_layer": "evidence_validity"}
+      ],
+      "semantic_reviews": [
+        {"id": "cited_fact_review", "path": "06-checks/verification-cited.md", "role": "verification_reviewer", "independent": true}
+      ],
+      "tests": ["evidence_pipeline", "execution_integrity"],
+      "completion": {"require_all": true, "required_worker_task_types": ["verification"], "state_update_after_gate": true},
+      "stale_if": ["05-synthesis/*.md", "02-facts/**", "tools/lists/cited-facts.txt", "tools/outputs/verification-verdicts.jsonl"],
+      "downstream": ["corrected_synthesis"],
+      "retry_policy": "global",
+      "gate": {
+        "name": "verification",
+        "required_paths": ["06-checks/verification-cited.md", "tools/outputs/verification-verdicts.jsonl"],
+        "required_reconciliations": ["cited_fact_verification"],
+        "required_validators": ["verification_verdict_records", "corrected_fact_layer1"],
+        "required_semantic_reviews": ["cited_fact_review"],
+        "required_tests": ["evidence_pipeline", "execution_integrity"],
+        "required_worker_task_types": ["verification"]
+      }
+    },
+    {
+      "id": "corrected_synthesis",
+      "depends_on": ["verification"],
+      "allowed_preparatory_work": ["review packets", "brief template"],
+      "inputs": [
+        {"id": "verified_facts", "path": "02-facts/**", "required": true},
+        {"id": "initial_synthesis", "path": "05-synthesis/*.md", "required": true}
+      ],
+      "outputs": [
+        {"id": "corrected_synthesis", "path": "05-synthesis/*.md"},
+        {"id": "verification_corrections", "path": "06-checks/verification-corrections.md"}
+      ],
+      "reconciliations": [
+        {"id": "verification_corrections", "report": "tools/outputs/reconciliation/verification-corrections.json"}
+      ],
+      "validators": [
+        {"id": "corrected_synthesis_fact_ids", "report": "tools/outputs/validations/corrected-synthesis-facts.json", "assurance_layer": "data_integrity"}
+      ],
+      "semantic_reviews": [
+        {"id": "dependent_copy_fix", "path": "06-checks/verification-corrections.md", "role": "fixer", "independent": true}
+      ],
+      "tests": [],
+      "completion": {"require_all": true, "state_update_after_gate": false},
+      "stale_if": ["02-facts/**", "05-synthesis/*.md", "06-checks/verification-cited.md"],
+      "downstream": ["review"],
+      "retry_policy": "global"
+    },
+    {
+      "id": "review",
+      "depends_on": ["corrected_synthesis"],
+      "allowed_preparatory_work": ["brief source packets", "design tooling"],
+      "inputs": [
+        {"id": "corrected_synthesis", "path": "05-synthesis/*.md", "required": true},
+        {"id": "bounded_cited_facts", "path": "tools/outputs/cited-facts/**", "required": true}
+      ],
+      "outputs": [
+        {"id": "technical_review", "path": "06-checks/review-technical.md"},
+        {"id": "devils_advocate_review", "path": "06-checks/review-devils-advocate.md"},
+        {"id": "insider_review", "path": "06-checks/review-insider*.md"},
+        {"id": "editor_review", "path": "06-checks/review-editor*.md"},
+        {"id": "review_decisions", "path": "06-checks/review-decisions.md"}
+      ],
+      "reconciliations": [
+        {"id": "review_findings", "report": "tools/outputs/reconciliation/review-findings.json"}
+      ],
+      "validators": [
+        {"id": "review_records", "report": "tools/outputs/validations/review-records.json", "assurance_layer": "reasoning_quality"},
+        {"id": "review_independence", "report": "tools/outputs/validations/review-independence.json", "assurance_layer": "execution_integrity"},
+        {"id": "accepted_fixes", "report": "tools/outputs/validations/accepted-fixes.json", "assurance_layer": "reasoning_quality"}
+      ],
+      "semantic_reviews": [
+        {"id": "technical", "path": "06-checks/review-technical.md", "role": "technical_product_marketer", "independent": true},
+        {"id": "devils_advocate", "path": "06-checks/review-devils-advocate.md", "role": "devils_advocate", "independent": true},
+        {"id": "skeptical_insider", "path": "06-checks/review-insider*.md", "role": "skeptical_insider", "independent": true},
+        {"id": "editor", "path": "06-checks/review-editor*.md", "role": "editor", "independent": true}
+      ],
+      "tests": ["execution_integrity"],
+      "completion": {"require_all": true, "required_worker_task_types": ["technical_review", "devils_advocate", "insider_review", "editor_review", "fixer"], "state_update_after_gate": true},
+      "stale_if": ["05-synthesis/*.md", "06-checks/review-*.md", "tools/outputs/cited-facts/**"],
+      "downstream": ["final"],
+      "retry_policy": "global",
+      "gate": {
+        "name": "review",
+        "required_paths": ["06-checks/review-technical.md", "06-checks/review-devils-advocate.md", "06-checks/review-decisions.md"],
+        "required_reconciliations": ["review_findings"],
+        "required_validators": ["review_records", "review_independence", "accepted_fixes"],
+        "required_semantic_reviews": ["technical", "devils_advocate", "skeptical_insider", "editor"],
+        "required_tests": ["execution_integrity"],
+        "required_worker_task_types": ["technical_review", "devils_advocate", "insider_review", "editor_review", "fixer"]
+      }
+    },
+    {
+      "id": "final",
+      "depends_on": ["review"],
+      "allowed_preparatory_work": ["citation checker", "visual audit tooling"],
+      "inputs": [
+        {"id": "reviewed_synthesis", "path": "05-synthesis/*.md", "required": true},
+        {"id": "verified_facts", "path": "02-facts/**", "required": true},
+        {"id": "design_system", "path": "05-synthesis/design/**", "required": true}
+      ],
+      "outputs": [
+        {"id": "brief_markdown", "path": "05-synthesis/company-brief.md"},
+        {"id": "one_page_markdown", "path": "05-synthesis/one-page.md"},
+        {"id": "brief_pdf", "path": "07-final-report/company-brief.pdf"},
+        {"id": "brief_html", "path": "07-final-report/company-brief.html"},
+        {"id": "one_page_pdf", "path": "07-final-report/one-page.pdf"},
+        {"id": "one_page_html", "path": "07-final-report/one-page.html"},
+        {"id": "design_notes", "path": "05-synthesis/design-notes.md"}
+      ],
+      "reconciliations": [],
+      "validators": [],
+      "semantic_reviews": [],
+      "tests": ["data_integrity"],
+      "completion": {"require_all": true, "state_update_after_gate": false},
+      "stale_if": ["05-synthesis/**", "02-facts/**", "01-sources/MANIFEST.csv", "tools/brief_html/**", "07-final-report/**"],
+      "downstream": ["publication_checks"],
+      "retry_policy": "global"
+    },
+    {
+      "id": "publication_checks",
+      "depends_on": ["final"],
+      "allowed_preparatory_work": [],
+      "inputs": [
+        {"id": "predesign_reference", "kind": "git_commit_or_checksum", "required": true},
+        {"id": "final_artifacts", "path": "07-final-report/{company-brief,one-page}.{pdf,html}", "required": true},
+        {"id": "citation_maps", "path": "tools/outputs/citation-map-*.json", "required": true}
+      ],
+      "outputs": [
+        {"id": "citation_checks", "path": "tools/outputs/citation-check-*.md"},
+        {"id": "exhibit_check", "path": "tools/outputs/exhibit-citation-check.md"},
+        {"id": "claim_reviews", "path": "06-checks/citation-claims-*.md"},
+        {"id": "visual_reviews", "path": "06-checks/visual-review*.md"},
+        {"id": "final_report", "path": "06-checks/final-report.md"}
+      ],
+      "reconciliations": [
+        {"id": "final_cited_facts", "report": "tools/outputs/reconciliation/final-cited-facts.json"},
+        {"id": "citation_sources", "report": "tools/outputs/reconciliation/citation-sources.json"},
+        {"id": "visual_pages", "report": "tools/outputs/reconciliation/visual-pages.json"}
+      ],
+      "validators": [
+        {"id": "final_artifact_contract", "report": "tools/outputs/validations/final-artifacts.json", "assurance_layer": "publication_integrity"},
+        {"id": "reader_facing_text", "report": "tools/outputs/validations/reader-facing-text.json", "assurance_layer": "publication_integrity"},
+        {"id": "american_english", "report": "tools/outputs/validations/american-english.json", "assurance_layer": "publication_integrity"},
+        {"id": "new_cited_fact_verification", "report": "tools/outputs/validations/final-cited-facts.json", "assurance_layer": "evidence_validity"},
+        {"id": "citation_structure", "report": "tools/outputs/validations/citations.json", "assurance_layer": "publication_integrity"},
+        {"id": "exhibit_mapping", "report": "tools/outputs/validations/exhibits.json", "assurance_layer": "publication_integrity"},
+        {"id": "design_check", "report": "tools/outputs/validations/design.json", "assurance_layer": "publication_integrity"},
+        {"id": "visual_audit", "report": "tools/outputs/validations/visual-audit.json", "assurance_layer": "publication_integrity"},
+        {"id": "visual_records", "report": "tools/outputs/validations/visual-records.json", "assurance_layer": "execution_integrity"},
+        {"id": "artifact_binding", "report": "tools/outputs/validations/artifact-binding.json", "assurance_layer": "execution_integrity"}
+      ],
+      "semantic_reviews": [
+        {"id": "american_english_review", "path": "06-checks/american-english.md", "role": "language_reviewer", "independent": true},
+        {"id": "citation_claim_a", "path": "06-checks/citation-claims-a.md", "role": "citation_claim_reviewer", "independent": true},
+        {"id": "citation_claim_b", "path": "06-checks/citation-claims-b.md", "role": "citation_claim_reviewer", "independent": true},
+        {"id": "visual_review", "path": "06-checks/visual-review*.md", "role": "visual_reviewer", "independent": true},
+        {"id": "orchestrator_page_review", "path": "06-checks/final-report.md", "role": "orchestrator", "independent": false}
+      ],
+      "tests": ["citation_integrity", "execution_integrity", "release_integrity"],
+      "completion": {"require_all": true, "state_update_after_gate": true},
+      "stale_if": ["05-synthesis/company-brief.md", "05-synthesis/one-page.md", "02-facts/**", "01-sources/MANIFEST.csv", "tools/outputs/citation-map-*.json", "tools/brief_html/**", "07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "07-final-report/one-page.pdf", "07-final-report/one-page.html"],
+      "downstream": ["release_acceptance"],
+      "retry_policy": "global",
+      "gate": {
+        "name": "final",
+        "required_paths": ["07-final-report/company-brief.pdf", "07-final-report/company-brief.html", "07-final-report/one-page.pdf", "07-final-report/one-page.html", "06-checks/final-report.md"],
+        "required_reconciliations": ["final_cited_facts", "citation_sources", "visual_pages"],
+        "required_validators": ["final_artifact_contract", "reader_facing_text", "american_english", "new_cited_fact_verification", "citation_structure", "exhibit_mapping", "design_check", "visual_audit", "visual_records", "artifact_binding"],
+        "required_semantic_reviews": ["american_english_review", "citation_claim_a", "citation_claim_b", "visual_review", "orchestrator_page_review"],
+        "required_tests": ["citation_integrity", "execution_integrity", "release_integrity"],
+        "required_worker_task_types": ["brief_writer", "assembler", "citation_claim_review", "visual_review"]
+      }
+    },
+    {
+      "id": "release_acceptance",
+      "depends_on": ["publication_checks"],
+      "allowed_preparatory_work": [],
+      "inputs": [
+        {"id": "all_gate_reports", "path": "tools/outputs/gates/*.json", "required": true},
+        {"id": "worker_ledger", "path": "tools/outputs/worker-ledger.jsonl", "required": true},
+        {"id": "all_reconciliations", "path": "tools/outputs/reconciliation/*.json", "required": true},
+        {"id": "all_validations", "path": "tools/outputs/validations/*.json", "required": true},
+        {"id": "final_artifacts", "path": "07-final-report/{company-brief,one-page}.{pdf,html}", "required": true}
+      ],
+      "outputs": [
+        {"id": "release_manifest", "path": "07-final-report/release-manifest.json"}
+      ],
+      "reconciliations": [],
+      "validators": [
+        {"id": "release_acceptance", "report": "tools/outputs/validations/release-acceptance.json", "assurance_layer": "execution_integrity"}
+      ],
+      "semantic_reviews": [],
+      "tests": ["data_integrity", "evidence_pipeline", "citation_integrity", "execution_integrity", "release_integrity"],
+      "completion": {"require_all": true, "state_update_after_gate": true},
+      "stale_if": ["WORKFLOW.yaml", "tools/outputs/gates/**", "tools/outputs/reconciliation/**", "tools/outputs/validations/**", "tools/outputs/tests/**", "01-sources/MANIFEST.csv", "02-facts/**", "05-synthesis/**", "07-final-report/**"],
+      "downstream": [],
+      "retry_policy": "none"
+    }
+  ]
+}
