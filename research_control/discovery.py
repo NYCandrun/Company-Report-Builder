@@ -162,7 +162,13 @@ def source_kind(url: str) -> str:
 
 
 def discoverable_link(url: str) -> bool:
-    path = urlparse(url).path.casefold()
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").casefold().removeprefix("www.")
+    path = parsed.path.casefold()
+    if host == "linkedin.com" and path.rstrip("/") == "/sharing/share-offsite":
+        return False
+    if host in {"twitter.com", "x.com"} and path.rstrip("/") == "/intent/tweet":
+        return False
     return not any(path.endswith(suffix) for suffix in SKIP_SUFFIXES)
 
 
@@ -558,6 +564,53 @@ class DiscoveryEngine:
             "retried": len(candidates),
             "source_ids": [item["source_id"] for item in candidates],
             "channel_state": state,
+        }
+
+    def exclude_sources(
+        self,
+        channel: str,
+        *,
+        evidence: str,
+        source_ids: list[str],
+    ) -> dict[str, Any]:
+        """Exclude audited non-evidence leads without deleting their provenance."""
+        if channel not in DISCOVERY_CHANNELS:
+            raise ValueError(f"unknown discovery channel: {channel}")
+        if not evidence.strip():
+            raise ValueError("exclusion evidence is required")
+        if not source_ids:
+            raise ValueError("at least one source ID is required")
+        selected = set(source_ids)
+        sources = {item["source_id"]: item for item in self.store.sources()}
+        unknown = selected - set(sources)
+        if unknown:
+            raise KeyError(f"unknown source IDs: {', '.join(sorted(unknown))}")
+        ineligible = [
+            source_id for source_id in sorted(selected)
+            if sources[source_id]["channel"] != channel
+            or sources[source_id]["status"] == "captured"
+        ]
+        if ineligible:
+            raise ValueError(
+                "exclusion accepts only uncaptured sources in the selected channel: "
+                + ", ".join(ineligible)
+            )
+        for source_id in sorted(selected):
+            source = sources[source_id]
+            metadata = dict(source.get("metadata") or {})
+            metadata["discovery_exclusion"] = {
+                "at": utc_now(),
+                "evidence": evidence.strip(),
+            }
+            self.store.update_source(
+                source_id, relevance="excluded", metadata=metadata
+            )
+        self.write_catalog()
+        return {
+            "channel": channel,
+            "excluded": len(selected),
+            "source_ids": sorted(selected),
+            "evidence": evidence.strip(),
         }
 
     def write_catalog(self) -> None:

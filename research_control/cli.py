@@ -218,6 +218,12 @@ def _parser() -> argparse.ArgumentParser:
     discovery_retry.add_argument("--channel", required=True, choices=DISCOVERY_CHANNELS)
     discovery_retry.add_argument("--source-id", action="append", default=[])
     discovery_retry.add_argument("--evidence", required=True)
+    discovery_exclude = discovery_sub.add_parser(
+        "exclude", help="exclude audited non-evidence leads while preserving provenance"
+    )
+    discovery_exclude.add_argument("--channel", required=True, choices=DISCOVERY_CHANNELS)
+    discovery_exclude.add_argument("--source-id", action="append", required=True)
+    discovery_exclude.add_argument("--evidence", required=True)
     discovery_receipt = discovery_sub.add_parser("receipt", help="write the current channel's worker receipt")
     discovery_receipt.add_argument("--channel", required=True, choices=DISCOVERY_CHANNELS)
 
@@ -339,6 +345,10 @@ def main() -> None:
                     _print_json(engine.close_channel(args.channel, args.state, args.evidence))
                 elif args.discovery_command == "retry":
                     _print_json(engine.retry_blocked_sources(
+                        args.channel, evidence=args.evidence, source_ids=args.source_id,
+                    ))
+                elif args.discovery_command == "exclude":
+                    _print_json(engine.exclude_sources(
                         args.channel, evidence=args.evidence, source_ids=args.source_id,
                     ))
                 else:

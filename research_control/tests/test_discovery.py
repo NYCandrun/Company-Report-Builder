@@ -5,7 +5,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from research_control.discovery import DiscoveryEngine, DiscoveryPolicy, FetchResult, canonicalize_url, xml_links
+from research_control.discovery import (
+    DiscoveryEngine,
+    DiscoveryPolicy,
+    FetchResult,
+    canonicalize_url,
+    discoverable_link,
+    xml_links,
+)
 from research_control.runtime import RuntimeStore
 
 
@@ -13,6 +20,12 @@ SOURCE_ROOT = Path(__file__).resolve().parents[2]
 
 
 class DiscoveryTests(unittest.TestCase):
+    def test_share_intent_links_are_not_discoverable_evidence(self) -> None:
+        self.assertFalse(discoverable_link("https://www.linkedin.com/sharing/share-offsite/?url=https://example.com"))
+        self.assertFalse(discoverable_link("https://twitter.com/intent/tweet?url=https://example.com"))
+        self.assertFalse(discoverable_link("https://x.com/intent/tweet?url=https://example.com"))
+        self.assertTrue(discoverable_link("https://www.linkedin.com/company/example"))
+
     def test_sitemap_and_feed_links_are_extracted(self) -> None:
         body = b'<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://example.com/a</loc></url><url><loc>https://example.com/b</loc></url></urlset>'
         self.assertEqual(["https://example.com/a", "https://example.com/b"], xml_links(body))
@@ -109,6 +122,33 @@ class DiscoveryTests(unittest.TestCase):
                 channel = store.discovery_channel("company_site")
                 self.assertEqual("open", channel["state"])
                 self.assertEqual(0, channel["consecutive_empty_passes"])
+
+    def test_explicit_exclusion_preserves_lead_and_removes_it_from_capture_scope(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            shutil.copy2(SOURCE_ROOT / "WORKFLOW.yaml", root / "WORKFLOW.yaml")
+            with RuntimeStore(root) as store:
+                store.initialize(run_id="discover-exclude", company_url="https://example.com")
+                engine = DiscoveryEngine(root, store)
+                engine.initialize()
+                source, _created = store.add_source(
+                    canonical_url="https://twitter.com/intent/tweet?url=https://example.com",
+                    original_url="https://twitter.com/intent/tweet?url=https://example.com",
+                    host_key="twitter.com",
+                    channel="social",
+                    source_kind="web_page",
+                )
+
+                result = engine.exclude_sources(
+                    "social",
+                    source_ids=[source["source_id"]],
+                    evidence="share-intent transport is not research evidence",
+                )
+
+                self.assertEqual(1, result["excluded"])
+                updated = store.source(source["source_id"])
+                self.assertEqual("excluded", updated["relevance"])
+                self.assertIn("discovery_exclusion", updated["metadata"])
 
 
 if __name__ == "__main__":
