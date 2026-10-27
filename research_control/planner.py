@@ -14,7 +14,7 @@ from research_control.supplement import SUPPLEMENT_FACTS, SUPPLEMENT_REPORT, bas
 from research_control.media import is_media_url
 from research_control.io import atomic_write_jsonl, atomic_write_text, load_json, load_jsonl, workflow
 from research_control.validators.facts import load_fact_tables
-from research_control.triage import TRIAGE_DECISIONS, TRIAGE_EXCERPT_CHARACTERS, TRIAGE_INDEX, triage_included
+from research_control.triage import TRIAGE_DECISIONS, TRIAGE_EXCERPT_CHARACTERS, TRIAGE_INDEX, TRIAGE_PENDING, triage_included, triage_rows
 from research_control.orchestration import TASK_SCHEMAS, current_phase, load_state
 from research_control.runtime import ACTIVE_STATES, DISCOVERY_TERMINAL, FINAL_STATES, SATISFIED_STATES, UNCAPTURED_RELEVANCE, RuntimeStore, WorkItem
 
@@ -494,6 +494,40 @@ class AdaptivePlanner:
         )
         triage = self.store.task(triage_id)
         if not triage or triage["state"] != "succeeded":
+            return created
+        # Sources captured after triage (a later discovery pass, an alternate
+        # copy) get their own decisions; extraction planning waits for them.
+        decided = {str(row.get("id", "")) for row in triage_rows(self.root)}
+        index_rows = load_jsonl(self.root / TRIAGE_INDEX)
+        pending = [row for row in index_rows if str(row.get("id", "")) not in decided]
+        more = [task for task in self.store.tasks(phase="facts") if task["task_type"] == "triage" and task["task_id"] != triage_id]
+        if pending:
+            identifier = sha256("\n".join(sorted(str(row["id"]) for row in pending)).encode("utf-8")).hexdigest()[:12]
+            atomic_write_jsonl(self.root / TRIAGE_PENDING, pending)
+            self._add(
+                WorkItem(
+                    task_id=f"facts.triage-more.{identifier}",
+                    phase="facts",
+                    task_type="triage",
+                    inputs=[
+                        {"id": "scope_map", "path": "00-scope.md", "required": True},
+                        {"id": "pending_sources", "path": TRIAGE_PENDING, "required": True},
+                    ],
+                    outputs=[TRIAGE_DECISIONS],
+                    prompt_files=["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/phases/triage.md"],
+                    depends_on=[triage_id],
+                    schema_files=["research_control/schemas/disposition.schema.json"],
+                    validators=["extraction_triage"],
+                    priority=5,
+                    independent=True,
+                    exclusive_inputs=True,
+                    output_mode="revise",
+                    metadata={"pending_sources": [str(row["id"]) for row in pending]},
+                ),
+                created,
+            )
+            return created
+        if any(task["state"] not in SATISFIED_STATES for task in more):
             return created
         slices = self._source_slices(included=triage_included(self.root))
         kept, uncovered = self._unchanged_batches(slices)

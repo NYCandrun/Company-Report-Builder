@@ -19,6 +19,7 @@ from research_control.io import load_jsonl
 
 TRIAGE_INDEX = "tools/lists/triage-index.jsonl"
 TRIAGE_DECISIONS = "tools/lists/extraction-triage.jsonl"
+TRIAGE_PENDING = "tools/lists/triage-pending.jsonl"
 TRIAGE_EXCERPT_CHARACTERS = 500
 DECISIONS = {"include", "exclude"}
 QUESTION_ID = re.compile(r"^Q\d+$")

@@ -40,3 +40,8 @@ Rules:
 
 Return the included count, excluded count, per-question included counts, and
 any question without an included source.
+
+When the packet's input is `tools/lists/triage-pending.jsonl`, the corpus was
+already triaged and these sources were captured afterwards. Decide only the
+listed sources: append one line for each to
+`tools/lists/extraction-triage.jsonl` and leave every existing line unchanged.
