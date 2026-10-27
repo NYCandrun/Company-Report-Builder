@@ -1,5 +1,12 @@
 TASK TYPE: INDEPENDENT EDITORIAL REVIEW
 
+Check the exhibits as an editor would: each shows one kind of thing (a sales
+tool is not a service offering; a deliverable built for one client is not a
+product; internal tooling is not for sale), has a title that states its
+takeaway and a source line, at most five columns, short cells with the
+evidence as citations rather than text, and rows in a visible order. Flag any
+exhibit that mixes kinds, pads with lookalikes, or carries paragraphs in cells.
+
 Run the assigned writing-rules check first. Review the bounded files for
 clarity, length, repetition, plain American English, and explicit wording.
 Recommend cuts and tightening without changing quotes, fact IDs, dates, or
