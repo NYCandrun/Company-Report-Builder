@@ -216,6 +216,15 @@ without a title (a video page that refused the capture, a podcast audio file)
 take their title from the feed item their date came from or from the video's
 own listing, kept in `tools/outputs/source-titles.json`.
 
+## Holding new sources for a later update
+
+To finish a report now and add newly found sources later, set
+`limits --extraction-budget 1`: every new chunk of source text is held, with
+the reason recorded in `tools/lists/deferred-slices.json`, and a source whose
+text is all held counts as `deferred` in the fact checks, so the run moves on.
+Raising the budget later (or `--extraction-budget 0` for no limit) releases
+them; their facts are verified with `verify-new` and the report is updated.
+
 ## Verifying facts added after verification
 
 When a run adds facts after its verification phase (a later search, such as a

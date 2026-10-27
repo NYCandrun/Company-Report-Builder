@@ -225,6 +225,29 @@ def _validate_synthesis_ids(root: Path, checker: str) -> dict[str, Any]:
     return _report(root, checker, patterns, len(paths), len(paths), failures, unknowns, {"fact_ids": len(found)})
 
 
+def _extraction_dispositions(root: Path) -> list[dict[str, Any]]:
+    """Each source's extraction outcome: the merged extraction record, then sources triage left
+    out since, then sources whose every chunk is held for a later pass (recorded, with the reason)."""
+    from research_control.supplement import base_source, deferred_slices
+    from research_control.triage import excluded_dispositions
+
+    rows = _records(root, "tools/outputs/extraction-dispositions.jsonl")
+    covered = {str(row.get("input_id")) for row in rows}
+    for row in excluded_dispositions(root):
+        if row["input_id"] not in covered:
+            rows.append(row)
+            covered.add(row["input_id"])
+    held: dict[str, str] = {}
+    for slice_id, entry in deferred_slices(root).items():
+        source_id = base_source(slice_id)
+        if source_id not in covered:
+            held.setdefault(source_id, str(entry.get("reason") or "deferred"))
+    rows += [{"assignment_id": "facts.dynamic-extraction", "input_id": source_id, "disposition": "deferred",
+              "reason": f"held for a later pass: {reason}", "evidence_paths": ["tools/lists/deferred-slices.json"],
+              "output_ids": []} for source_id, reason in sorted(held.items())]
+    return rows
+
+
 def _verification_records(root: Path) -> list[dict[str, Any]]:
     # The verification phase's verdicts and those added in a sandbox for facts cited later.
     from research_control.verification_sandbox import verdict_rows
@@ -721,10 +744,12 @@ def run_reconciliation(root: Path, phase: dict[str, Any], reconciliation_id: str
         return reconcile_records(
             reconciliation_id=reconciliation_id,
             assigned_ids=manifest_ids,
-            dispositions=_records(root, "tools/outputs/extraction-dispositions.jsonl"),
+            dispositions=_extraction_dispositions(root),
             root=root,
-            input_patterns=["01-sources/MANIFEST.csv", "tools/outputs/extraction-dispositions.jsonl"],
+            input_patterns=["01-sources/MANIFEST.csv", "tools/outputs/extraction-dispositions.jsonl",
+                            "tools/lists/deferred-slices.json"],
             allow_one_to_many=True,
+            allowed_dispositions={"completed", "completed_zero", "duplicate", "excluded", "blocked", "rejected", "deferred"},
         )
     if reconciliation_id == "candidate_filing":
         candidates = _records(root, "tools/candidates/all.jsonl")

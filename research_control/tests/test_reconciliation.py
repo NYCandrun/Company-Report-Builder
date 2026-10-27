@@ -318,3 +318,24 @@ class AmericanEnglishEverywhereTests(unittest.TestCase):
                 _require_american(root, [], ["Seen in a job advert"])
             atomic_write_text(root / "00-scope.md", "**Q14. Partner program.** How does the program work?\n")
             _require_american(root, ["00-scope.md"], ["Seen in a job posting"])
+
+
+class HeldSourceTests(unittest.TestCase):
+    def test_a_source_whose_text_is_all_held_is_recorded_as_deferred(self) -> None:
+        import tempfile
+
+        from research_control import checks
+        from research_control.io import atomic_write_json, atomic_write_jsonl
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            atomic_write_jsonl(root / "tools/outputs/extraction-dispositions.jsonl", [
+                {"assignment_id": "facts.dynamic-extraction", "input_id": "SRC-A", "disposition": "completed",
+                 "reason": "x", "evidence_paths": ["e"], "output_ids": []}])
+            atomic_write_json(root / "tools/lists/deferred-slices.json", {"slices": {
+                "SRC-B:part-0001": {"sha256": "1", "reason": "over the extraction token budget (1)", "by": "budget"},
+                "SRC-A:part-0009": {"sha256": "2", "reason": "budget", "by": "budget"}}})
+            rows = {row["input_id"]: row for row in checks._extraction_dispositions(root)}
+            self.assertEqual("completed", rows["SRC-A"]["disposition"])
+            self.assertEqual("deferred", rows["SRC-B"]["disposition"])
+            self.assertIn("held for a later pass", rows["SRC-B"]["reason"])
