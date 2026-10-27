@@ -260,6 +260,35 @@ def capture_url(
     return {"status": "captured", "source": row, "captured_at": utc_now()}
 
 
+# Transient failures (timeouts, dropped connections, a server's 5xx, rate limits)
+# are retried with backoff before any fallback; a refusal or a missing page is not.
+RETRY_DELAYS = (2, 6)
+TRANSIENT_STATUSES = {408, 425, 429, 500, 502, 503, 504}
+
+
+def _transient(error: BaseException) -> bool:
+    code = getattr(error, "code", None)
+    if isinstance(code, int):
+        return code in TRANSIENT_STATUSES
+    if isinstance(error, (TimeoutError, ConnectionError, socket.timeout, subprocess.TimeoutExpired)):
+        return True
+    reason = str(getattr(error, "reason", "") or error).casefold()
+    return any(marker in reason for marker in (
+        "timed out", "timeout", "connection reset", "connection refused", "temporarily unavailable",
+        "remote end closed", "eof occurred", "network is unreachable", "502", "503", "504", "429",
+    ))
+
+
+def _with_retries(action: Any, *, transient: Any = _transient) -> Any:
+    for delay in (*RETRY_DELAYS, None):
+        try:
+            return action()
+        except Exception as error:
+            if delay is None or not transient(error):
+                raise
+            time.sleep(delay)
+
+
 def capture_source_part(
     root: Path,
     *,
@@ -282,7 +311,7 @@ def capture_source_part(
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise ValueError("capture URL must be absolute http(s)")
-    def fetch_uncached() -> _PublicResponse:
+    def fetch_once() -> _PublicResponse:
         _require_public_host(url)
         request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/pdf,text/plain;q=0.9,*/*;q=0.5"})
         with build_opener(PublicRedirectHandler()).open(request, timeout=30) as response:
@@ -293,6 +322,9 @@ def capture_source_part(
                 status=int(getattr(response, "status", 200)),
                 headers={str(key): str(value) for key, value in response.headers.items()},
             )
+
+    def fetch_uncached() -> _PublicResponse:
+        return _with_retries(fetch_once)
 
     if store is not None:
         cached = SharedWebCache(root, store).fetch_or_reuse(
@@ -428,6 +460,8 @@ const { chromium } = require('playwright');
 """
 MIN_HTML_TEXT_CHARACTERS = 200
 REFUSAL_STATUSES = {401, 403, 429}
+# A page that is gone is gone for a browser too; its alternate copy is looked for later.
+GONE_STATUSES = {404, 410}
 REFUSAL_TITLES = (
     "access denied", "403", "forbidden", "just a moment", "attention required", "are you a robot", "unusual traffic",
 )
@@ -456,13 +490,16 @@ _browser_slots = threading.BoundedSemaphore(runtime_limits()["browser_jobs"])
 
 
 def _render_once(url: str, user_agent: str) -> dict[str, str]:
-    with _browser_slots:
-        result = subprocess.run(
-            ["node", "-e", BROWSER_SCRIPT, url, user_agent], text=True, capture_output=True, timeout=120
-        )
-    if result.returncode != 0:
-        raise RuntimeError(f"browser render failed: {result.stderr.strip().splitlines()[0][:200] if result.stderr.strip() else 'no output'}")
-    return json.loads(result.stdout)
+    def render() -> dict[str, str]:
+        with _browser_slots:
+            result = subprocess.run(
+                ["node", "-e", BROWSER_SCRIPT, url, user_agent], text=True, capture_output=True, timeout=120
+            )
+        if result.returncode != 0:
+            raise RuntimeError(f"browser render failed: {result.stderr.strip().splitlines()[0][:200] if result.stderr.strip() else 'no output'}")
+        return json.loads(result.stdout)
+
+    return _with_retries(render)
 
 
 def _refusal_marker(rendered: dict[str, str]) -> str:
@@ -749,8 +786,10 @@ def _capture_page(
         receipt = capture_source_part(root, url=url, source_id=source_id, grade=grade, store=store)
     except Exception as error:  # every source receives a terminal disposition
         reason = f"{type(error).__name__}: {error}"
-        if getattr(error, "code", None) in REFUSAL_STATUSES and (use_browser if use_browser is not None else browser_available()):
-            # Some sites refuse plain HTTP clients but serve a real browser.
+        unusable_url = isinstance(error, ValueError) and not getattr(error, "code", None)
+        if not unusable_url and getattr(error, "code", None) not in GONE_STATUSES \
+                and (use_browser if use_browser is not None else browser_available()):
+            # Some sites refuse plain HTTP clients, time out, or fail for them but serve a real browser.
             return _browser_capture(root, url=url, source_id=source_id, grade=grade, http_reason=reason)
         return _blocked_receipt(root, source_id, url, reason)
     landed = str(receipt.get("source", {}).get("url", "")).casefold()
@@ -836,25 +875,32 @@ def _github_checkout(root: Path, owner: str, repo: str) -> Path:
         if not (target / ".git").is_dir():
             target.parent.mkdir(parents=True, exist_ok=True)
             command = ["clone", "--filter=blob:none", "--quiet", f"https://github.com/{owner}/{repo}", str(target)]
-            for attempt in (1, 2):
+            for delay in (*RETRY_DELAYS, 20, None):
                 result = subprocess.run(["git", *command], text=True, capture_output=True, timeout=900, env=environment)
                 if result.returncode == 0:
                     break
                 shutil.rmtree(target, ignore_errors=True)
-                # One retry for the git proxy's per-repository concurrency limit.
-                if attempt == 1 and "429" in result.stderr:
-                    time.sleep(5)
-                    continue
-                raise RuntimeError(f"git clone of {owner}/{repo} failed: {result.stderr.strip()[:300]}")
+                missing = "not found" in result.stderr.casefold() or "could not read username" in result.stderr.casefold()
+                if delay is None or missing:
+                    raise RuntimeError(f"git clone of {owner}/{repo} failed: {result.stderr.strip()[:300]}")
+                # The git proxy's concurrency limit, a dropped connection, or a timeout.
+                time.sleep(delay)
         if not (target / ".git" / "refs" / "remotes" / "pull").exists() and not (target / ".git" / "work-refs").exists():
             # Earlier runs cached shallow default-branch clones; deepen them and fetch
             # every branch and pull request head, so unmerged work is visible too.
             shallow = _git(["rev-parse", "--is-shallow-repository"], cwd=target).strip() == "true"
             fetch = ["fetch", "--quiet", "--filter=blob:none", *(["--unshallow"] if shallow else []), "origin",
                      "+refs/heads/*:refs/remotes/origin/*", "+refs/pull/*/head:refs/remotes/pull/*"]
-            result = subprocess.run(["git", *fetch], cwd=target, text=True, capture_output=True, timeout=900, env=environment)
+            for delay in (*RETRY_DELAYS, None):
+                result = subprocess.run(["git", *fetch], cwd=target, text=True, capture_output=True, timeout=900, env=environment)
+                if result.returncode == 0 or delay is None:
+                    break
+                time.sleep(delay)
             if result.returncode != 0:
-                raise RuntimeError(f"git fetch of {owner}/{repo} branches failed: {result.stderr.strip()[:300]}")
+                # The default branch is still captured; the gap is stated and the next capture tries again.
+                (target / ".git" / "work-refs-error").write_text(result.stderr.strip()[:300] + "\n", encoding="utf-8")
+                return target
+            (target / ".git" / "work-refs-error").unlink(missing_ok=True)
             (target / ".git" / "work-refs").write_text("fetched\n", encoding="utf-8")
         return target
 
@@ -966,6 +1012,7 @@ def _repository_text(checkout: Path, listed: list[str]) -> list[str]:
             path = f"{path} (HTML, as text)"
         else:
             text = data.decode("utf-8", errors="replace")
+        text = _drop_blobs(text)
         if len(text) > REPOSITORY_FILE_LIMIT and Path(path).suffix.casefold() in DATA_SUFFIXES:
             text, label = _data_sample(path, text)
             path = f"{path} ({label})"
@@ -1014,6 +1061,18 @@ def _commit_history(checkout: Path, scope: str = "") -> list[str]:
     return lines
 
 
+# Embedded binary (an image or font inlined as base64) is not evidence and would
+# fill a slice; it is replaced in place, so line numbers still match the file.
+DATA_URI = re.compile(r"(data:[\w/+.-]+;base64,)[A-Za-z0-9+/=]{200,}")
+BASE64_RUN = re.compile(r"(?m)(^[+ -])?([A-Za-z0-9+/]{1000,}={0,2})")
+
+
+def _drop_blobs(text: str) -> str:
+    text = DATA_URI.sub(lambda match: f"{match.group(1)}[{len(match.group(0)) - len(match.group(1))} base64 characters not shown]", text)
+    # A diff line keeps its +, -, or space marker.
+    return BASE64_RUN.sub(lambda match: f"{match.group(1) or ''}[{len(match.group(2))} base64 characters not shown]", text)
+
+
 def _patch_by_file(checkout: Path, command: list[str], paths: list[str], room: int) -> tuple[str, list[str]]:
     """A large change's diff one file at a time within the room left; the rest named."""
     parts: list[str] = []
@@ -1021,7 +1080,7 @@ def _patch_by_file(checkout: Path, command: list[str], paths: list[str], room: i
     for path in paths:
         if not path or Path(path).name in SKIPPED_FILES:
             continue
-        patch = _git([*command, "--", path], cwd=checkout, timeout=120).replace("\0", "").rstrip("\n")
+        patch = _drop_blobs(_git([*command, "--", path], cwd=checkout, timeout=120).replace("\0", "")).rstrip("\n")
         if len(patch) > PATCH_FILE_LIMIT or len(patch) > room:
             left_out.append(f"{path} ({len(patch)} characters)")
             continue
@@ -1051,7 +1110,7 @@ def _change_history(checkout: Path, scope: str = "") -> list[str]:
         if used >= CHANGE_HISTORY_BUDGET:
             omitted.append(f"{day} {sha[:7]} {subject} (history budget reached)")
             continue
-        patch = _git(["show", "--no-color", "--format=", sha, "--", scope or ".", *excludes], cwd=checkout, timeout=300)
+        patch = _drop_blobs(_git(["show", "--no-color", "--format=", sha, "--", scope or ".", *excludes], cwd=checkout, timeout=300))
         if len(patch) > CHANGE_COMMIT_LIMIT or used + len(patch) > CHANGE_HISTORY_BUDGET:
             stat = _git(["show", "--format=", "--stat=200", sha, "--", scope or ".", *excludes], cwd=checkout).rstrip()
             paths = _git(["show", "--format=", "--name-only", sha, "--", scope or ".", *excludes], cwd=checkout).splitlines()
@@ -1128,7 +1187,7 @@ def _unmerged_work(checkout: Path, scope: str = "", merged: frozenset[int] = fro
         patch_paths = [path for path in changed if Path(path).name not in SKIPPED_FILES]
         if not patch_paths:
             continue
-        patch = _git(["diff", "--no-color", "HEAD..." + ref, "--", *patch_paths], cwd=checkout, timeout=120)
+        patch = _drop_blobs(_git(["diff", "--no-color", "HEAD..." + ref, "--", *patch_paths], cwd=checkout, timeout=120))
         if "\0" in patch:
             patch = patch.replace("\0", "")
         if len(patch) > UNMERGED_REF_LIMIT or used + len(patch) > UNMERGED_TEXT_BUDGET:
@@ -1180,16 +1239,20 @@ const { chromium } = require('playwright');
 
 
 def _github_page(url: str) -> dict[str, Any]:
-    with _browser_slots:
-        result = subprocess.run(
-            ["node", "-e", GITHUB_PAGE_SCRIPT, url, DESKTOP_USER_AGENT], text=True, capture_output=True, timeout=150
-        )
-    if result.returncode != 0:
-        raise RuntimeError(f"browser render failed: {(result.stderr.strip().splitlines() or ['no output'])[0][:200]}")
-    rendered = json.loads(result.stdout)
-    if _refusal_marker(rendered) or len(rendered.get("text", "").strip()) < 100:
-        raise RuntimeError(_refusal_marker(rendered) or "page rendered no text")
-    return rendered
+    def render() -> dict[str, Any]:
+        with _browser_slots:
+            result = subprocess.run(
+                ["node", "-e", GITHUB_PAGE_SCRIPT, url, DESKTOP_USER_AGENT], text=True, capture_output=True, timeout=150
+            )
+        if result.returncode != 0:
+            raise RuntimeError(f"browser render failed: {(result.stderr.strip().splitlines() or ['no output'])[0][:200]}")
+        rendered = json.loads(result.stdout)
+        if _refusal_marker(rendered) or len(rendered.get("text", "").strip()) < 100:
+            # GitHub's rate-limit page is transient; an empty page is retried too.
+            raise RuntimeError(_refusal_marker(rendered) or "page rendered no text (timeout)")
+        return rendered
+
+    return _with_retries(render, transient=lambda error: _transient(error) or "refusal page" in str(error) or "no text" in str(error))
 
 
 def _conversation_numbers(checkout: Path, scope: str = "") -> list[int]:
@@ -1352,6 +1415,10 @@ def _github_capture(root: Path, *, url: str, source_id: str, grade: str) -> dict
         lines += _change_history(checkout, relative)
         conversations, merged = _github_conversations(checkout, owner, repo, relative)
         unmerged, unmerged_latest = _unmerged_work(checkout, relative, merged)
+        fetch_error = checkout / ".git" / "work-refs-error"
+        if fetch_error.is_file():
+            unmerged = ["", "--- WORK NOT ON THE DEFAULT BRANCH NOT CHECKED (branches and pull request heads could not "
+                            f"be fetched: {fetch_error.read_text(encoding='utf-8').strip()[:200]}) ---"]
         lines += unmerged
         lines += conversations
     else:

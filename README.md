@@ -239,9 +239,13 @@ Each capture writes a terminal receipt:
 `captured` with a canonical UTF-8 text derivative, or `blocked` with the
 concrete reason.
 
+- Every network step retries a transient failure (a timeout, a dropped
+  connection, a server's 5xx, a rate limit) with backoff before falling back;
+  a refusal or a missing page is not retried.
 - Web pages: HTTP capture with rendered-order text extraction. Pages built by
-  JavaScript, and pages whose site refuses the plain request (HTTP 401, 403,
-  or 429), fall back to a headless browser when the host has one. The browser
+  JavaScript, and pages whose plain request fails for any reason other than
+  the page being gone (404, 410) or an unusable URL, fall back to a headless
+  browser when the host has one. The browser
   always presents as desktop Chrome in a 1440x900 desktop window
   (`RESEARCH_CONTROL_DESKTOP_USER_AGENT` overrides the identity), so pages
   render their desktop layout and content; if that is refused it retries once
@@ -249,10 +253,19 @@ concrete reason.
   differ in which they serve. A browser that only reaches a
   refusal or challenge page is recorded as blocked with both reasons.
 - PDFs: `pdftotext` with page markers.
+- Recordings: published captions, then captions through `yt-dlp` with
+  alternate player clients, then audio through `yt-dlp` or a public Invidious
+  instance transcribed locally; `media retry` re-queues the ones that failed.
 - GitHub: public repositories, directories, and files are captured from a
-  shallow git clone (README, file tree, file contents, last commit date), since
-  GitHub's web pages refuse automated requests. Organization listings need the
-  GitHub API and are recorded as blocked; their repositories are captured
+  full git clone without file contents until read (every branch and pull
+  request head), retried on any transient failure. If branches cannot be
+  fetched, the default branch is still captured and the gap is stated. Pull
+  request and issue pages are read through the headless browser, which
+  github.com serves when it refuses plain requests. Files are ranked (docs,
+  manifests, code, then the rest); HTML is read as text, large datasets are
+  sampled with their size and shape stated, inline base64 is replaced, and a
+  large diff is included file by file. Organization listings need the GitHub
+  API and are recorded as blocked; their repositories are captured
   individually. `recapture --blocked` re-queues blocked sources after a capture
   method improves.
 

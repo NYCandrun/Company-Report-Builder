@@ -16,6 +16,9 @@ from research_control.capture import (
     _clear_stale_block,
     _commit_history,
     _conversation_numbers,
+    _drop_blobs,
+    _transient,
+    _with_retries,
     _embedded_publish_date,
     _refusal_marker,
     _repository_text,
@@ -183,6 +186,36 @@ class RepositoryCaptureTests(unittest.TestCase):
             history = "\n".join(_commit_history(repo))
             self.assertIn("1 commits, 2026-01-10 to 2026-01-10", history)
             self.assertIn("Initial tool", history)
+
+
+class ResilienceTests(unittest.TestCase):
+    def test_transient_failures_are_retried_and_refusals_are_not(self) -> None:
+        calls: list[int] = []
+
+        def flaky() -> str:
+            calls.append(1)
+            if len(calls) < 3:
+                raise ConnectionResetError("Connection reset by peer")
+            return "ok"
+
+        with mock.patch("research_control.capture.time.sleep"):
+            self.assertEqual("ok", _with_retries(flaky))
+            refused = mock.Mock(side_effect=type("Refused", (Exception,), {"code": 403})())
+            with self.assertRaises(Exception):
+                _with_retries(refused)
+        self.assertEqual(3, len(calls))
+        self.assertEqual(1, refused.call_count)
+        self.assertTrue(_transient(TimeoutError("timed out")))
+        self.assertFalse(_transient(ValueError("capture URL must be absolute http(s)")))
+
+    def test_embedded_base64_is_replaced_on_its_own_line(self) -> None:
+        blob = "A" * 1200
+        text = f"line one\n+{blob}\n<img src=\"data:image/png;base64,{'B' * 300}\">\nline four\n"
+        cleaned = _drop_blobs(text)
+        self.assertEqual(text.count("\n"), cleaned.count("\n"))
+        self.assertIn("\n+[1200 base64 characters not shown]\n", cleaned)
+        self.assertIn("data:image/png;base64,[300 base64 characters not shown]", cleaned)
+        self.assertIn("line four", cleaned)
 
 
 if __name__ == "__main__":
