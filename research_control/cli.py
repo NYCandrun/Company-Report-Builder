@@ -255,6 +255,13 @@ def _parser() -> argparse.ArgumentParser:
     work_fail.add_argument("--reason", required=True)
     work_fail.add_argument("--terminal", action="store_true", help="do not retry this failure")
     work_sub.add_parser("recover", help="recover expired leases")
+    work_edit = work_sub.add_parser(
+        "record-edit",
+        help="orchestrator: record a small sanctioned edit of task outputs so finished work is not rerun for it",
+    )
+    work_edit.add_argument("paths", nargs="+")
+    work_edit.add_argument("--phase", required=True)
+    work_edit.add_argument("--reason", required=True)
     work_defer = work_sub.add_parser(
         "defer-slices", help="orchestrator: leave extraction slices out (a token budget); the gap stays recorded"
     )
@@ -505,6 +512,15 @@ def main() -> None:
             if args.work_command == "restore":
                 with open_runtime(root) as store:
                     _print_json(store.restore(args.task_id, args.reason))
+                return
+            if args.work_command == "record-edit":
+                from research_control.automatic import RUNTIME_WORKER
+                from research_control.orchestration import append_history
+
+                with open_runtime(root) as store:
+                    result = store.record_edit(list(args.paths), args.phase, args.reason, RUNTIME_WORKER)
+                append_history(root, "edit-recorded", f"{', '.join(args.paths)}: {args.reason}")
+                _print_json(result)
                 return
             if args.work_command == "defer-slices":
                 _print_json(defer_slices(root, args.slice_ids, args.reason))

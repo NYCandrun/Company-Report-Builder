@@ -85,5 +85,28 @@ class ScopeRevisionTests(unittest.TestCase):
                 self.assertEqual("succeeded", store.task("final.brand-guide")["state"])
 
 
+    def test_recorded_edit_of_a_finished_output_restores_rather_than_reruns(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _fixture(root)
+            with RuntimeStore(root) as store:
+                store.initialize(run_id="r", company_url="https://example.com")
+                store.add_task(WorkItem(
+                    task_id="initial_synthesis.write", phase="initial_synthesis", task_type="synthesis", inputs=[],
+                    outputs=["05-synthesis/direction.md"], prompt_files=["p.md"],
+                ))
+                store.claim("w", task_id="initial_synthesis.write", bypass_limits=True)
+                store.start("initial_synthesis.write", "w")
+                atomic_write_text(root / "05-synthesis/direction.md", "Under AIUC.\n")
+                store.complete("initial_synthesis.write", "w")
+                atomic_write_text(root / "05-synthesis/direction.md", "Under AIUC-1.\n")
+                store.invalidate_stale()
+                self.assertNotEqual("succeeded", store.task("initial_synthesis.write")["state"])
+                result = store.record_edit(["05-synthesis/direction.md"], "initial_synthesis", "source name", "runtime")
+                self.assertEqual(["initial_synthesis.write"], result["restored"])
+                self.assertEqual([], store.invalidate_stale())
+                self.assertEqual("succeeded", store.task("initial_synthesis.write")["state"])
+
+
 if __name__ == "__main__":
     unittest.main()

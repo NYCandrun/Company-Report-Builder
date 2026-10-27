@@ -158,6 +158,14 @@ no longer holds (it described a capture omission a recapture fixed) is
 withdrawn by ID in `tools/lists/withdrawn-facts.json` with a reason: it keeps
 its ID, quote checks skip it, and synthesis may not cite it.
 
+## Small corrections to finished outputs
+
+When the orchestrator corrects a finished task's output by hand (a name a
+validator false positive made a worker change, a typo), record it with
+`work record-edit PATH... --phase PHASE --reason WHY`. The edit is recorded as
+a revision that owns those files, tasks that read them keep their results, and
+the task that wrote them is restored instead of rerun.
+
 ## Adding a research question mid-run
 
 When the research needs a question the scope did not ask, add it with

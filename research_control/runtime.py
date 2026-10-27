@@ -567,7 +567,9 @@ class RuntimeStore:
         # A path a later-finished task revised belongs to that task now.
         revised: set[str] = set()
         for other in self.tasks(states={"succeeded"}):
-            if other["task_id"] != task_id and str(other.get("finished_at") or "") > str(last["finished_at"] or ""):
+            finished, own = str(other.get("finished_at") or ""), str(last["finished_at"] or "")
+            # A recorded revision in the same second as the task still came after it.
+            if other["task_id"] != task_id and (finished > own or (other["task_type"] == "revision" and finished >= own)):
                 revised.update(other["output_hashes"])
         changed = [
             relative for relative, digest in task["output_hashes"].items()
@@ -588,6 +590,23 @@ class RuntimeStore:
         self.event("task_restored", task_id, {"reason": reason})
         self.refresh_ready()
         return self.task(task_id) or task
+
+    def record_edit(self, paths: list[str], phase: str, reason: str, worker_id: str) -> dict[str, Any]:
+        """Record a small sanctioned edit of finished tasks' outputs: the edit owns
+        the files, tasks that read them keep their results, and a finished task
+        that went stale only because of the edit is restored rather than rerun."""
+        stamp = utc_now().replace(":", "").replace("-", "").lower()
+        revision = self.record_revision(f"{phase}.edit.{stamp}", phase, paths, reason, worker_id)
+        rebaselined = self.rebaseline_inputs(paths, reason)
+        restored: list[str] = []
+        for task in self.tasks(states={"stale", "ready"}):
+            if set(task["output_hashes"]) & set(paths):
+                try:
+                    self.restore(task["task_id"], f"edit recorded: {reason}")
+                except ValueError:
+                    continue
+                restored.append(task["task_id"])
+        return {"revision": revision["task_id"], "rebaselined": rebaselined, "restored": restored}
 
     def record_revision(self, task_id: str, phase: str, outputs: list[str], reason: str, worker_id: str) -> dict[str, Any]:
         """Record an orchestrator's sanctioned edit of shared files as a finished
