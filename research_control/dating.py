@@ -19,6 +19,7 @@ SOURCE_DATES = "tools/outputs/source-dates.jsonl"
 DATE_OVERRIDES = "tools/lists/source-date-overrides.jsonl"
 DATING_REPORT = "06-checks/source-dating.md"
 PAGE_FILES = ("raw.html", "rendered.html")
+LIVE_FILES = (*PAGE_FILES, "raw.txt", "raw.json")
 
 
 def research_date(root: Path) -> date:
@@ -69,11 +70,12 @@ def date_source(
     live_page = (
         content is None and captured is not None
         and not (directory / "transcript.txt").is_file()
-        and any((directory / name).is_file() for name in PAGE_FILES)
+        and any((directory / name).is_file() for name in LIVE_FILES)
     )
     if live_page:
-        # An undated live page shows what it said when captured: that is its snapshot.
-        content, basis = captured, "live page at capture"
+        # An undated live page or feed (a job board, a query result) shows what it said
+        # when captured: that is its snapshot.
+        content, basis = captured, "live page at capture" if any((directory / name).is_file() for name in PAGE_FILES) else "live data at capture"
     row: dict[str, Any] = {
         "source_id": source_id,
         "url": source.get("url", ""),
