@@ -51,10 +51,30 @@ the reader. Write, in order:
 
 There is no length target. The report is as long as the evidence needs and no
 longer: every question answered with the facts that bear on it, in tight
-copy, with no filler and no tangents. Give an exhibit a title that states its
-takeaway as a sentence, and say beneath it where its figures come from. Give
-every number its date and basis, and say when a figure is your own
-calculation or comes secondhand.
+copy, with no filler and no tangents. Give every number its date and basis,
+and say when a figure is your own calculation or comes secondhand.
+
+Exhibits are few and clean. An exhibit shows one thing a reader could not
+take in from prose: a comparison, a timeline, a portfolio, a list of accounts.
+Use about ten, not twenty, and put the rest in prose. For each:
+- a title line before it, in bold, that states its takeaway as a sentence
+  ("Tribe sets itself against the large consulting firms"), and beneath it a
+  line saying where its figures come from;
+- at most five columns, and cells of a few words to a short sentence, never
+  a paragraph: the evidence is the citation superscripts beside the cell's
+  words, not text in the cell, and a relationship mark is one word
+  (`Stated`, `Inferred`, `Lead`) with its basis in the source note;
+- rows sorted by one rule the reader can see (date, strength of evidence,
+  size), and dividing rules between groups;
+- one kind of thing per exhibit. Sort by what a thing is before listing it:
+  products (software sold or licensed); service engagements (staff-delivered
+  work); packaged or entry offers (a fixed-scope pilot, a workshop series);
+  sales and marketing tools (a free assessment, an executive session that
+  opens a sales conversation, a demo); open-source and free assets; partner
+  or marketplace listings of the above; internal tooling (not sold). A thing
+  that is a sales tool is not a service offering, and an engagement
+  deliverable built for one client is not a product. When a category has
+  nothing, say so in prose; do not fill the exhibit with lookalikes.
 
 Before the open questions, include a catalog exhibit drawn from
 `05-synthesis/inference-catalogue.md` in four parts:
