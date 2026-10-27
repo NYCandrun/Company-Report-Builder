@@ -20,6 +20,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -85,15 +86,22 @@ INVIDIOUS_INSTANCES = tuple(
     ).split(",") if value.strip()
 )
 _last_youtube_request = 0.0
+_youtube_lock = threading.Lock()
+# Whisper is CPU-bound: run a bounded number at once and split the cores.
+WHISPER_CONCURRENCY = max(1, int(os.environ.get("RESEARCH_CONTROL_WHISPER_CONCURRENCY", "2")))
+WHISPER_THREADS = max(1, (os.cpu_count() or 2) // WHISPER_CONCURRENCY)
+_whisper_slots = threading.BoundedSemaphore(WHISPER_CONCURRENCY)
 
 
 def _pace_youtube() -> None:
-    """Space YouTube requests; bursts trigger 429s and bot checks."""
+    """Space YouTube requests across all threads; bursts trigger 429s and bot checks."""
     global _last_youtube_request
-    wait = YT_REQUEST_SPACING_SECONDS - (time.monotonic() - _last_youtube_request)
-    if wait > 0:
-        time.sleep(wait)
-    _last_youtube_request = time.monotonic()
+    with _youtube_lock:
+        now = time.monotonic()
+        start = max(now, _last_youtube_request + YT_REQUEST_SPACING_SECONDS)
+        _last_youtube_request = start
+    if start > now:
+        time.sleep(start - now)
 
 
 def _vtt_lines(text: str) -> list[tuple[float, str]]:
@@ -219,9 +227,11 @@ def _decode(audio: Path) -> Any:
 def _whisper(audio: Path) -> list[tuple[float, str]]:
     from faster_whisper import WhisperModel
 
-    model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8")
-    segments, _info = model.transcribe(_decode(audio), vad_filter=True, beam_size=5)
-    return [(float(segment.start), segment.text.strip()) for segment in segments if segment.text.strip()]
+    samples = _decode(audio)
+    with _whisper_slots:
+        model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8", cpu_threads=WHISPER_THREADS)
+        segments, _info = model.transcribe(samples, vad_filter=True, beam_size=5)
+        return [(float(segment.start), segment.text.strip()) for segment in segments if segment.text.strip()]
 
 
 def transcribe(url: str, directory: Path) -> dict[str, Any]:

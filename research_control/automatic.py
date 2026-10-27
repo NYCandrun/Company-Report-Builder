@@ -9,7 +9,9 @@ work, under the reserved worker identity ``runtime-executor``.
 
 from __future__ import annotations
 
+import threading
 import time
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import Any, Callable
 
@@ -103,6 +105,33 @@ HANDLERS: dict[str, Callable[[Path, RuntimeStore, dict[str, Any]], Any]] = {
 }
 
 
+class _HostPacer:
+    """Keep at least ``interval`` seconds between request starts to one host."""
+
+    def __init__(self, interval: float) -> None:
+        self.interval = interval
+        self.lock = threading.Lock()
+        self.last: dict[str, float] = {}
+
+    def wait(self, host: str) -> None:
+        if not host:
+            return
+        with self.lock:
+            now = time.monotonic()
+            start = max(now, self.last.get(host, 0.0) + self.interval)
+            self.last[host] = start
+        if start > now:
+            time.sleep(start - now)
+
+
+def _execute(root: Path, task: dict[str, Any], pacer: _HostPacer) -> Any:
+    """Run one handler in a worker thread with its own scheduler connection."""
+    if task["task_type"] == "capture":
+        pacer.wait(task["host_key"])
+    with RuntimeStore(root) as local:
+        return HANDLERS[task["task_type"]](root, local, task)
+
+
 def run_automatic(
     root: Path,
     store: RuntimeStore,
@@ -112,44 +141,64 @@ def run_automatic(
 ) -> dict[str, Any]:
     """Execute every ready runtime-owned task in ``phases`` until none remain.
 
+    Work runs in a thread pool bounded by the scheduler's global and per-host
+    concurrency, with requests to one host paced apart. Leasing, completion,
+    and planning stay on this thread's connection; each worker opens its own.
     ``phases`` is the current phase plus the phases before it, so deterministic
     work that went stale after its phase closed is redone automatically.
     """
-    interval = float(
-        workflow(root / "WORKFLOW.yaml").get("adaptive_runtime", {}).get("discovery", {})
-        .get("min_host_interval_seconds", 1.0)
-    )
+    settings = workflow(root / "WORKFLOW.yaml").get("adaptive_runtime", {})
+    scheduler = settings.get("scheduler", {})
+    global_limit = max(1, int(scheduler.get("global_concurrency", 12)))
+    host_limit = max(1, int(scheduler.get("per_host_concurrency", 2)))
+    pacer = _HostPacer(float(settings.get("discovery", {}).get("min_host_interval_seconds", 1.0)))
     executed: list[str] = []
     failed: list[dict[str, str]] = []
-    last_host: dict[str, float] = {}
-    while True:
-        store.refresh_ready()
-        ready = [
-            task for task in store.tasks(states={"ready", "retryable"})
-            if task["metadata"].get("executor") == "runtime" and task["phase"] in phases
-        ]
-        if not ready:
-            break
-        for task in ready:
-            handler = HANDLERS.get(task["task_type"])
-            if handler is None:
-                raise ValueError(f"{task['task_id']}: no runtime handler for task type {task['task_type']}")
-            if not store.claim(RUNTIME_WORKER, task_id=task["task_id"], bypass_limits=True):
-                continue
-            store.start(task["task_id"], RUNTIME_WORKER)
-            if task["task_type"] == "capture" and task["host_key"]:
-                wait = interval - (time.monotonic() - last_host.get(task["host_key"], 0.0))
-                if wait > 0:
-                    time.sleep(wait)
-                last_host[task["host_key"]] = time.monotonic()
-            try:
-                handler(root, store, task)
-                complete(store, store.task(task["task_id"]) or task, RUNTIME_WORKER)
-                executed.append(task["task_id"])
-            except Exception as error:  # record the concrete failure; the scheduler decides retry
-                failed.append({"task_id": task["task_id"], "reason": f"{type(error).__name__}: {error}"})
-                current = store.task(task["task_id"])
-                if current and current["state"] in {"leased", "running", "validating"}:
-                    store.fail(task["task_id"], RUNTIME_WORKER, f"{type(error).__name__}: {error}")
-        replan()
+    in_flight: dict[Future[Any], dict[str, Any]] = {}
+    last_heartbeat = time.monotonic()
+    with ThreadPoolExecutor(max_workers=global_limit, thread_name_prefix="runtime") as pool:
+        while True:
+            store.refresh_ready()
+            running = {task["task_id"] for task in in_flight.values()}
+            ready = sorted(
+                (
+                    task for task in store.tasks(states={"ready", "retryable"})
+                    if task["metadata"].get("executor") == "runtime"
+                    and task["phase"] in phases and task["task_id"] not in running
+                ),
+                key=lambda task: (task["priority"], task["created_at"], task["task_id"]),
+            )
+            for task in ready:
+                if len(in_flight) >= global_limit:
+                    break
+                if task["task_type"] not in HANDLERS:
+                    raise ValueError(f"{task['task_id']}: no runtime handler for task type {task['task_type']}")
+                host = task["host_key"]
+                if host and sum(1 for item in in_flight.values() if item["host_key"] == host) >= host_limit:
+                    continue
+                if not store.claim(RUNTIME_WORKER, task_id=task["task_id"], bypass_limits=True):
+                    continue
+                store.start(task["task_id"], RUNTIME_WORKER)
+                in_flight[pool.submit(_execute, root, task, pacer)] = task
+            if not in_flight:
+                break
+            done, _pending = wait(in_flight, timeout=60, return_when=FIRST_COMPLETED)
+            if time.monotonic() - last_heartbeat > 300:
+                # Long transcriptions must not lose their lease while they run.
+                for task in in_flight.values():
+                    store.heartbeat(task["task_id"], RUNTIME_WORKER)
+                last_heartbeat = time.monotonic()
+            for future in done:
+                task = in_flight.pop(future)
+                try:
+                    future.result()
+                    complete(store, store.task(task["task_id"]) or task, RUNTIME_WORKER)
+                    executed.append(task["task_id"])
+                except Exception as error:  # record the concrete failure; the scheduler decides retry
+                    failed.append({"task_id": task["task_id"], "reason": f"{type(error).__name__}: {error}"})
+                    current = store.task(task["task_id"])
+                    if current and current["state"] in {"leased", "running", "validating"}:
+                        store.fail(task["task_id"], RUNTIME_WORKER, f"{type(error).__name__}: {error}")
+            if done:
+                replan()
     return {"executed": len(executed), "failed": failed}

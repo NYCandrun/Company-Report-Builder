@@ -162,7 +162,12 @@ python3 -m research_control discovery receipt --channel CHANNEL
 
 ## Capture and transcripts
 
-The runtime captures every admitted source itself and writes a terminal receipt:
+The runtime captures every admitted source itself, in parallel: a thread pool
+bounded by the scheduler's global and per-host concurrency (12 and 2 by
+default), with requests to one host paced apart. Whisper transcription is
+limited to `RESEARCH_CONTROL_WHISPER_CONCURRENCY` jobs at once (default 2),
+which split the CPU cores, so long transcriptions never hold up page capture.
+Each capture writes a terminal receipt:
 `captured` with a canonical UTF-8 text derivative, or `blocked` with the
 concrete reason.
 
