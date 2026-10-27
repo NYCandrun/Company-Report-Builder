@@ -98,6 +98,8 @@ def _capture(root: Path, store: RuntimeStore, task: dict[str, Any]) -> dict[str,
     media = source["channel"] in {"video", "podcasts"} or is_media_url(source["canonical_url"])
     receipt = auto_capture_source(
         root, url=source["canonical_url"], source_id=source["source_id"], grade=grade, store=store, media=media,
+        # Other firms' repositories get a shallow look, never the company-level history and authorship work.
+        shallow_repositories=source["channel"] == "market_competitors",
     )
     # Record which policy, prompts, and engine were in force for this capture.
     path = root / task["metadata"]["receipt"]

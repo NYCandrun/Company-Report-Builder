@@ -61,6 +61,14 @@ Admit what answers a question, not everything that exists:
   sizes or describes the category: analyst and trade reports, filings and
   earnings commentary on the category, funding and acquisition activity, and
   moves by platform vendors and AI labs into the company's line of work.
+  Public code is a shallow look, for direct competitors only: open the
+  repository list of the competitor's own GitHub organization in the headless
+  browser (`https://github.com/orgs/ORG/repositories`) and admit only the
+  repositories that show its offering (a product, a public tool, an
+  accelerator), by repository URL. The runtime reads each one at its latest
+  commit (file list and README only). Do not clone, read history, look up its
+  people or their handles, query GH Archive, or admit adjacent firms' code;
+  that depth is for the company itself (`code_packages`).
   Close as `sufficient` against the market and competitor questions, naming
   each competitor found, whether it is direct or adjacent, and the evidence.
 - Social platforms that require login (LinkedIn, X, Facebook, Instagram,

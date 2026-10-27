@@ -627,8 +627,13 @@ def auto_capture_source(
     store: RuntimeStore | None = None,
     use_browser: bool | None = None,
     media: bool = False,
+    shallow_repositories: bool = False,
 ) -> dict[str, Any]:
     """Capture a public page, PDF, or media source end to end without an agent.
+
+    With ``shallow_repositories`` (sources about other firms, such as competitors), a
+    GitHub repository is read at its latest commit only: its file list and README, with
+    no history, branches, pull requests, or authorship.
 
     Produces a terminal receipt: ``captured`` with a canonical text derivative,
     or ``blocked`` with the concrete reason. Media sources also get a
@@ -639,7 +644,8 @@ def auto_capture_source(
 
     if (urlparse(url).hostname or "").casefold().removeprefix("www.") == "github.com":
         try:
-            return _clear_stale_block(root, source_id, _github_capture(root, url=url, source_id=source_id, grade=grade))
+            capture = _github_shallow_capture if shallow_repositories else _github_capture
+            return _clear_stale_block(root, source_id, capture(root, url=url, source_id=source_id, grade=grade))
         except Exception as error:
             return _blocked_receipt(root, source_id, url, f"{type(error).__name__}: {error}")
     prior_transcript = _reusable_transcript(root, source_id, url) if media else None
@@ -1514,6 +1520,68 @@ def _github_conversation_capture(root: Path, *, url: str, source_id: str, grade:
         "estimated_tokens": max(1, len(text) // 4), "canonical_text_ready": True, "captured_at": utc_now(),
         "disposition": {
             "input_id": source_id, "disposition": "completed", "reason": "rendered with a headless browser",
+            "evidence_paths": [relative_text], "output_ids": [source_id],
+        },
+    }
+    receipt_path = root / "tools/outputs/worker-parts/capture" / f"{source_id}.json"
+    atomic_write_json(receipt_path, receipt)
+    return {**receipt, "receipt": str(receipt_path.relative_to(root))}
+
+
+def _github_shallow_capture(root: Path, *, url: str, source_id: str, grade: str) -> dict[str, Any]:
+    """A shallow look at another firm's public repository: the latest commit's file list and
+    README (or the one file the URL names), nothing from its history or its people."""
+    parts = [part for part in urlparse(url).path.split("/") if part]
+    if len(parts) < 2 or (len(parts) > 2 and parts[2] not in {"tree", "blob"}):
+        raise RuntimeError("a shallow look takes a repository, directory, or file URL on github.com")
+    owner, repo = parts[0], parts[1].removesuffix(".git")
+    relative = "/".join(parts[4:]) if len(parts) > 4 else ""
+    target = root / GIT_CACHE / "shallow" / owner.casefold() / repo.casefold()
+    environment = {**os.environ, "GIT_LFS_SKIP_SMUDGE": "1", "GIT_TERMINAL_PROMPT": "0"}
+    if not (target / ".git").is_dir():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        command = ["git", "clone", "--depth", "1", "--quiet", f"https://github.com/{owner}/{repo}", str(target)]
+        for delay in (*RETRY_DELAYS, None):
+            result = subprocess.run(command, text=True, capture_output=True, timeout=600, env=environment)
+            if result.returncode == 0:
+                break
+            shutil.rmtree(target, ignore_errors=True)
+            if delay is None or "not found" in result.stderr.casefold():
+                raise RuntimeError(f"git clone of {owner}/{repo} failed: {result.stderr.strip()[:300]}")
+            time.sleep(delay)
+    commit, committed = _git(["log", "-1", "--format=%H %cI"], cwd=target).split()
+    listed = _git(["ls-files", "--", relative or "."], cwd=target).splitlines()
+    lines = [
+        f"Repository: {owner}/{repo}", f"Source URL: {url}", f"Captured commit: {commit} (committed {committed})",
+        "Method: shallow look at the latest commit (file list and README only; no history, branches, or authors)", "",
+        f"--- FILE TREE ({len(listed)} files{', under ' + relative if relative else ''}) ---", *listed[:300],
+        *([f"... {len(listed) - 300} more files"] if len(listed) > 300 else []),
+    ]
+    named = target / relative if relative else None
+    readmes = [named] if named and named.is_file() else sorted(
+        path for path in (named or target).glob("*") if path.is_file() and path.name.casefold().startswith("readme"))
+    for path in readmes[:2]:
+        text = path.read_text(encoding="utf-8", errors="replace")[:60_000]
+        lines += ["", f"--- FILE: {path.relative_to(target)} ---", _drop_blobs(text)]
+    directory = root / "01-sources/captures" / source_id
+    directory.mkdir(parents=True, exist_ok=True)
+    text_path = directory / "content.txt"
+    atomic_write_text(text_path, "\n".join(lines).rstrip() + "\n")
+    content = text_path.read_text(encoding="utf-8")
+    relative_text = str(text_path.relative_to(root))
+    source = {
+        "id": source_id, "grade": grade, "title": f"{owner}/{repo}" + (f": {relative}" if relative else ""),
+        "publisher": f"GitHub ({owner})", "url": url, "date published": "", "date last modified": committed[:10],
+        "date captured": datetime.now(timezone.utc).date().isoformat(), "local file": relative_text,
+        "method": "shallow git clone (latest commit only)",
+        "notes": f"Latest commit {commit[:12]} ({committed[:10]}); file list and README only",
+    }
+    receipt = {
+        "schema_version": "1.0.0", "task_type": "capture", "source_id": source_id, "status": "captured",
+        "source": source, "local_paths": [relative_text], "content_bytes": len(content.encode("utf-8")),
+        "estimated_tokens": max(1, len(content) // 4), "canonical_text_ready": True, "captured_at": utc_now(),
+        "disposition": {
+            "input_id": source_id, "disposition": "completed", "reason": "shallow look at a public repository",
             "evidence_paths": [relative_text], "output_ids": [source_id],
         },
     }
