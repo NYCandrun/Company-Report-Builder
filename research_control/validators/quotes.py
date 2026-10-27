@@ -14,18 +14,19 @@ def normalize(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip().casefold()
 
 
-def validate(records: list[dict[str, Any]], source_paths: dict[str, Path], root: Path, patterns: list[str] | None = None) -> dict[str, Any]:
+def validate(records: list[dict[str, Any]], source_paths: dict[str, Path | list[Path]], root: Path, patterns: list[str] | None = None) -> dict[str, Any]:
     failures: list[str] = []
     checked = 0
     for index, row in enumerate(records, 1):
         label = str(row.get("fact_id", index))
         source_id = str(row.get("source_id", "")).strip()
-        path = source_paths.get(source_id)
-        if path is None or not path.is_file():
+        value = source_paths.get(source_id)
+        paths = [value] if isinstance(value, Path) else list(value or [])
+        if not paths or not all(path.is_file() for path in paths):
             failures.append(f"{label}: captured source not found for {source_id}")
             continue
         checked += 1
-        source = normalize(path.read_text(encoding="utf-8", errors="replace"))
+        source = "\n".join(normalize(path.read_text(encoding="utf-8", errors="replace")) for path in paths)
         quote = str(row.get("verbatim_quote", row.get("quote", "")))
         parts = [normalize(item).strip(" .,;:") for item in re.split(r"\s*(?:\.\.\.|…)\s*", quote)]
         parts = [item for item in parts if len(item.split()) >= 2]

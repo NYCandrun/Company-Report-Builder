@@ -16,6 +16,7 @@ from typing import Any, Callable
 from research_control.capture import auto_capture_source
 from research_control.discovery import DiscoveryEngine
 from research_control.io import atomic_write_json, workflow
+from research_control.media import is_media_url
 from research_control.reducers import reduce_capture_parts, reduce_discovery, reduce_extraction_parts
 from research_control.runtime import RuntimeStore
 
@@ -70,8 +71,9 @@ def _capture(root: Path, store: RuntimeStore, task: dict[str, Any]) -> dict[str,
     if not source:
         raise KeyError(f"unknown source: {task['metadata']['source_id']}")
     grade = "S" if source["channel"] == "independent_web" else "P"
+    media = source["channel"] in {"video", "podcasts"} or is_media_url(source["canonical_url"])
     return auto_capture_source(
-        root, url=source["canonical_url"], source_id=source["source_id"], grade=grade, store=store
+        root, url=source["canonical_url"], source_id=source["source_id"], grade=grade, store=store, media=media,
     )
 
 

@@ -152,6 +152,12 @@ def preflight(root: Path) -> int:
                         failures.append(f"{phase_id}.{task.get('id')}: missing prompt {relative}")
     except Exception as error:
         failures.append(f"workflow is invalid: {error}")
+    if shutil.which("yt-dlp") is None:
+        warnings.append("yt-dlp not found; media sources are captured as pages without transcripts")
+    try:
+        import faster_whisper  # noqa: F401
+    except ImportError:
+        warnings.append("faster-whisper not found; downloaded audio cannot be transcribed locally")
     if shutil.which("pdftoppm") is None:
         warnings.append("pdftoppm not found; renderer will produce SVG page previews for visual review")
     if not any((

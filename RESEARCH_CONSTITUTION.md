@@ -84,7 +84,11 @@ non-English docs and relevant microsites, for PDF and embedded-media discovery.
 The runtime performs this crawl and captures ordinary pages and PDFs itself.
 High-value pages are captured in full. Every company-hosted PDF is downloaded
 with a text copy and page boundaries. Every long-form company-channel or
-company-site video is in scope for transcription. YouTube Shorts are not.
+company-site video is in scope for transcription. YouTube Shorts are not. The
+runtime transcribes media from published captions or, failing that, from a
+public audio download transcribed locally with Whisper, with timestamps. A
+platform that requires sign-in or a bot check is recorded as a transcript
+limitation and never worked around.
 
 Competitor research covers five to eight justified competitors plus a watch
 list unless user direction says otherwise. Competitor sources are admitted only

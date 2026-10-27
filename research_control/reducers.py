@@ -177,6 +177,17 @@ def reduce_capture_parts(root: Path, store: RuntimeStore) -> dict[str, Any]:
         "",
         "See `06-checks/discovery-coverage.md` for per-channel fixed-point evidence.",
     ]
+    media = [part for part in parts if part.get("transcript")]
+    if media:
+        transcribed = [part for part in media if part["transcript"].get("status") == "transcribed"]
+        coverage.extend([
+            "", "## Media transcripts", "",
+            f"- Media sources: {len(media)}; transcribed: {len(transcribed)}; without transcript: {len(media) - len(transcribed)}",
+        ])
+        coverage.extend(
+            f"- `{part['source_id']}` transcript unavailable: {part['transcript'].get('reason', 'unknown')}"
+            for part in media if part["transcript"].get("status") != "transcribed"
+        )
     atomic_write_text(root / "06-checks/coverage.md", "\n".join(coverage) + "\n")
     return {
         "status": "PASS",

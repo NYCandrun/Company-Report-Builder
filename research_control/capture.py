@@ -529,13 +529,78 @@ def auto_capture_source(
     grade: str,
     store: RuntimeStore | None = None,
     use_browser: bool | None = None,
+    media: bool = False,
 ) -> dict[str, Any]:
-    """Capture an ordinary public page or PDF end to end without an agent.
+    """Capture a public page, PDF, or media source end to end without an agent.
 
     Produces a terminal receipt: ``captured`` with a canonical text derivative,
-    or ``blocked`` with the concrete reason. Access restrictions are recorded,
-    never bypassed.
+    or ``blocked`` with the concrete reason. Media sources also get a
+    timestamped transcript when captions or a public audio download allow it.
+    Access restrictions are recorded, never bypassed.
     """
+    receipt = _capture_page(root, url=url, source_id=source_id, grade=grade, store=store, use_browser=use_browser)
+    if not media or "robots.txt disallows" in str(receipt.get("reason", "")):
+        return receipt
+    from research_control.media import transcribe
+
+    directory = root / "01-sources/captures" / source_id
+    result = transcribe(url, directory)
+    receipt.pop("receipt", None)
+    if result["status"] != "transcribed":
+        receipt["transcript"] = {"status": "unavailable", "reason": result["reason"]}
+        if receipt.get("status") == "captured":
+            note = f"Transcript unavailable: {result['reason']}"
+            receipt["source"]["notes"] = "; ".join(value for value in (receipt["source"].get("notes"), note) if value)
+        receipt_path = root / "tools/outputs/worker-parts/capture" / f"{source_id}.json"
+        atomic_write_json(receipt_path, receipt)
+        return {**receipt, "receipt": str(receipt_path.relative_to(root))}
+    transcript = str(result["path"].relative_to(root))
+    if receipt.get("status") != "captured":
+        parsed = urlparse(url)
+        receipt["source"] = {
+            "id": source_id, "grade": grade, "title": url, "publisher": parsed.netloc.removeprefix("www."),
+            "url": url, "date published": "", "date last modified": "",
+            "date captured": datetime.now(timezone.utc).date().isoformat(), "local file": "",
+            "method": "", "notes": f"Page text unavailable: {receipt.get('reason', 'blocked')}",
+        }
+        receipt["local_paths"] = []
+        receipt.pop("reason", None)
+    paths = list(dict.fromkeys([*receipt.get("local_paths", []), transcript]))
+    text_tokens = sum(
+        len((root / value).read_text(encoding="utf-8", errors="replace")) // 4
+        for value in paths if value.endswith(".txt") and (root / value).is_file()
+    )
+    receipt.update({
+        "status": "captured",
+        "local_paths": paths,
+        "canonical_text_ready": True,
+        "estimated_tokens": max(1, text_tokens),
+        "transcript": {key: result[key] for key in ("status", "method", "segments", "audio_sha256", "attempts")},
+        "disposition": {
+            "input_id": source_id, "disposition": "completed",
+            "reason": "captured with timestamped transcript",
+            "evidence_paths": paths, "output_ids": [source_id],
+        },
+    })
+    receipt["source"]["local file"] = ";".join(paths)
+    receipt["source"]["method"] = "; ".join(value for value in (receipt["source"].get("method"), result["method"]) if value)
+    receipt["source"]["notes"] = "; ".join(
+        value for value in (receipt["source"].get("notes"), "Machine transcript; speaker identity not established") if value
+    )
+    receipt_path = root / "tools/outputs/worker-parts/capture" / f"{source_id}.json"
+    atomic_write_json(receipt_path, receipt)
+    return {**receipt, "receipt": str(receipt_path.relative_to(root))}
+
+
+def _capture_page(
+    root: Path,
+    *,
+    url: str,
+    source_id: str,
+    grade: str,
+    store: RuntimeStore | None,
+    use_browser: bool | None,
+) -> dict[str, Any]:
     try:
         receipt = capture_source_part(root, url=url, source_id=source_id, grade=grade, store=store)
     except Exception as error:  # every source receives a terminal disposition

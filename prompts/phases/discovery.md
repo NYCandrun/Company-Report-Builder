@@ -41,8 +41,14 @@ Admit what answers a question, not everything that exists:
   Threads, TikTok) are recorded automatically as uncaptured leads. Admit the
   official profiles and any post that a question depends on, and look for a
   public copy (a press release, blog post, or transcript) of that content.
-- Video and podcasts: admit long-form company talks and interviews. Prefer a
-  publisher page with a transcript or substantive show notes.
+- Video and podcasts: admit long-form company talks and interviews. The
+  runtime transcribes media during capture, from published captions or from a
+  public audio download transcribed locally with Whisper, never with cookies
+  or a login. Platforms that demand sign-in (YouTube often does from cloud
+  networks) yield page text only, so for each appearance also admit a
+  transcribable copy when one exists: the publisher's episode page, the
+  episode's direct audio enclosure from its RSS feed, or a publisher-hosted
+  player page.
 
 Close each assigned channel with one terminal state and specific evidence:
 

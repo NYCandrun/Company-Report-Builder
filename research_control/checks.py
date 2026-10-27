@@ -134,12 +134,21 @@ def _fact_records(root: Path) -> list[dict[str, str]]:
     return facts.load_fact_tables(_paths(root, ["02-facts/*.md", "04-competitors/*/02-facts/*.md"]))
 
 
-def _source_paths(root: Path, manifest: list[dict[str, str]]) -> dict[str, Path]:
-    result: dict[str, Path] = {}
+TEXT_DERIVATIVE_SUFFIXES = {".txt", ".md", ".json", ".jsonl", ".csv", ".xml"}
+
+
+def _source_paths(root: Path, manifest: list[dict[str, str]]) -> dict[str, list[Path]]:
+    """Map each source to its canonical text derivatives (page text, PDF text, transcript).
+
+    Quotes are checked against what extraction read, not raw HTML or binaries.
+    A source with no text derivative falls back to its first local file.
+    """
+    result: dict[str, list[Path]] = {}
     for row in manifest:
-        local = next((item.strip() for item in row.get("local file", "").split(";") if item.strip()), "")
-        if local:
-            result[row.get("id", "")] = root / local
+        locals_ = [item.strip() for item in row.get("local file", "").split(";") if item.strip()]
+        texts = [root / item for item in locals_ if Path(item).suffix.casefold() in TEXT_DERIVATIVE_SUFFIXES]
+        if texts or locals_:
+            result[row.get("id", "")] = texts or [root / locals_[0]]
     return result
 
 
