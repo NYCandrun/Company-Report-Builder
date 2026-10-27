@@ -818,9 +818,16 @@ class AdaptivePlanner:
                 ),
                 created,
             )
-            if any(item["id"] == "filing-spot-check" for item in self.document["execution_profiles"]["facts"]["tasks"]):
+            filing = self.store.task("facts.file-facts") or {}
+            spot = self.store.task("facts.filing-spot-check")
+            if filing.get("metadata", {}).get("executor") == "runtime" and any(
+                item["id"] == "filing-spot-check" for item in self.document["execution_profiles"]["facts"]["tasks"]
+            ):
                 # Filing is bookkeeping the runtime does; a reviewer checks a sample of it.
                 self._add(self._plan_profile_task("facts", "filing-spot-check", metadata={}), created)
+            elif spot and spot["state"] not in SATISFIED_STATES | ACTIVE_STATES:
+                # Filing an agent did (before filing became runtime work) wrote its own spot checks.
+                self.store.supersede(spot["task_id"], "filing was done by an agent, which wrote its own spot checks")
         return created
 
     def _plan_verification(self) -> list[str]:
