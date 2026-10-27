@@ -75,7 +75,13 @@ separate field is assigned.
 ## Currency
 
 Evidence within the last quarter may support plain current wording. Older
-current-state evidence needs `as of <date>`. Flagged rows use `last confirmed
+current-state evidence needs `as of <date>`. A repository, spreadsheet, or
+other document snapshot is dated by its own content or its last commit, not
+by when it was captured; every fact from it carries that date. When the
+snapshot is more than two quarters older than the research date, say so
+wherever it is used, for example "as of December 2025, about three quarters
+before this research", and never let it stand for the present. Plans,
+forecasts, and targets are stated as plans with their date, not as results. Flagged rows use `last confirmed
 <date>` or `possibly retired`. A redirect is not retirement proof. A one-off
 title is not automatically a title change. Simultaneous plans are not a price
 change. Never state a company dollar price as current unless the company
