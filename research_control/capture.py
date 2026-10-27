@@ -907,6 +907,12 @@ def _github_capture(root: Path, *, url: str, source_id: str, grade: str) -> dict
             "its public repositories are captured individually"
         )
     owner, repo = parts[0], parts[1].removesuffix(".git")
+    if len(parts) > 2 and parts[2] not in {"tree", "blob"}:
+        # Pull requests, issues, and discussions are not repository content.
+        raise RuntimeError(
+            f"a GitHub {parts[2]} page needs github.com's web pages or API, which this session cannot reach; "
+            "it is not repository content a clone can capture"
+        )
     checkout = _github_checkout(root, owner, repo)
     relative = "/".join(parts[4:]) if len(parts) > 4 and parts[2] in {"tree", "blob"} else ""
     commit, committed = _git(["log", "-1", "--format=%H %cI"], cwd=checkout).split()
