@@ -162,11 +162,16 @@ python3 -m research_control discovery receipt --channel CHANNEL
 
 ## Capture and transcripts
 
-The runtime captures every admitted source itself, in parallel: a thread pool
-bounded by the scheduler's global and per-host concurrency (12 and 2 by
-default), with requests to one host paced apart. Whisper transcription is
-limited to `RESEARCH_CONTROL_WHISPER_CONCURRENCY` jobs at once (default 2),
-which split the CPU cores, so long transcriptions never hold up page capture.
+The runtime captures every admitted source itself, in parallel, with limits
+derived from the host it runs on (`research_control/resources.py`): a pool of
+four workers per core, up to 4 requests in flight per host spaced 0.25 s apart,
+one single-threaded Whisper job per core, and headless-browser renders on half
+the cores. On the 4-core, 16 GB cloud container these were measured on, that
+gave 3.4x faster page capture than serial and 10.5x real-time transcription.
+Long transcriptions never hold up page capture. Override any limit with
+`RESEARCH_CONTROL_RUNTIME_WORKERS`, `RESEARCH_CONTROL_PER_HOST`,
+`RESEARCH_CONTROL_HOST_INTERVAL`, `RESEARCH_CONTROL_WHISPER_JOBS`, or
+`RESEARCH_CONTROL_BROWSER_JOBS`. Agent leases keep the scheduler's own limits.
 Each capture writes a terminal receipt:
 `captured` with a canonical UTF-8 text derivative, or `blocked` with the
 concrete reason.

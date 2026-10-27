@@ -50,9 +50,9 @@ class RuntimePoolTests(unittest.TestCase):
                         inputs=[], outputs=[f"out/{index}.txt"], prompt_files=["prompts/phases/capture-source.md"],
                         host_key=host, metadata={"executor": "runtime"},
                     ))
-                pacer = automatic._HostPacer
+                limits = {"workers": 6, "per_host": 2, "host_interval_seconds": 0.0}
                 with patch.dict(automatic.HANDLERS, {"capture": fake_capture}), \
-                        patch.object(automatic, "_HostPacer", lambda _interval: pacer(0.0)):
+                        patch.object(automatic, "runtime_limits", lambda: limits):
                     result = run_automatic(
                         root, store, ["capture"],
                         lambda current, task, worker: current.complete(task["task_id"], worker),
@@ -63,6 +63,7 @@ class RuntimePoolTests(unittest.TestCase):
                 self.assertTrue(all(task["state"] == "succeeded" for task in store.tasks(phase="capture")))
             self.assertLessEqual(peaks["a.example"], 2)
             self.assertGreater(overall["peak"], 2)
+            self.assertLessEqual(overall["peak"], 6)
             self.assertEqual(RUNTIME_WORKER, "runtime-executor")
 
 

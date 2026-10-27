@@ -28,6 +28,7 @@ from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
 
 from research_control.io import atomic_write_text
+from research_control.resources import runtime_limits
 
 
 WHISPER_MODEL = os.environ.get("RESEARCH_CONTROL_WHISPER_MODEL", "small.en")
@@ -87,10 +88,8 @@ INVIDIOUS_INSTANCES = tuple(
 )
 _last_youtube_request = 0.0
 _youtube_lock = threading.Lock()
-# Whisper is CPU-bound: run a bounded number at once and split the cores.
-WHISPER_CONCURRENCY = max(1, int(os.environ.get("RESEARCH_CONTROL_WHISPER_CONCURRENCY", "2")))
-WHISPER_THREADS = max(1, (os.cpu_count() or 2) // WHISPER_CONCURRENCY)
-_whisper_slots = threading.BoundedSemaphore(WHISPER_CONCURRENCY)
+# Whisper is CPU-bound; job count and threads per job come from the host.
+_whisper_slots = threading.BoundedSemaphore(runtime_limits()["whisper_jobs"])
 
 
 def _pace_youtube() -> None:
@@ -229,7 +228,7 @@ def _whisper(audio: Path) -> list[tuple[float, str]]:
 
     samples = _decode(audio)
     with _whisper_slots:
-        model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8", cpu_threads=WHISPER_THREADS)
+        model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8", cpu_threads=runtime_limits()["whisper_threads"])
         segments, _info = model.transcribe(samples, vad_filter=True, beam_size=5)
         return [(float(segment.start), segment.text.strip()) for segment in segments if segment.text.strip()]
 

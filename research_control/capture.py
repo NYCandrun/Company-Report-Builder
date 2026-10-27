@@ -9,6 +9,7 @@ import re
 import shutil
 import socket
 import subprocess
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -19,6 +20,7 @@ from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from research_control.io import atomic_write_json, atomic_write_text, utc_now
+from research_control.resources import runtime_limits
 from research_control.runtime import RuntimeStore
 from research_control.web_cache import SharedWebCache
 
@@ -394,11 +396,15 @@ def browser_available() -> bool:
     return probe.returncode == 0
 
 
+_browser_slots = threading.BoundedSemaphore(runtime_limits()["browser_jobs"])
+
+
 def _browser_render(url: str) -> dict[str, str]:
     _require_public_host(url)
-    result = subprocess.run(
-        ["node", "-e", BROWSER_SCRIPT, url, USER_AGENT], text=True, capture_output=True, timeout=120
-    )
+    with _browser_slots:
+        result = subprocess.run(
+            ["node", "-e", BROWSER_SCRIPT, url, USER_AGENT], text=True, capture_output=True, timeout=120
+        )
     if result.returncode != 0:
         raise RuntimeError(f"browser render failed: {result.stderr.strip()[:300]}")
     return json.loads(result.stdout)

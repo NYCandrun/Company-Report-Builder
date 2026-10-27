@@ -20,6 +20,7 @@ from research_control.discovery import DiscoveryEngine
 from research_control.io import atomic_write_json, load_json, workflow
 from research_control.media import is_media_url
 from research_control.provision import engine_fingerprint
+from research_control.resources import runtime_limits
 from research_control.reducers import reduce_capture_parts, reduce_discovery, reduce_extraction_parts
 from research_control.runtime import RuntimeStore
 
@@ -141,17 +142,16 @@ def run_automatic(
 ) -> dict[str, Any]:
     """Execute every ready runtime-owned task in ``phases`` until none remain.
 
-    Work runs in a thread pool bounded by the scheduler's global and per-host
-    concurrency, with requests to one host paced apart. Leasing, completion,
+    Work runs in a thread pool sized for this host (see ``resources``), with a
+    per-host limit and requests to one host paced apart. Leasing, completion,
     and planning stay on this thread's connection; each worker opens its own.
     ``phases`` is the current phase plus the phases before it, so deterministic
     work that went stale after its phase closed is redone automatically.
     """
-    settings = workflow(root / "WORKFLOW.yaml").get("adaptive_runtime", {})
-    scheduler = settings.get("scheduler", {})
-    global_limit = max(1, int(scheduler.get("global_concurrency", 12)))
-    host_limit = max(1, int(scheduler.get("per_host_concurrency", 2)))
-    pacer = _HostPacer(float(settings.get("discovery", {}).get("min_host_interval_seconds", 1.0)))
+    limits = runtime_limits()
+    global_limit = max(1, limits["workers"])
+    host_limit = max(1, limits["per_host"])
+    pacer = _HostPacer(limits["host_interval_seconds"])
     executed: list[str] = []
     failed: list[dict[str, str]] = []
     in_flight: dict[Future[Any], dict[str, Any]] = {}
