@@ -11,7 +11,10 @@ text supports that bears on the research questions, and nothing outside them.
 Each candidate ID must use the packet metadata's `candidate_id_prefix` followed
 by a zero-padded worker-local sequence. Each candidate contains `topic`,
 `claim`, `quote`, `source_id`, `location`,
-`source_date`, `grade`, `about`, `said_by`, and `notes`. Use only the assigned
+`source_date`, `grade`, `about`, `said_by`, and `notes`. Write `claim` and
+`notes` in American English even when the source is British (the claim says
+"program" where the quote says "programme"); the `quote` keeps the source's
+exact words. Use only the assigned
 topic/output and ID bounds. Self-check every quote against the original capture
 before completing the source.
 

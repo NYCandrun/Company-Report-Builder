@@ -11,8 +11,9 @@ from research_control import PASS
 from research_control.checks import check_phase, run_validator
 from research_control.dispatch import emit_ready_packets
 from research_control.discovery import ALTERNATES_PART, BLOCKED_SOURCES_LIST
-from research_control.io import load_json, load_jsonl, workflow
+from research_control.io import load_json, load_jsonl, resolve_pattern, workflow
 from research_control import citation_build
+from research_control.validators import american
 from research_control.orchestration import current_phase, initialize, load_state, phase_order, reopen_phase, set_phase_result
 from research_control import conversation, verification
 from research_control.archive import ensure_conversation_pushed
@@ -213,6 +214,11 @@ def _complete(
 ) -> dict[str, Any]:
     task_id = task["task_id"]
     _validate_semantic_receipt(root, store, task)
+    if worker_id != RUNTIME_WORKER:
+        problems = _british_english(root, task)
+        if problems:
+            raise ValueError(f"{task_id}: American English is required in authored text (quotes and names keep the "
+                             f"source's spelling); fix: " + "; ".join(problems))
     result = store.complete(task_id, worker_id, telemetry=telemetry)
     if task["task_type"] == "capture":
         receipt = load_json(root / task["metadata"]["receipt"])
@@ -269,10 +275,23 @@ def check_work(root: Path, task_id: str) -> dict[str, Any]:
         for output in task["outputs"]:
             if "*" not in output and "{" not in output and not (root / output).exists():
                 problems.append(f"output missing: {output}")
+        if task["metadata"].get("executor") != "runtime":
+            problems.extend(f"American English: {item}" for item in _british_english(root, task))
         result = {"task_id": task_id, "problems": problems, "status": "clean" if not problems else "problems"}
         if built:
             result["citations"] = {key: built[key] for key in ("citations", "sources", "deep_links", "exhibit_cells")}
         return result
+
+
+def _british_english(root: Path, task: dict[str, Any]) -> list[str]:
+    """British spellings and terms in the text a worker wrote for this task's outputs."""
+    written: list[str] = []
+    for pattern in task["outputs"]:
+        for path in resolve_pattern(root, pattern):
+            relative = str(path.relative_to(root))
+            if path.is_file() and not relative.startswith(("01-sources/", "tools/outputs/web-cache/")):
+                written.append(relative)
+    return american.check_paths(root, sorted(set(written)))
 
 
 def _validate_semantic_receipt(root: Path, store: RuntimeStore, task: dict[str, Any]) -> None:

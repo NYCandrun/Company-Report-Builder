@@ -41,6 +41,7 @@ sup.cn a { text-decoration: none; font-weight: 600; }
 ol.source-notes { padding-left: 2.4em; font-size: 13px; }
 ol.source-notes li { margin: 4px 0; max-width: none; overflow-wrap: anywhere; }
 ol.source-notes .grade { display: inline-block; min-width: 1.4em; color: var(--muted); font-weight: 600; }
+ol.source-notes .part { font-weight: 600; }
 @media print { body { background: white; } main { width: auto; margin: 0; padding: 36pt 42pt; box-shadow: none; } }
 """.strip()
 
@@ -97,7 +98,8 @@ def _with_citations(markdown: str, citation_map: dict[str, Any]) -> tuple[str, d
     replacements: dict[str, str] = {}
     for index, citations in groups.items():
         anchors = ",".join(
-            f'<a href="{html.escape(item.get("link") or "#note-" + str(item["n"]))}" data-cite="{item["n"]}">{item["n"]}</a>'
+            f'<a href="{html.escape(item.get("link") or "#note-" + str(item["n"]))}" data-cite="{item["n"]}"'
+            + (f' title="{html.escape(item["place"])}"' if item.get("place") else "") + f'>{item["n"]}</a>'
             for item in citations
         )
         replacements[CITE.format(index)] = f'<sup class="cn">{anchors}</sup>'
@@ -105,8 +107,15 @@ def _with_citations(markdown: str, citation_map: dict[str, Any]) -> tuple[str, d
     for note in citation_map.get("notes", []):
         url = str(note.get("url") or "")
         described = ". ".join(html.escape(str(part)) for part in (note.get("title"), note.get("publisher"), note.get("date")) if part)
-        link = f' <a href="{html.escape(url)}">{html.escape(re.sub(r"^https?://(www\.)?", "", url).rstrip("/"))}</a>' if url else ""
-        items.append(f'<li id="note-{note["n"]}" value="{note["n"]}"><span class="grade">{html.escape(str(note.get("grade") or ""))}</span> {described}.{link}</li>')
+        shown = re.sub(r"/(blob|commit)/([0-9a-f]{7})[0-9a-f]+", r"/\1/\2", re.sub(r"^https?://(www\.)?", "", url)).rstrip("/")
+        link = f' <a href="{html.escape(url)}">{html.escape(shown)}</a>' if url else ""
+        # Which part of a repository this entry is, and every timestamp or line the report cites.
+        part = f' <span class="part">{html.escape(note["part"][0].upper() + note["part"][1:])}</span>.' if note.get("part") else ""
+        places = note.get("places") or []
+        cited = (" Cited at " + ", ".join(f'<a href="{html.escape(item["link"])}">{html.escape(item["label"])}</a>'
+                                         for item in places) + ".") if places else ""
+        items.append(f'<li id="note-{note["n"]}" value="{note["n"]}"><span class="grade">{html.escape(str(note.get("grade") or ""))}</span> '
+                     f'{described}.{part}{cited}{link}</li>')
     replacements[f"<p>{SOURCE_LIST}</p>"] = f'<ol class="source-notes">{"".join(items)}</ol>'
     return "\n".join(kept) + ("\n" if markdown.endswith("\n") else ""), replacements
 

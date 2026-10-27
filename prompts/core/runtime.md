@@ -53,6 +53,19 @@ Back off when rate limited and record blocked items. When you use a browser
 desktop-sized window (for example 1440x900, not mobile) so you see the desktop
 layout and content, unless the task asks for a mobile view.
 
+## American English
+
+Write everything you author in American English, in spelling and in
+vocabulary: fact claims and notes, reasons, synthesis, reviews, the report,
+labels, and captions: "program", not "programme"; "color", "organize",
+"center", "analyze", "catalog", "license" (the noun), "modeled", "labeled";
+"job posting", not "job advert"; "opening", not "vacancy"; "fiscal year",
+not "financial year"; "revenue", not "turnover"; "year over year", not
+"year on year"; "toward", "while", "among"; "the company is", not
+"the company are". Verbatim quotes, quoted titles, and names keep the
+source's spelling. `work check` lists British spellings and terms in the text
+you wrote, and `work succeed` refuses them.
+
 ## Checks and source wording
 
 A check that flags text you believe is right as the source has it (a product

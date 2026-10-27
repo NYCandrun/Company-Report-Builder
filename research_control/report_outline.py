@@ -80,7 +80,7 @@ def build_outline(root: Path) -> dict[str, Any]:
         "opening": "executive summary",
         "parts": parts,
         "accounts_exhibit": {"include": bool(accounts), "questions": accounts},
-        "closing": ["catalogue (four parts)", "open questions and whom to ask", "limits of the evidence", "sources"],
+        "closing": ["catalog (four parts)", "open questions and whom to ask", "limits of the evidence", "sources"],
     }
 
 

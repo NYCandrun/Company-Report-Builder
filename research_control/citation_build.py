@@ -13,17 +13,21 @@ links, and source notes cannot drift from the text.
 from __future__ import annotations
 
 import csv
+import json
 import re
 from pathlib import Path
 from typing import Any
-from urllib.parse import urldefrag
+from urllib.parse import quote, unquote, urldefrag
+from urllib.request import Request, urlopen
 
-from research_control.io import atomic_write_json, load_jsonl
+from research_control.io import atomic_write_json, load_json, load_jsonl
 from research_control.validators.facts import load_fact_tables, withdrawn_facts
 
 BRIEF = "05-synthesis/company-brief.md"
 CITATION_MAP = "tools/outputs/citation-map-company-brief.json"
 EXHIBIT_MAP = "tools/outputs/exhibit-map.json"
+# Titles found for sources captured without one (a video page that refused the capture, an audio file).
+TITLES = "tools/outputs/source-titles.json"
 FACT = r"[A-Z][A-Z0-9-]*-[A-Z]*\d+[a-z]?"
 # A bracketed group of fact IDs that is not a Markdown link's text.
 GROUP = re.compile(rf"\[({FACT}(?:\s*[,;]\s*{FACT})*)\](?!\()")
@@ -33,6 +37,83 @@ UNCITED_SECTIONS = re.compile(r"open question|whom to ask|limits|^sources?\b|sou
 PARAGRAPH_WORDS = 25
 MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
           "November", "December")
+
+
+REPOSITORY_LINK = re.compile(r"https://github\.com/([^/]+/[^/]+)/(blob|commit|compare|pull)/([^?#]+)")
+YOUTUBE = re.compile(r"(?:youtube\.com/watch\?v=|youtu\.be/)([\w-]{6,})")
+CLOCK = re.compile(r"at (\d+):(\d{2}):(\d{2})")
+
+
+def _part(link: dict[str, Any]) -> tuple[str, str, str] | None:
+    """For a repository fact, the part of the repository it cites: (key, label, link). Different
+    files, commits, branches, and pull requests of one repository are separate source entries."""
+    if link.get("kind") != "repository" or not link.get("located"):
+        return None
+    match = REPOSITORY_LINK.match(str(link.get("deep_link", "")))
+    if not match:
+        return None
+    repository, kind, rest = match.groups()
+    base = f"https://github.com/{repository}"
+    if kind == "blob":
+        commit, _, path = rest.partition("/")
+        return f"{repository}:{path}", f"file {unquote(path)}", f"{base}/blob/{commit}/{path}"
+    if kind == "commit":
+        return f"{repository}@{rest}", f"commit {rest[:7]}", f"{base}/commit/{rest}"
+    if kind == "pull":
+        number = rest.split("/")[0]
+        return f"{repository}#{number}", f"pull request #{number}, not merged", f"{base}/pull/{number}"
+    return f"{repository}~{rest}", f"branch {rest}, not merged", f"{base}/compare/{rest}"
+
+
+def _place(link: dict[str, Any], part: tuple[str, str, str] | None) -> tuple[str, float] | None:
+    """Where in the source a fact sits, for the source list: a recording's timestamp, or the
+    lines of a file or diff; with a sort key. Pages are linked to the quoted words instead."""
+    anchor = str(link.get("anchor", ""))
+    clock = CLOCK.match(anchor)
+    if link.get("kind") == "recording" and clock:
+        hours, minutes, seconds = (int(value) for value in clock.groups())
+        label = f"{hours}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes}:{seconds:02d}"
+        return label, hours * 3600 + minutes * 60 + seconds
+    if part is None:
+        return None
+    lines = re.search(r"\blines? (\d+)(?:\s*[-–]\s*(\d+))?", anchor)
+    if part[1].startswith("file") and lines:
+        start, end = lines.group(1), lines.group(2)
+        return (f"lines {start} to {end}" if end else f"line {start}"), float(start)
+    # A commit or unmerged change: the file and line within it.
+    detail = re.sub(r"^(?:commit [0-9a-f]+|branch \S+|pull request #\d+)[,:]?\s*(?:\(unmerged\))?\s*", "", anchor).strip()
+    return (detail, float(lines.group(1)) if lines else 0.0) if detail else None
+
+
+def _found_title(source: dict[str, str], dated: dict[str, Any], known: dict[str, Any], fetch: bool) -> tuple[str, str]:
+    """(title, publisher) for a source captured without a title: from the feed item its date was
+    read from, a YouTube video's own title (fetched once and kept), or a plain description."""
+    source_id, url = source.get("id", ""), source.get("url", "")
+    if source_id in known:
+        return known[source_id]["title"], known[source_id].get("publisher", "")
+    basis = str(dated.get("basis", ""))
+    for pattern, title_group, show_group in ((r'\(([^()"]+)\) item "([^"]+)"', 2, 1), (r'item "([^"]+)"', 1, 0),
+                                             (r'\(([^,()"]+), "([^"]+)"\)', 2, 1)):
+        match = re.search(pattern, basis)
+        if match:
+            return match.group(title_group).rstrip(". "), match.group(show_group) if show_group else ""
+    video = YOUTUBE.search(url)
+    if video and fetch:
+        try:
+            request = Request(f"https://www.youtube.com/oembed?format=json&url={quote('https://www.youtube.com/watch?v=' + video.group(1), safe='')}",
+                              headers={"User-Agent": "research-control citation build"})
+            with urlopen(request, timeout=15) as response:
+                found = json.loads(response.read().decode("utf-8"))
+            known[source_id] = {"title": found.get("title", ""), "publisher": found.get("author_name", "")}
+            return known[source_id]["title"], known[source_id]["publisher"]
+        except (OSError, ValueError):
+            pass
+    host = re.sub(r"^https?://(www\.)?([^/]+).*$", r"\2", url)
+    if video:
+        return f"Video on {host}", ""
+    if re.search(r"\.(?:mp3|m4a|wav|ogg)\b", url):
+        return f"Audio recording on {host}", ""
+    return (f"Data query on {host}" if "query=" in url else f"Page on {host}"), ""
 
 
 def _reader_date(dated: dict[str, Any], published: str) -> str:
@@ -151,6 +232,8 @@ def build(root: Path, write: bool = True) -> dict[str, Any]:
     dates = _by_id(root / "tools/outputs/source-dates.jsonl", "source_id")
     manifest = _manifest(root)
     withdrawn = withdrawn_facts(root)
+    known = load_json(root / TITLES) if (root / TITLES).is_file() else {}
+    titles_before = len(known)
     problems: list[str] = []
     notes: list[dict[str, Any]] = []
     number_for: dict[str, int] = {}
@@ -169,27 +252,43 @@ def build(root: Path, write: bool = True) -> dict[str, Any]:
             if source is None:
                 problems.append(f"{fact_id}: source {source_id or '(none)'} is not in the source list")
                 continue
-            # Sources that are the same public page share one note.
-            key = _canonical(source.get("url", "")) or source_id
+            # The same page or recording is one entry, cited again by the same number wherever it is
+            # reused; different parts of a repository (files, commits, unmerged changes) are separate.
+            link = links.get(fact_id, {})
+            part = _part(link)
+            youtube = YOUTUBE.search(source.get("url", ""))
+            key = part[0] if part else (f"youtube:{youtube.group(1)}" if youtube else _canonical(source.get("url", "")) or source_id)
             if key not in number_for:
                 number_for[key] = len(notes) + 1
                 dated = dates.get(source_id, {})
+                title, publisher = source.get("title", ""), source.get("publisher") or dated.get("publisher", "")
+                if not title or title.startswith("http"):
+                    title, found_publisher = _found_title(source, dated, known, fetch=write)
+                    publisher = found_publisher or publisher
                 notes.append({
-                    "n": number_for[key], "source_ids": [source_id], "url": source.get("url", ""),
-                    "title": source.get("title", ""), "publisher": source.get("publisher") or dated.get("publisher", ""),
+                    "n": number_for[key], "source_ids": [source_id], "url": part[2] if part else source.get("url", ""),
+                    "title": title, "publisher": publisher,
                     "date": _reader_date(dated, source.get("date published", "")),
-                    "grade": source.get("grade", ""),
+                    "grade": source.get("grade", ""), **({"part": part[1]} if part else {}), "places": [],
                 })
             note = notes[number_for[key] - 1]
             if source_id not in note["source_ids"]:
                 note["source_ids"].append(source_id)
+            place = _place(link, part)
+            if place and link.get("deep_link") and place[0] not in {item["label"] for item in note["places"]}:
+                note["places"].append({"label": place[0], "link": link["deep_link"], "order": place[1]})
             by_number.setdefault(number_for[key], []).append(fact_id)
         for number in sorted(by_number):
             note = notes[number - 1]
-            located = [links[fact]["deep_link"] for fact in by_number[number]
+            located = [fact for fact in by_number[number]
                        if links.get(fact, {}).get("located") and links[fact].get("deep_link")]
+            place = _place(links[located[0]], _part(links[located[0]])) if located else None
             citations.append({"n": number, "group": index, "facts": by_number[number],
-                              "link": located[0] if located else note["url"], "deep": bool(located)})
+                              "link": links[located[0]]["deep_link"] if located else note["url"], "deep": bool(located),
+                              **({"place": place[0]} if place else {})})
+    for note in notes:
+        # Timestamps in recording order, lines in file order.
+        note["places"].sort(key=lambda item: item["order"])
     data = {
         "document": BRIEF,
         "built_by": "research_control.citation_build",
@@ -205,6 +304,8 @@ def build(root: Path, write: bool = True) -> dict[str, Any]:
     if not any(SOURCES_HEADING.match(line) for line in markdown.splitlines()):
         problems.append("the report has no `## Sources` heading for the numbered source list")
     if write:
+        if len(known) > titles_before:
+            atomic_write_json(root / TITLES, known)
         atomic_write_json(root / CITATION_MAP, data)
         atomic_write_json(root / EXHIBIT_MAP, {"document": BRIEF, "built_by": "research_control.citation_build", "elements": elements})
     return {"problems": problems, "citations": len(citations), "sources": len(notes),

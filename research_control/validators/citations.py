@@ -35,10 +35,11 @@ def validate_map(data: dict[str, Any], root: Path, pattern: str = "tools/outputs
         if not note_sources:
             failures.append(f"note {number} has no source")
         for source_id in note_sources:
-            source_id = str(source_id)
-            if source_id in source_owner:
-                failures.append(f"source {source_id} has numbers {source_owner[source_id]} and {number}")
-            source_owner[source_id] = number
+            # A repository's files, commits, and unmerged changes are separate entries, one per part.
+            owner_key = f"{source_id} {note.get('part', '')}"
+            if owner_key in source_owner:
+                failures.append(f"source {source_id} has numbers {source_owner[owner_key]} and {number}")
+            source_owner[owner_key] = number
         url = canonical_url(str(note.get("url", "")))
         if url and url in url_owner and not note.get("duplicate_url_justification"):
             failures.append(f"notes {url_owner[url]} and {number} link to the same canonical page")
@@ -46,7 +47,7 @@ def validate_map(data: dict[str, Any], root: Path, pattern: str = "tools/outputs
             url_owner[url] = number
         for source_id in note_sources:
             expected_url = canonical_url(str(sources.get(str(source_id), {}).get("url", "")))
-            if expected_url and url != expected_url and len(note_sources) == 1:
+            if expected_url and url != expected_url and len(note_sources) == 1 and not note.get("part"):
                 failures.append(f"note {number} links to the wrong page for {source_id}")
 
     seen: set[int] = set()

@@ -118,7 +118,7 @@ Reconciliation reads a digest, not the fact store: the runtime writes one line
 per new fact (ID, date, grade, source, claim, delivery status, relationship
 basis) under `tools/digests/supplement/`, split by the synthesis file its
 question feeds. One reconcile per synthesis file reads its share and opens full
-rows only for facts it cites; the catalogue is then revised from the synthesis
+rows only for facts it cites; the catalog is then revised from the synthesis
 files, and the runtime writes the reconciliation report, recording every fact
 no reconcile cited as left uncited.
 When a token budget will not cover every new slice, choose the slices worth
@@ -188,7 +188,7 @@ whole company, arranged from broad context to specifics: an executive summary;
 the company (history, model, scale, ownership); market, positioning, and
 competitors; what it sells and how it is built; how it sells; customers,
 accounts, and engagements; people and organization; direction; then the
-four-part catalogue, open questions, the limits of the evidence, and source
+four-part catalog, open questions, the limits of the evidence, and source
 notes. The research questions are a checklist, not headings (many are written
 into the scope by default): each is placed in the part it belongs to and
 answered under plain topical subheadings. Parts with no question are left out.
@@ -202,8 +202,32 @@ support; `work check` (for the writer and the publication fixer) numbers each
 source on first use, links every superscript number to the cited fact's deep
 link, lists each source once under the Sources heading, maps each table cell to
 its facts, and lists any body paragraph or table row that cites no fact. The
-page build renders the superscripts and source list, and the citation check
-confirms the page, the map, and each fact's deep link agree.
+page build renders the superscripts (in prose and in exhibit cells) and the
+source list, and the citation check confirms the page, the map, and each
+fact's deep link agree.
+
+The source list is in order of first citation, and a reused source keeps its
+number. One page or recording is one entry, however often it is cited. A
+recording's entry lists every moment the report cites, in recording order,
+each linked to that moment (hovering over a superscript shows its timestamp
+too). A repository's files, commits, and unmerged changes are separate
+entries, each naming the file or commit and the lines cited. Sources captured
+without a title (a video page that refused the capture, a podcast audio file)
+take their title from the feed item their date came from or from the video's
+own listing, kept in `tools/outputs/source-titles.json`.
+
+## American English
+
+Everything a worker writes is in American English, in spelling and in
+vocabulary: fact claims and notes, reasons, synthesis, reviews, the report,
+diagram labels, and captions. `work check` lists British spellings and terms
+(for example "programme", "colour", "organisation", "labelled", "job advert",
+"financial year", "the company are") in the text the worker wrote, and
+`work succeed` refuses them. Verbatim quotes, quoted titles, code, links, and
+names (a capitalized word inside a sentence, such as "Ministry of Defence")
+keep the source's spelling. The final checks run the same test on the report,
+its captions, and the diagrams, and a test keeps the framework's own prompts
+and documentation in American English.
 
 ## Checks between synthesis and review
 

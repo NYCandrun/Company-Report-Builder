@@ -194,3 +194,86 @@ class CitationBuildTests(unittest.TestCase):
             self.assertIn('data-cite="1">1</a>,<a href="https://news.example/launch" data-cite="2">2</a></sup>', page)
             self.assertNotIn("PRD-00", page)
             self.assertIn('<li id="note-2" value="2"><span class="grade">S</span> Launch post. news.example. March 1, 2026.', page)
+
+
+class SourceListTests(unittest.TestCase):
+    def test_repository_parts_are_separate_entries_and_recordings_list_their_timestamps(self) -> None:
+        import tempfile
+
+        from research_control import citation_build
+        from research_control.io import atomic_write_jsonl, atomic_write_text, load_json
+        from research_control.publication import markdown_to_html
+        from research_control.validators import citations
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            atomic_write_text(root / "01-sources/MANIFEST.csv",
+                              "id,grade,title,publisher,url,date published\n"
+                              "SRC-R,P,acme/agent,GitHub,https://github.com/acme/agent,\n"
+                              "SRC-V,P,https://youtu.be/abcdefghijk,youtube.com,https://youtu.be/abcdefghijk,\n"
+                              "SRC-W,P,,youtube.com,https://www.youtube.com/watch?v=abcdefghijk,\n")
+            atomic_write_text(root / "02-facts/facts.md", "| Fact ID | Claim | Verbatim quote | Source ID | Grade |\n|---|---|---|---|---|\n" + "".join(
+                f"| PRD-00{n} | c | q | {source} | P |\n" for n, source in ((1, "SRC-R"), (2, "SRC-R"), (3, "SRC-R"), (4, "SRC-V"), (5, "SRC-W"), (6, "SRC-V"))))
+            sha = "c75fda00ff0e41c8ee331ae312c8a07f1967653b"
+            atomic_write_jsonl(root / "tools/outputs/fact-links.jsonl", [
+                {"fact_id": "PRD-001", "kind": "repository", "located": True, "anchor": f"src/run.py line 40 at {sha[:7]}",
+                 "deep_link": f"https://github.com/acme/agent/blob/{sha}/src/run.py?plain=1#L40"},
+                {"fact_id": "PRD-002", "kind": "repository", "located": True, "anchor": f"src/run.py line 3 at {sha[:7]}",
+                 "deep_link": f"https://github.com/acme/agent/blob/{sha}/src/run.py?plain=1#L3"},
+                {"fact_id": "PRD-003", "kind": "repository", "located": True, "anchor": "commit e34f6f9, README.md line 60",
+                 "deep_link": "https://github.com/acme/agent/commit/e34f6f9#diff-1R60"},
+                {"fact_id": "PRD-004", "kind": "recording", "located": True, "anchor": "at 00:08:13",
+                 "deep_link": "https://www.youtube.com/watch?v=abcdefghijk&t=493s"},
+                {"fact_id": "PRD-005", "kind": "recording", "located": True, "anchor": "at 01:02:05",
+                 "deep_link": "https://www.youtube.com/watch?v=abcdefghijk&t=3725s"},
+                {"fact_id": "PRD-006", "kind": "recording", "located": True, "anchor": "at 00:01:30",
+                 "deep_link": "https://www.youtube.com/watch?v=abcdefghijk&t=90s"},
+            ])
+            atomic_write_jsonl(root / "tools/outputs/source-dates.jsonl", [])
+            (root / citation_build.TITLES).parent.mkdir(parents=True, exist_ok=True)
+            (root / citation_build.TITLES).write_text('{"SRC-V": {"title": "Building agents", "publisher": "Acme"}}')
+            atomic_write_text(root / citation_build.BRIEF, "# Company brief\n\n## Summary\n\nA [PRD-001]. B [PRD-003]. "
+                              "C [PRD-002]. D [PRD-004]. E [PRD-005, PRD-006].\n\n## Sources\n")
+            built = citation_build.build(root)
+            data = load_json(root / citation_build.CITATION_MAP)
+            # One file is one entry (lines in file order); a commit is another; the video is one entry
+            # under both of its addresses, with every cited moment in recording order.
+            self.assertEqual([(1, "file src/run.py", ["line 3", "line 40"]), (2, "commit e34f6f9", ["README.md line 60"]),
+                              (3, None, ["1:30", "8:13", "1:02:05"])],
+                             [(note["n"], note.get("part"), [place["label"] for place in note["places"]]) for note in data["notes"]])
+            self.assertEqual("Building agents", data["notes"][2]["title"])
+            self.assertEqual([1, 2, 1, 3, 3], [item["n"] for item in data["citations"]])
+            self.assertEqual([], citations.validate_map(data, root)["failures"])
+            page = markdown_to_html((root / citation_build.BRIEF).read_text(encoding="utf-8"), "Company brief", "", data)
+            self.assertIn('data-cite="3" title="8:13">3</a>', page)
+            self.assertIn('<span class="part">File src/run.py</span>. Cited at <a href="https://github.com/acme/agent/blob/'
+                          f'{sha}/src/run.py?plain=1#L3">line 3</a>', page)
+            self.assertIn('Cited at <a href="https://www.youtube.com/watch?v=abcdefghijk&amp;t=90s">1:30</a>', page)
+            self.assertEqual([], built["problems"])
+
+
+class AmericanEnglishTests(unittest.TestCase):
+    def test_british_spelling_and_terms_are_found_in_authored_text_only(self) -> None:
+        from research_control.validators import american
+
+        found = [word for word, _advice in american.findings(
+            "The programme was labelled a bespoke job advert, and the company are prioritising colour in the "
+            "financial year. Royal London's Aladdin Programme stays a name, as does \"our colour scheme\" in a quote, "
+            "`organise.py`, https://example.com/catalogue, and inference-catalogue.md.")]
+        self.assertEqual(["programme", "labelled", "prioritising", "colour", "bespoke", "job advert", "financial year",
+                          "the company are"], sorted(found, key=lambda word: [
+                              "programme", "labelled", "prioritising", "colour", "bespoke", "job advert",
+                              "financial year", "the company are"].index(word.casefold())))
+        self.assertEqual([], american.findings("Analyses of the program show modeled costs and a canceled catalog."))
+        # A heading's first word is checked; a name that continues in capitals is not.
+        self.assertEqual(["Catalogue"], [word for word, _ in american.findings("Catalogue of what the company sells")])
+        self.assertEqual([], american.findings("Centre for AI Safety and the UN Development Programme"))
+
+    def test_the_framework_itself_is_written_in_american_english(self) -> None:
+        from research_control.validators import american
+
+        repository = Path(__file__).resolve().parents[2]
+        texts = [*sorted((repository / "prompts").rglob("*.md")), repository / "README.md", repository / "CLAUDE.md",
+                 repository / "RESEARCH_CONSTITUTION.md"]
+        problems = [f"{path.relative_to(repository)} {problem}" for path in texts for problem in american.check_file(path)]
+        self.assertEqual([], problems)

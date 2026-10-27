@@ -28,23 +28,10 @@ from research_control.io import (
 from research_control.orchestration import ACTIVE_PATH, all_task_definitions, load_state, set_phase_result
 from research_control.reconciliation.assignments import reconcile_records, validate_ledger
 from research_control.reporting import make_validation_report
-from research_control.validators import brand, citations, dates, diagrams, exhibits, facts, quotes, sources, tags, visual_records, writing_rules
+from research_control.validators import american, brand, citations, dates, diagrams, exhibits, facts, quotes, sources, tags, visual_records, writing_rules
 
 
 FACT_ID = re.compile(r"\b[A-Z][A-Z0-9-]*-[A-Z]*\d+[a-z]?\b")
-BRITISH_FORMS = {
-    "organisation": "organization",
-    "organisations": "organizations",
-    "prioritise": "prioritize",
-    "prioritised": "prioritized",
-    "analyse": "analyze",
-    "analysed": "analyzed",
-    "behaviour": "behavior",
-    "colour": "color",
-    "centre": "center",
-}
-
-
 def _report(
     root: Path,
     checker: str,
@@ -412,13 +399,9 @@ def _validate_reader_facing(root: Path) -> dict[str, Any]:
 
 def _validate_american_english(root: Path) -> dict[str, Any]:
     paths = _paths(root, ["05-synthesis/company-brief.md", DIAGRAM_CAPTIONS])
-    failures: list[str] = []
-    for path in paths:
-        for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-            unquoted = writing_rules.unquoted(line)
-            for british, american in BRITISH_FORMS.items():
-                if re.search(rf"\b{british}\b", unquoted, re.IGNORECASE):
-                    failures.append(f"{path.relative_to(root)}:{number}: use {american} instead of {british}")
+    # The report, its captions, and the text drawn in each diagram: spelling and vocabulary.
+    readable = [*paths, *(root / spec["path"] for spec in DIAGRAM_SPECS if (root / spec["path"]).is_file())]
+    failures = american.check_paths(root, [str(path.relative_to(root)) for path in readable], limit=200)
     unknowns = [] if len(paths) == 2 else ["company brief or diagram captions are incomplete"]
     return _report(root, "american_english", [str(path.relative_to(root)) for path in paths], 2, len(paths), failures, unknowns)
 

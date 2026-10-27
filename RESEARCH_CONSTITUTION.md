@@ -313,7 +313,7 @@ still match that reference or a later justified, reverified fact.
 
 The brief is arranged top down from an executive summary: the company, its
 market and competitors, what it sells and how it is built, how it sells, its
-customers, its people, and its direction, then the catalogue, open questions,
+customers, its people, and its direction, then the catalog, open questions,
 evidence limits, and sources. Each research question is answered in the part it
 belongs to, under plain topical headings. The portfolio exhibit opens the
 offering part; the product map and messaging timeline appear only in their

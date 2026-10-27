@@ -43,7 +43,7 @@ the reader. Write, in order:
      as they moved, and its signs of landing, expanding, renewing, pausing,
      or churning.
    No exhibit is repeated in another part.
-3. The catalogue exhibit described below.
+3. The catalog exhibit described below.
 4. Open questions and whom to ask.
 5. The limits of the evidence.
 6. A `## Sources` heading with nothing under it: the build lists every cited
@@ -56,7 +56,7 @@ takeaway as a sentence, and say beneath it where its figures come from. Give
 every number its date and basis, and say when a figure is your own
 calculation or comes secondhand.
 
-Before the open questions, include a catalogue exhibit drawn from
+Before the open questions, include a catalog exhibit drawn from
 `05-synthesis/inference-catalogue.md` in four parts:
 - "What the company sells", each offering marked `Stated`, `Inferred`, or
   `Lead` with its evidence, stated first and leads last below a dividing rule;
@@ -64,7 +64,7 @@ Before the open questions, include a catalogue exhibit drawn from
   order of strength with their supporting evidence, thin ones last below a
   dividing rule. Label these two parts as inference.
 - "How it has changed", the dated timelines, each step with its date and
-  delivery status (shipped, built but unmerged, or promised), labelled as
+  delivery status (shipped, built but unmerged, or promised), labeled as
   inference where the sequence is read from change history.
 Never present an inferred offering or an inference as an established fact
 elsewhere in the brief.

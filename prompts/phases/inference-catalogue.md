@@ -4,7 +4,7 @@ Read the evidence, writing, and runtime cores and the other synthesis files.
 They cite the evidence by fact ID: open a fact's full row only when you need
 its quote, date, or notes, by searching `02-facts/` for its ID, rather than
 reading the fact store whole. Write `05-synthesis/inference-catalogue.md` (or
-revise it, if it exists, for what the synthesis files now say), a catalogue in
+revise it, if it exists, for what the synthesis files now say), a catalog in
 four parts that lays out the evidence so a reader can judge each entry.
 
 1. What the company sells: each offering (services, engagement types,
@@ -49,9 +49,9 @@ Parts 2, 3, and 4 hold inferences. For each inference write:
 - what would confirm or overturn it.
 
 Order parts 2 and 3 by strength, and part 4 by date within each timeline. Put `thin` inferences last, below a dividing rule
-labelled "Thin evidence". Personal or side projects of employees are evidence
+labeled "Thin evidence". Personal or side projects of employees are evidence
 about what the company's people build, not about what the company sells; say
 so where an inference rests on them. Customer, client, and partner
 relationships keep their `Stated` / `Inferred` / `Lead` marks. Do not restate a
-stated fact as an inference; the catalogue is for conclusions that go beyond
+stated fact as an inference; the catalog is for conclusions that go beyond
 what any one source says. Run the fact-ID and writing checks before return.
