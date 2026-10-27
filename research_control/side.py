@@ -104,12 +104,37 @@ def _section(markdown: str, heading: str) -> tuple[int, int, list[str]]:
 def new(root: Path, label: str, questions: list[str], source_ids: list[str] | None = None, section: str = "") -> dict[str, Any]:
     """Lay out a side run for these questions over these sources (default: the held ones)."""
     root = root.resolve()
-    folder = side_root(root, label)
-    if folder.exists():
-        raise ValueError(f"side run {label} already exists at {folder.relative_to(root)}")
     chosen = sorted(set(source_ids or held_sources(root)))
     if not chosen:
         raise ValueError("no sources: name them with --source-id, or hold some with an extraction budget first")
+    folder, questions = _layout(root, label, questions)
+    inputs = _attach(root, folder, chosen)
+    batches = _pack(inputs)
+    briefs = [_extraction_brief(root, folder, label, batch, questions) for batch in batches]
+    state = {"label": label, "created": utc_now(), "questions": questions, "sources": chosen, "section": section,
+             "batches": [batch["id"] for batch in batches], "captured": [], "steps": {"new": utc_now()}}
+    _save(folder, state)
+    return {"label": label, "folder": str(folder.relative_to(root)), "sources": len(chosen), "batches": len(batches),
+            "start_workers": [{"read": brief, "model_level": "standard", "effort": "medium"} for brief in briefs]}
+
+
+def search(root: Path, label: str, questions: list[str], section: str = "", firms: list[str] | None = None) -> dict[str, Any]:
+    """Lay out a side run that starts from a bounded search: one worker lists the pages and
+    repositories to read; `side capture` then captures them and writes the extraction briefs."""
+    root = root.resolve()
+    folder, questions = _layout(root, label, questions)
+    brief = _search_brief(root, folder, label, questions, firms or [])
+    state = {"label": label, "created": utc_now(), "questions": questions, "sources": [], "section": section,
+             "batches": [], "captured": [], "firms": firms or [], "steps": {"search": utc_now()}}
+    _save(folder, state)
+    return {"label": label, "folder": str(folder.relative_to(root)),
+            "start_workers": [{"read": brief, "model_level": "standard", "effort": "medium"}]}
+
+
+def _layout(root: Path, label: str, questions: list[str]) -> tuple[Path, list[str]]:
+    folder = side_root(root, label)
+    if folder.exists():
+        raise ValueError(f"side run {label} already exists at {folder.relative_to(root)}")
     questions = [question.upper() for question in questions]
     scope = (root / "00-scope.md").read_text(encoding="utf-8")
     for question in questions:
@@ -129,6 +154,11 @@ def new(root: Path, label: str, questions: list[str], source_ids: list[str] | No
     atomic_write_text(folder / "main-facts.txt", "".join(f"{fact_id}\n" for fact_id in main_facts))
     # Earlier verdicts, so facts the section still cites from the main run count as judged.
     atomic_write_jsonl(folder / verification.VERDICTS, verification_sandbox.verdict_rows(root))
+    return folder, questions
+
+
+def _attach(root: Path, folder: Path, chosen: list[str]) -> list[dict[str, Any]]:
+    """Link the main run's captures of these sources into the side run; return extraction inputs."""
     inputs: list[dict[str, Any]] = []
     for source_id in chosen:
         capture = root / "01-sources/captures" / source_id
@@ -148,14 +178,169 @@ def new(root: Path, label: str, questions: list[str], source_ids: list[str] | No
             "source_paths": [str(path.relative_to(root)) for path in capture.glob("*") if path.is_file()],
             "estimated_tokens": max(1, len(text) // 4), "sha256": sha256(text.encode("utf-8")).hexdigest(),
         })
-    batches = _pack(inputs)
-    briefs = []
-    for batch in batches:
-        briefs.append(_extraction_brief(root, folder, label, batch, questions))
-    state = {"label": label, "created": utc_now(), "questions": questions, "sources": chosen, "section": section,
-             "batches": [batch["id"] for batch in batches], "steps": {"new": utc_now()}}
+    return inputs
+
+
+SEARCH_LIST = "search/sources.jsonl"
+SEARCH_LIMIT = 40
+TEXT_SUFFIXES = {".txt", ".md", ".json", ".jsonl", ".csv", ".xml"}
+
+
+def _search_brief(root: Path, folder: Path, label: str, questions: list[str], firms: list[str]) -> str:
+    scope_text = (root / "00-scope.md").read_text(encoding="utf-8")
+    asked = "\n\n".join(match.group(0) for question in questions
+                        for match in [re.search(rf"^\*\*{question}\..*?(?=^\*\*Q\d+\.|^#|\Z)", scope_text, re.M | re.S)] if match)
+    leads = root / "tools/lists/competitor-leads.md"
+    known = sorted({row.get("url", "") for row in csv.DictReader((root / "01-sources/MANIFEST.csv").open(encoding="utf-8", newline=""))})
+    lines = [
+        f"# Side run `{label}`: list the pages and repositories to read", "",
+        "This is a side run: a bounded search for a finished research run. You hold no scheduler task; do not run "
+        "`research_control run`, `work`, or `discovery` commands, and do not capture anything yourself. Your only "
+        f"output is `{folder.relative_to(root)}/{SEARCH_LIST}`: one JSON object per line with `url`, `grade` "
+        "(P: the firm's own words; S: a named third party's first-hand record; T: press or analysts), `title`, "
+        "`publisher`, `why` (one line: what the page gives the questions), and `question` (Q7). "
+        f"List at most {SEARCH_LIMIT} URLs, best first.", "",
+        "## What to find", "",
+        "For each direct competitor named below, the pages the market and competitor instructions ask for and "
+        "the first pass did not reach: its services or product pages, case studies and named customers, pricing or "
+        "rate signals, careers pages (roles, locations, how it staffs work), documentation, and its public GitHub: "
+        "the organization(s) and its people's work repositories, found as the instructions say (plain web searches "
+        "first, reading the result snippets), plus any deleted repository worth a look. Give repository URLs "
+        "(`https://github.com/ORG/REPO`), not organization pages. Skip pages already in the source list (below) "
+        "and anything behind a login.", "",
+        "## The direct competitors", "", *([f"- {firm}" for firm in firms] or ["(from the leads file and the questions)"]), "",
+        "## The research questions", "", asked or ", ".join(questions), "",
+    ]
+    if leads.is_file():
+        lines += ["## Leads already recorded", "", leads.read_text(encoding="utf-8").rstrip(), ""]
+    lines += ["## Sources already in the run (do not list these)", "", *(f"- {url}" for url in known if url), "",
+              "---", "", "## The search instructions", "",
+              _rules(root, "source_discovery", "prompts/phases/discovery.md", ("prompts/core/runtime.md", "prompts/core/evidence.md")), "",
+              "---", "", "## Finish", "",
+              "Write in American English in `title`, `publisher`, and `why`; a page's own title keeps its spelling.", "",
+              f"1. Check with `python3 -m research_control side check --label {label} --step search` from the main run's "
+              "folder and fix what it reports until its status is clean.",
+              "2. Report in under 80 words, in plain English: how many pages and repositories per competitor, and what "
+              "could not be found.", ""]
+    path = folder / "search" / "brief.md"
+    atomic_write_text(path, "\n".join(lines) + "\n")
+    return str(path)
+
+
+def _check_search(root: Path, folder: Path) -> list[str]:
+    from research_control.discovery import canonicalize_url
+
+    path = folder / SEARCH_LIST
+    if not path.is_file():
+        return [f"{SEARCH_LIST} is not written yet"]
+    known = {canonicalize_url(row.get("url", "")) for row in csv.DictReader((root / "01-sources/MANIFEST.csv").open(encoding="utf-8", newline="")) if row.get("url")}
+    problems: list[str] = []
+    seen: set[str] = set()
+    rows = load_jsonl(path)
+    if len(rows) > SEARCH_LIMIT:
+        problems.append(f"{len(rows)} URLs listed; at most {SEARCH_LIMIT}")
+    for index, row in enumerate(rows, 1):
+        url = str(row.get("url", ""))
+        try:
+            canonical = canonicalize_url(url)
+        except ValueError as error:
+            problems.append(f"row {index}: {error}")
+            continue
+        if not url.startswith(("http://", "https://")):
+            problems.append(f"row {index}: url must be absolute http(s)")
+        if canonical in seen:
+            problems.append(f"row {index}: {url} is listed twice")
+        seen.add(canonical)
+        if canonical in known:
+            problems.append(f"row {index}: {url} is already in the run's source list")
+        if row.get("grade") not in {"P", "S", "T"}:
+            problems.append(f"row {index}: grade must be P, S, or T")
+        if not str(row.get("why", "")).strip():
+            problems.append(f"row {index}: say why the page matters")
+        for word, advice in american.findings(" ".join(str(row.get(key, "")) for key in ("publisher", "why"))):
+            problems.append(f'row {index}: American English: "{word}" (use {advice})')
+    return problems
+
+
+def capture(root: Path, label: str, workers: int = 4) -> dict[str, Any]:
+    """Capture every listed page and repository into the side run (repositories shallowly),
+    date them, and write the extraction briefs."""
+    from concurrent.futures import ThreadPoolExecutor
+    from urllib.parse import urlparse
+
+    from research_control import dating
+    from research_control.capture import auto_capture_source
+    from research_control.discovery import canonicalize_url
+    from research_control.runtime import stable_source_id
+
+    root = root.resolve()
+    folder = side_root(root, label)
+    state = _state(folder)
+    problems = _check_search(root, folder)
+    if problems:
+        raise ValueError("the search list is not clean: " + "; ".join(problems[:10]))
+    rows = load_jsonl(folder / SEARCH_LIST)
+    jobs = []
+    for row in rows:
+        canonical = canonicalize_url(str(row["url"]))
+        source_id = stable_source_id(canonical)
+        if source_id in state.get("captured", []):
+            continue
+        github = (urlparse(canonical).hostname or "").casefold().removeprefix("www.") == "github.com"
+        jobs.append((source_id, canonical, str(row.get("grade", "T")), github))
+
+    def run(job: tuple[str, str, str, bool]) -> dict[str, Any]:
+        source_id, url, grade, github = job
+        return auto_capture_source(folder, url=url, source_id=source_id, grade=grade, shallow_repositories=github)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        receipts = list(pool.map(run, jobs))
+    manifest_path = folder / "01-sources/MANIFEST.csv"
+    with manifest_path.open(encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        columns = reader.fieldnames or []
+    captured, blocked = [], []
+    as_of = dating.research_date(root)
+    inputs: list[dict[str, Any]] = []
+    for receipt in receipts:
+        source_id = receipt["source_id"]
+        if receipt.get("status") != "captured":
+            blocked.append({"source_id": source_id, "url": receipt.get("url") or receipt.get("source", {}).get("url", ""),
+                            "reason": str(receipt.get("reason", ""))[:300]})
+            continue
+        source = receipt["source"]
+        with manifest_path.open("a", encoding="utf-8", newline="") as handle:
+            csv.DictWriter(handle, fieldnames=columns, extrasaction="ignore").writerow({key: source.get(key, "") for key in columns})
+        paths = [value.strip() for value in str(source.get("local file", "")).split(";") if value.strip()]
+        sections = []
+        for relative in paths:
+            path = folder / relative
+            if path.suffix.casefold() in TEXT_SUFFIXES and path.is_file():
+                sections.append(f"--- SOURCE FILE: {relative} ---\n{path.read_text(encoding='utf-8', errors='replace').rstrip()}\n")
+        text = "\n".join(sections)
+        canonical_path = folder / "tools/extracts/canonical" / f"{source_id}.txt"
+        atomic_write_text(canonical_path, text)
+        dated = dating.date_source(folder, receipt, as_of)
+        dated["posted_date"] = dated.get("content_date", "")
+        with (folder / "tools/outputs/source-dates.jsonl").open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(dated, ensure_ascii=False) + "\n")
+        with (folder / "tools/outputs/capture-dispositions.jsonl").open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps({"assignment_id": f"capture.source.{source_id.casefold()}", "disposition": "completed",
+                                     "evidence_paths": paths, "input_id": source_id, "output_ids": [source_id],
+                                     "reason": "captured with canonical text (side run)"}, ensure_ascii=False) + "\n")
+        inputs.append({"id": source_id, "source_id": source_id, "path": f"tools/extracts/canonical/{source_id}.txt",
+                       "source_paths": paths, "estimated_tokens": max(1, len(text) // 4),
+                       "sha256": sha256(text.encode("utf-8")).hexdigest()})
+        captured.append(source_id)
+    atomic_write_jsonl(folder / "search/blocked.jsonl", blocked)
+    batches = _pack(inputs) if inputs else []
+    briefs = [_extraction_brief(root, folder, label, batch, state["questions"]) for batch in batches]
+    state["captured"] = sorted(set(state.get("captured", [])) | set(captured))
+    state["sources"] = sorted(set(state.get("sources", [])) | set(captured))
+    state["batches"] = state.get("batches", []) + [batch["id"] for batch in batches]
+    state["steps"]["capture"] = utc_now()
     _save(folder, state)
-    return {"label": label, "folder": str(folder.relative_to(root)), "sources": len(chosen), "batches": len(batches),
+    return {"label": label, "captured": len(captured), "blocked": blocked, "batches": len(batches),
             "start_workers": [{"read": brief, "model_level": "standard", "effort": "medium"} for brief in briefs]}
 
 
@@ -245,8 +430,10 @@ def check(root: Path, label: str, step: str) -> dict[str, Any]:
         problems += _check_writing(root, folder, state)
     elif step == "verify":
         problems += verification_sandbox.check(folder, "side")
+    elif step == "search":
+        problems += _check_search(root, folder)
     else:
-        raise ValueError("step is extract, write, or verify")
+        raise ValueError("step is search, extract, write, or verify")
     return {"label": label, "step": step, "problems": problems[:60], "status": "clean" if not problems else "problems"}
 
 
@@ -427,6 +614,9 @@ def merge(root: Path, label: str, worker_id: str = "runtime") -> dict[str, Any]:
         raise ValueError(f"{len(unverified)} cited facts have no verdict yet (run `side verify`): {', '.join(unverified[:8])}")
     new_facts = set((folder / "new-facts.txt").read_text(encoding="utf-8").split())
     touched: list[str] = []
+    captured = state.get("captured", [])
+    if captured:
+        _merge_sources(root, folder, captured, label, touched)
     # 1. Fact rows, their deep links, and the candidates and dispositions behind them.
     for path in sorted((folder / "02-facts").glob("*.md")):
         target = root / "02-facts" / path.name
@@ -488,6 +678,49 @@ def merge(root: Path, label: str, worker_id: str = "runtime") -> dict[str, Any]:
     _save(folder, state)
     return {"label": label, "new_facts": len(new_facts), "verdicts_added": len(added), "touched": sorted(set(touched)),
             "citations": built["citations"], "citation_problems": built["problems"][:10], "recorded": recorded}
+
+
+def _merge_sources(root: Path, folder: Path, captured: list[str], label: str, touched: list[str]) -> None:
+    """Sources the side run captured itself: their captures, receipts, source rows, dates, and
+    dispositions join the main run, and the store knows them, without reopening any channel."""
+    from research_control.discovery import host_key
+    from research_control.runtime import RuntimeStore
+
+    wanted = set(captured)
+    for source_id in captured:
+        source_dir = folder / "01-sources/captures" / source_id
+        target = root / "01-sources/captures" / source_id
+        if source_dir.is_dir() and not source_dir.is_symlink() and not target.exists():
+            shutil.copytree(source_dir, target)
+        receipt = folder / "tools/outputs/worker-parts/capture" / f"{source_id}.json"
+        if receipt.is_file():
+            (root / "tools/outputs/worker-parts/capture").mkdir(parents=True, exist_ok=True)
+            shutil.copy2(receipt, root / "tools/outputs/worker-parts/capture" / receipt.name)
+    with (folder / "01-sources/MANIFEST.csv").open(encoding="utf-8", newline="") as handle:
+        rows = [row for row in csv.DictReader(handle) if row.get("id") in wanted]
+    if rows:
+        main_manifest = root / "01-sources/MANIFEST.csv"
+        with main_manifest.open(encoding="utf-8", newline="") as handle:
+            columns = csv.DictReader(handle).fieldnames or []
+            known = {row["id"] for row in csv.DictReader(main_manifest.open(encoding="utf-8", newline=""))}
+        with main_manifest.open("a", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=columns, extrasaction="ignore")
+            for row in rows:
+                if row["id"] not in known:
+                    writer.writerow(row)
+        touched.append("01-sources/MANIFEST.csv")
+    _append(root, folder, "tools/outputs/source-dates.jsonl", lambda row: row.get("source_id") in wanted, touched)
+    _append(root, folder, "tools/outputs/capture-dispositions.jsonl", lambda row: row.get("input_id") in wanted, touched)
+    with RuntimeStore(root) as store:
+        for row in rows:
+            source, _created = store.add_source(
+                canonical_url=row["url"], original_url=row["url"], host_key=host_key(row["url"]),
+                channel="market_competitors", source_kind="web_page", relevance="candidate",
+                discovered_from=f"side run {label}", metadata={"side_run": label}, reopen_channel=False,
+            )
+            paths = [value.strip() for value in str(row.get("local file", "")).split(";") if value.strip()]
+            store.update_source(source["source_id"], status="captured", local_paths=paths,
+                                metadata={**source.get("metadata", {}), "side_run": label})
 
 
 def _append(root: Path, folder: Path, relative: str, keep: Any, touched: list[str]) -> None:

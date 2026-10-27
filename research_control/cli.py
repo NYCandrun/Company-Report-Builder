@@ -334,14 +334,20 @@ def _parser() -> argparse.ArgumentParser:
     side_new.add_argument("--question", action="append", required=True, help="a numbered question it serves (Q7)")
     side_new.add_argument("--source-id", action="append", default=[], help="sources to read (default: the held ones)")
     side_new.add_argument("--section", default="", help="the report heading the side run updates (## Market, ...)")
-    for name, text in (("check", "check a step's outputs"), ("file", "merge parts, file facts, link, digest, write the writing brief"),
+    side_search = side_sub.add_parser("search", help="lay out a side run that starts from a bounded search for pages to read")
+    side_search.add_argument("--label", required=True)
+    side_search.add_argument("--question", action="append", required=True)
+    side_search.add_argument("--section", default="")
+    side_search.add_argument("--firm", action="append", default=[], help="a direct competitor to cover")
+    for name, text in (("check", "check a step's outputs"), ("capture", "capture the listed pages and write extraction briefs"),
+                       ("file", "merge parts, file facts, link, digest, write the writing brief"),
                        ("verify", "prepare (or --merge) the sandbox verification of newly cited facts"),
                        ("render", "build the section on its own"), ("merge", "bring the side run into the main run"),
                        ("status", "where the side run stands")):
         command = side_sub.add_parser(name, help=text)
         command.add_argument("--label", required=True)
         if name == "check":
-            command.add_argument("--step", required=True, choices=["extract", "write", "verify"])
+            command.add_argument("--step", required=True, choices=["search", "extract", "write", "verify"])
         if name == "verify":
             command.add_argument("--merge", action="store_true")
 
@@ -517,6 +523,10 @@ def main() -> None:
 
             if args.side_command == "new":
                 _print_json(side_run.new(root, args.label, list(args.question), list(args.source_id) or None, args.section))
+            elif args.side_command == "search":
+                _print_json(side_run.search(root, args.label, list(args.question), args.section, list(args.firm)))
+            elif args.side_command == "capture":
+                _print_json(side_run.capture(root, args.label))
             elif args.side_command == "check":
                 _print_json(side_run.check(root, args.label, args.step))
             elif args.side_command == "file":

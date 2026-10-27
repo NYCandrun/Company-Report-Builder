@@ -127,3 +127,23 @@ class SideRunTests(unittest.TestCase):
                 self.assertEqual("succeeded", store.task("final.write-brief")["state"])
                 self.assertEqual([], store.invalidate_stale())
             self.assertEqual({"new", "file", "verify", "render", "merge"}, set(side.status(root, "market")["steps"]))
+
+
+class SideSearchTests(unittest.TestCase):
+    def test_a_search_side_run_lists_pages_and_refuses_known_or_malformed_ones(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _main_run(root)
+            laid = side.search(root, "deeper", ["Q7"], section=SECTION, firms=["Rival"])
+            brief = Path(laid["start_workers"][0]["read"]).read_text(encoding="utf-8")
+            self.assertIn("- Rival", brief)
+            self.assertIn("https://rival.example/", brief)
+            self.assertIn("not written yet", side.check(root, "deeper", "search")["problems"][0])
+            atomic_write_jsonl(root / side.SIDE_DIR / "deeper" / side.SEARCH_LIST, [
+                {"url": "https://rival.example/", "grade": "P", "title": "Rival", "publisher": "Rival", "why": "home", "question": "Q7"},
+                {"url": "https://rival.example/case-studies", "grade": "P", "title": "Cases", "publisher": "Rival", "why": "named customers", "question": "Q7"},
+                {"url": "https://rival.example/careers", "grade": "P", "title": "Careers", "publisher": "Rival", "why": "job adverts", "question": "Q7"}])
+            problems = side.check(root, "deeper", "search")["problems"]
+            self.assertEqual(2, len(problems))
+            self.assertIn("already in the run's source list", problems[0])
+            self.assertIn("job advert", problems[1])
