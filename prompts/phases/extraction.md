@@ -39,3 +39,10 @@ Set each candidate's `source_date` from the source's row in
 `tools/outputs/source-dates.jsonl` (content date and basis), or from a date
 the source states for that specific fact when it is more precise. Never
 present a capture date as a publication date.
+
+When an input's source is listed in `tools/lists/supplement-sources.json`, it
+was recaptured with more content after its earlier facts were filed. Read the
+facts already filed from it (search `02-facts/` for its source ID) and extract
+what they do not already cover: the new material named in the list's reason,
+and any earlier claim the new text corrects or dates more precisely (say so in
+notes). Do not re-extract a fact already filed.
