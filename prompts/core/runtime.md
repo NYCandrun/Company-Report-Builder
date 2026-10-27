@@ -42,4 +42,7 @@ Never write to a shared manifest or shared review file from parallel workers.
 Write a worker-specific part for deterministic single-writer merge. Never
 commit unrelated workers' files.
 
-Back off when rate limited and record blocked items.
+Back off when rate limited and record blocked items. When you use a browser
+(screenshots, rendering, inspecting a page), present as desktop Chrome in a
+desktop-sized window (for example 1440x900, not mobile) so you see the desktop
+layout and content, unless the task asks for a mobile view.

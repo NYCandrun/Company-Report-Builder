@@ -181,9 +181,13 @@ concrete reason.
 
 - Web pages: HTTP capture with rendered-order text extraction. Pages built by
   JavaScript, and pages whose site refuses the plain request (HTTP 401, 403,
-  or 429), fall back to a headless browser when the host has one; a browser
-  that only reaches a refusal or challenge page is recorded as blocked with
-  both reasons.
+  or 429), fall back to a headless browser when the host has one. The browser
+  always presents as desktop Chrome in a 1440x900 desktop window
+  (`RESEARCH_CONTROL_DESKTOP_USER_AGENT` overrides the identity), so pages
+  render their desktop layout and content; if that is refused it retries once
+  with the browser's default identity in the same desktop window, since sites
+  differ in which they serve. A browser that only reaches a
+  refusal or challenge page is recorded as blocked with both reasons.
 - PDFs: `pdftotext` with page markers.
 - GitHub: public repositories, directories, and files are captured from a
   shallow git clone (README, file tree, file contents, last commit date), since

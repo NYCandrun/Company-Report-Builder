@@ -375,7 +375,14 @@ const { chromium } = require('playwright');
 (async () => {
   const browser = await chromium.launch();
   try {
-    const page = await browser.newPage({ userAgent: process.argv[2] });
+    const page = await browser.newPage({
+      ...(process.argv[2] ? { userAgent: process.argv[2] } : {}),
+      viewport: { width: 1440, height: 900 },
+      deviceScaleFactor: 1,
+      isMobile: false,
+      hasTouch: false,
+      locale: 'en-US',
+    });
     await page.goto(process.argv[1], { waitUntil: 'networkidle', timeout: 45000 });
     const title = await page.title();
     const text = await page.evaluate(() => document.body ? document.body.innerText : '');
@@ -387,6 +394,15 @@ const { chromium } = require('playwright');
 })().catch((error) => { process.stderr.write(String(error)); process.exit(1); });
 """
 MIN_HTML_TEXT_CHARACTERS = 200
+REFUSAL_STATUSES = {401, 403, 429}
+REFUSAL_TITLES = ("access denied", "403", "forbidden", "just a moment", "attention required", "are you a robot")
+# Owner policy: the headless browser always presents as desktop Chrome in a
+# desktop window, so pages render their desktop layout and content.
+DESKTOP_USER_AGENT = os.environ.get(
+    "RESEARCH_CONTROL_DESKTOP_USER_AGENT",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/141.0.0.0 Safari/537.36",
+)
 
 
 def browser_available() -> bool:
@@ -401,15 +417,44 @@ def browser_available() -> bool:
 _browser_slots = threading.BoundedSemaphore(runtime_limits()["browser_jobs"])
 
 
-def _browser_render(url: str) -> dict[str, str]:
-    _require_public_host(url)
+def _render_once(url: str, user_agent: str) -> dict[str, str]:
     with _browser_slots:
         result = subprocess.run(
-            ["node", "-e", BROWSER_SCRIPT, url, USER_AGENT], text=True, capture_output=True, timeout=120
+            ["node", "-e", BROWSER_SCRIPT, url, user_agent], text=True, capture_output=True, timeout=120
         )
     if result.returncode != 0:
-        raise RuntimeError(f"browser render failed: {result.stderr.strip()[:300]}")
+        raise RuntimeError(f"browser render failed: {result.stderr.strip().splitlines()[0][:200] if result.stderr.strip() else 'no output'}")
     return json.loads(result.stdout)
+
+
+def _refused(rendered: dict[str, str]) -> bool:
+    text = re.sub(r"\s+", " ", rendered.get("text", "")).strip()
+    marker = f"{rendered.get('title', '')} {text[:200]}".casefold()
+    return any(value in marker for value in REFUSAL_TITLES) or len(text) < MIN_HTML_TEXT_CHARACTERS
+
+
+def _browser_render(url: str) -> dict[str, str]:
+    """Render in a desktop window as desktop Chrome; if refused, retry once with the browser's own identity.
+
+    Sites differ: on the Tribe run, OpenAI served only the desktop identity while
+    PitchBook and Bloomberg served only the browser's default one. Both attempts
+    use the desktop window, so the layout is always desktop.
+    """
+    _require_public_host(url)
+    failures: list[str] = []
+    rendered: dict[str, str] | None = None
+    for user_agent in (DESKTOP_USER_AGENT, ""):
+        try:
+            rendered = _render_once(url, user_agent)
+        except Exception as error:
+            failures.append(str(error))
+            continue
+        if not _refused(rendered):
+            return rendered
+        failures.append(f"refusal page {rendered.get('title', '')!r}")
+    if rendered is not None:
+        return rendered
+    raise RuntimeError("; ".join(failures))
 
 
 def _pdf_text(pdf_path: Path, text_path: Path) -> int:
@@ -588,8 +633,6 @@ def _reusable_transcript(root: Path, source_id: str, url: str) -> dict[str, Any]
     }
 
 
-REFUSAL_STATUSES = {401, 403, 429}
-REFUSAL_TITLES = ("access denied", "403", "forbidden", "just a moment", "attention required", "are you a robot")
 
 
 def _browser_capture(root: Path, *, url: str, source_id: str, grade: str, http_reason: str) -> dict[str, Any]:
