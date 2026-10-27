@@ -396,3 +396,29 @@ def runtime_status(root: Path) -> dict[str, Any]:
             ],
             "runtime": store.summary(),
         }
+
+
+def run_summary(root: Path, result: dict[str, Any]) -> dict[str, Any]:
+    """What the orchestrator needs from a `run`: status, the workers to start (each a
+    file to point a worker at), and what blocks or waits. The full result is kept in
+    `tools/outputs/last-run.json`."""
+    summary: dict[str, Any] = {"status": result.get("status"), "phase": result.get("phase")}
+    agents = (result.get("dispatch") or {}).get("agents") or []
+    if agents:
+        summary["start_workers"] = [
+            {"tasks": agent["tasks"], "model_level": agent["model_route"]["tier"],
+             "effort": agent["model_route"]["effort"], "read": str(root.resolve() / agent["brief"])}
+            for agent in agents
+        ]
+    executed = result.get("automatic") or {}
+    if executed.get("executed") or executed.get("failed"):
+        summary["scripted_work"] = {"done": executed.get("executed", 0), "failed": list(executed.get("failed", []))[:5]}
+    for key in ("reason", "blocked_tasks", "active_tasks", "waiting_tasks", "next", "report"):
+        if result.get(key):
+            summary[key] = result[key]
+    details = result.get("details") or {}
+    problems = list(details.get("failures", [])) + list(details.get("unknowns", []))
+    if problems:
+        summary["problems"] = problems[:10]
+    summary["full_output"] = "tools/outputs/last-run.json"
+    return summary

@@ -6,12 +6,6 @@ ledger, `WORKFLOW_STATE.md`, `RUN_HISTORY.md`, shared manifests, global blocked
 logs, citation maps, repository configuration, or another worker's output
 unless the assignment names that shared-state responsibility.
 
-The one infrastructure exception is the controlled `python3 -m research_control
-web ...` interface. It may update the run-local URL ledger and immutable response
-cache. That cache is transport only: a URL or cached object is not research
-evidence, brand evidence, or a factual claim until the consuming packet admits
-it through its own required evidence records.
-
 ## Assignment contract
 
 Before work starts, the assignment must provide:
@@ -41,6 +35,18 @@ completed work.
 Never write to a shared manifest or shared review file from parallel workers.
 Write a worker-specific part for deterministic single-writer merge. Never
 commit unrelated workers' files.
+
+## The web interface
+<!-- only: source_discovery, alternate_copies, brand_guide, scope, capture -->
+
+The one infrastructure exception is the controlled `python3 -m research_control
+web ...` interface. It may update the run-local URL ledger and immutable response
+cache. That cache is transport only: a URL or cached object is not research
+evidence, brand evidence, or a factual claim until the consuming packet admits
+it through its own required evidence records.
+
+## Browsing
+<!-- only: source_discovery, alternate_copies, brand_guide, scope, capture, visual_review, orchestrator_page_review, diagram_builder -->
 
 Back off when rate limited and record blocked items. When you use a browser
 (screenshots, rendering, inspecting a page), present as desktop Chrome in a

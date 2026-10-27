@@ -16,11 +16,23 @@ from research_control.routing import model_route
 PACKET_DIRECTORY = "tools/outputs/task-packets"
 
 
-def _prompt(root: Path, relative: str) -> str:
+ONLY_FOR = re.compile(r"^<!-- only: (.+?) -->[ \t]*\n?", re.M)
+
+
+def _prompt(root: Path, relative: str, task_type: str | None = None) -> str:
+    """A prompt file's text for one kind of task: a section marked `<!-- only: ... -->`
+    is kept only for the task types it names, so each task carries the rules it uses."""
     path = root / relative
     if not path.is_file():
         raise FileNotFoundError(f"task prompt missing: {relative}")
-    return path.read_text(encoding="utf-8").strip()
+    text = path.read_text(encoding="utf-8").strip()
+    kept = []
+    for section in re.split(r"(?m)^(?=## )", text):
+        marker = ONLY_FOR.search(section)
+        if marker and task_type is not None and task_type not in {item.strip() for item in marker.group(1).split(",")}:
+            continue
+        kept.append(ONLY_FOR.sub("", section))
+    return "".join(kept).strip()
 
 
 def store_company_url(root: Path) -> str:
@@ -94,7 +106,7 @@ def write_packet(root: Path, task: dict[str, Any]) -> dict[str, Any]:
         "",
     ])
     for relative in task["prompt_files"]:
-        lines.extend([f"### `{relative}`", "", _prompt(root, relative), ""])
+        lines.extend([f"### `{relative}`", "", _prompt(root, relative, task["task_type"]), ""])
     lines.extend([
         "## Lifecycle protocol",
         "",
@@ -110,7 +122,14 @@ def write_packet(root: Path, task: dict[str, Any]) -> dict[str, Any]:
     ])
     atomic_write_text(md_path, "\n".join(lines))
     brief_path = directory / f"{task['task_id']}.brief.md"
-    atomic_write_text(brief_path, worker_brief(root, task, route, md_path))
+    material, elsewhere = task_material(root, task)
+    atomic_write_text(brief_path, worker_brief(root, task, route, md_path) + "\n".join([
+        "", "---", "", "# The task's instructions", "", md_path.read_text(encoding="utf-8").strip(), "",
+        "---", "", "# The files this task reads", "",
+        material or "(none: the instructions name what to open)",
+        *(["", "Not included above (open only what you need, as the instructions say):",
+           *(f"- `{path}`" for path in elsewhere)] if elsewhere else []),
+    ]) + "\n")
     return {
         "task_id": task["task_id"],
         "task_type": task["task_type"],
@@ -125,9 +144,50 @@ def write_packet(root: Path, task: dict[str, Any]) -> dict[str, Any]:
 RUN_NOTES = re.compile(r"^## Notes for downstream phases\s*\n(.*?)(?=^## |\Z)", re.M | re.S)
 
 
+# What a worker reads is put in its brief, so it reads once instead of opening file
+# after file. Stores (captures, the fact store, the final report) stay out: the
+# instructions say which rows or passages to open.
+MATERIAL_LIMIT = 1_000_000
+MATERIAL_FILE_LIMIT = 400_000
+NOT_INLINED = ("01-sources/", "02-facts/", "04-competitors/", "07-final-report/", "tools/outputs/git-cache/")
+TEXT_SUFFIXES = {".md", ".txt", ".json", ".jsonl", ".csv", ".tsv", ".yaml", ".yml"}
+
+
+def task_material(root: Path, task: dict[str, Any]) -> tuple[str, list[str]]:
+    """The text of the files a task reads, each under a header, and the paths left out
+    (stores, files the task edits, files over the size limits)."""
+    from research_control.io import resolve_pattern
+
+    outputs = {str(path.relative_to(root)) for pattern in task["outputs"] for path in resolve_pattern(root, pattern)}
+    outputs |= {pattern for pattern in task["outputs"] if not any(mark in pattern for mark in "*{?")}
+    parts: list[str] = []
+    left: list[str] = []
+    total = 0
+    for item in task["inputs"]:
+        pattern = str(item.get("path", "")) if isinstance(item, dict) else ""
+        if not pattern:
+            continue
+        if pattern.startswith(NOT_INLINED):
+            left.append(pattern)
+            continue
+        paths = sorted(resolve_pattern(root, pattern)) if any(mark in pattern for mark in "*{?") else [root / pattern]
+        for path in paths:
+            relative = str(path.relative_to(root))
+            if not path.is_file() or relative in outputs or path.suffix.casefold() not in TEXT_SUFFIXES:
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace").rstrip()
+            if len(text) > MATERIAL_FILE_LIMIT or total + len(text) > MATERIAL_LIMIT:
+                left.append(relative)
+                continue
+            total += len(text)
+            parts.append(f"=== FILE: {relative} ===\n{text}\n")
+    return "\n".join(parts), left
+
+
 def worker_brief(root: Path, task: dict[str, Any], route: dict[str, Any], packet: Path) -> str:
     """The whole instruction a host gives a worker for this task, so the orchestrator
-    passes it on unchanged: lifecycle, the packet, run notes, the check, completion."""
+    only points the worker at it: lifecycle, run notes, the check, completion; the
+    task's instructions and the files it reads are appended after it."""
     task_id = task["task_id"]
     worker = f"w-{task_id.rsplit('.', 1)[-1][:24]}"
     scope = root / "00-scope.md"
@@ -139,8 +199,10 @@ def worker_brief(root: Path, task: dict[str, Any], route: dict[str, Any], packet
         f"1. `python3 -m research_control work claim {task_id} --worker-id {worker}` then "
         f"`python3 -m research_control work start {task_id} --worker-id {worker}` "
         "(if refused for concurrency, wait a minute and retry).",
-        f"2. Read `{packet.relative_to(root)}` and follow it exactly. Read what it names, not whole stores: "
-        "open full fact rows or captures only where the packet says to.",
+        "2. Everything you need is in this file: the task's instructions follow these steps, then the files the "
+        "task reads, each under `=== FILE: path ===`. Read this file whole, in as few reads as you can (Read with "
+        "allow_large, or a few large ranges), and follow the instructions exactly. Open another file only to edit "
+        "an output, or where the instructions say to (a full fact row or a capture), never a whole store.",
     ]
     if notes and notes.group(1).strip():
         lines += ["3. Run notes from `00-scope.md` (findings and decisions this run has made; they apply to your work):",

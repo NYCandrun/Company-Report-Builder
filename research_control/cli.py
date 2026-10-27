@@ -228,6 +228,7 @@ def _parser() -> argparse.ArgumentParser:
     run = subparsers.add_parser("run", help="initialize or advance the adaptive research orchestrator")
     run.add_argument("--url")
     run.add_argument("--plan-only", action="store_true", help="plan and write packets without running runtime-owned work")
+    run.add_argument("--full", action="store_true", help="print the whole result instead of the short summary")
     subparsers.add_parser("next", help="write and list permitted task packets")
     subparsers.add_parser("status", help="show resumable run state")
 
@@ -456,7 +457,11 @@ def main() -> None:
             _print_json({"status": "initialized", "run_id": state["run_id"], "company_url": state["company_url"], "next": "python3 -m research_control check --phase bootstrap"})
             return
         if args.command == "run":
-            _print_json(advance(root, args.url, automatic=not args.plan_only))
+            from research_control.adaptive import run_summary
+
+            result = advance(root, args.url, automatic=not args.plan_only)
+            atomic_write_json(root / "tools/outputs/last-run.json", result)
+            _print_json(result if args.full else run_summary(root, result))
             return
         if args.command == "next":
             result = next_packets(root)

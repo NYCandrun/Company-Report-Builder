@@ -158,6 +158,20 @@ no longer holds (it described a capture omission a recapture fixed) is
 withdrawn by ID in `tools/lists/withdrawn-facts.json` with a reason: it keeps
 its ID, quote checks skip it, and synthesis may not cite it.
 
+## Keeping each worker's reading small
+
+Every step an agent takes re-reads its conversation so far, so cost grows with
+both the number of steps and the size of what it holds. Each task's brief
+(`<task>.brief.md`) is one file with everything the worker needs: its steps,
+the task's instructions, and the text of the files it reads (stores such as
+captures and the fact store stay out; the instructions say which rows or
+passages to open). A worker reads it once instead of opening file after file.
+The orchestrator starts a worker with one line pointing at that file, so the
+brief never sits in the orchestrator's own conversation. Shared rule sections
+marked `<!-- only: ... -->` reach only the task types that use them. `run`
+prints a short summary (status, the workers to start, what blocks or waits);
+the full result is in `tools/outputs/last-run.json`.
+
 ## How many workers
 
 `run` lists, under `agents`, one entry per worker to start: tasks that read

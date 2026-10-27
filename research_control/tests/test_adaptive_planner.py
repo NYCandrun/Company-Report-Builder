@@ -648,13 +648,26 @@ class WorkerBriefTests(unittest.TestCase):
             atomic_write_text(root / "00-scope.md", "# Scope\n\n## Notes for downstream phases\n\n- Treat X as internal tooling.\n")
             with RuntimeStore(root) as store:
                 store.initialize(run_id=state["run_id"], company_url=state["company_url"])
+                atomic_write_text(root / "tools/extracts/slices/SRC-1.part-0001.txt", "We build agents.\n")
                 store.add_task(WorkItem(
-                    task_id="facts.extract.abc", phase="facts", task_type="extraction", inputs=[],
-                    outputs=["parts/abc.jsonl"], prompt_files=["prompts/phases/extraction.md"],
+                    task_id="facts.extract.abc", phase="facts", task_type="extraction",
+                    inputs=[{"id": "SRC-1:part-0001", "path": "tools/extracts/slices/SRC-1.part-0001.txt"},
+                            {"id": "facts", "path": "02-facts/*.md"}],
+                    outputs=["parts/abc.jsonl"], prompt_files=["prompts/core/runtime.md", "prompts/core/evidence.md",
+                                                               "prompts/phases/extraction.md"],
                     metadata={"model_tier": "standard"},
                 ))
                 entry = write_packet(root, store.task("facts.extract.abc"))
             brief = (root / entry["brief"]).read_text(encoding="utf-8")
+            # One file holds the steps, the task's instructions, and what it reads.
+            self.assertIn("# The task's instructions", brief)
+            self.assertIn("=== FILE: tools/extracts/slices/SRC-1.part-0001.txt ===\nWe build agents.", brief)
+            self.assertIn("- `02-facts/*.md`", brief)
+            # Each task carries only the rules it uses: extraction gets receipts, not browsing or citation meaning.
+            self.assertIn("## Fact receipts", brief)
+            self.assertNotIn("## Browsing", brief)
+            self.assertNotIn("## Citation meaning", brief)
+            self.assertNotIn("<!-- only:", brief)
             self.assertEqual("standard", entry["model_route"]["tier"])
             self.assertIn("work claim facts.extract.abc --worker-id w-abc", brief)
             self.assertIn("work check facts.extract.abc", brief)

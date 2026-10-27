@@ -10,17 +10,21 @@ Follow `README.md` as the operational entry point. Start a company run with
 `runs/<slug>/` directory: rerun `python3 -m research_control run` and dispatch
 every ready packet until exact-artifact release passes.
 
-- Start one subagent per entry in `agents` in the `run` output, and pass that
-  entry's brief as the subagent's whole prompt, unchanged, with the model and
-  effort for its level from the table below. Separate workers run work that
-  reads different material in parallel; tasks that read the same files share
-  one worker, so nothing is read twice; reviews whose value is independent
-  judgment always get their own worker. Do not split one task's reading
-  across workers or add workers beyond these entries. A brief carries the
-  worker ID, lifecycle commands, run notes, and the `work check` the worker
-  runs before it succeeds. When a worker reports something for you, act on
-  it; a small correction to a finished output is recorded with
-  `work record-edit`.
+- `run` prints a short summary; the full result is in
+  `tools/outputs/last-run.json` (`run --full` prints it). Start one subagent
+  per entry in `start_workers`, with the model and effort for its
+  `model_level` from the table below, and give it a one-line prompt:
+  `Read <read> in full and follow it.` The file it names holds everything the
+  worker needs: its worker ID, lifecycle commands, run notes, the
+  `work check` it runs before it succeeds, the task's instructions (only the
+  rules that task uses), and the text of the files it reads. Never paste a
+  brief into the prompt: it would stay in your conversation and be re-read on
+  every later step. Separate workers run work that reads different material
+  in parallel; tasks that read the same files share one worker, so nothing is
+  read twice; reviews whose value is independent judgment always get their
+  own worker. Do not split one task's reading across workers or add workers
+  beyond these entries. When a worker reports something for you, act on it; a
+  small correction to a finished output is recorded with `work record-edit`.
   Discovery is one task per channel: the runtime handles `company_site` and
   `sitemaps`; each of the other eight channels gets its own worker.
 - Workers act only under a held lease: claim and start before working, succeed
