@@ -44,6 +44,33 @@ Admit what answers a question, not everything that exists:
   videos admitted on the `video` channel, which the runtime tries to transcribe. Admit the
   official profiles and any post that a question depends on, and look for a
   public copy (a press release, blog post, or transcript) of that content.
+- Public code (`code_packages`): catalog every public repository in the
+  company's GitHub organizations. When an organization page cannot be listed
+  from the environment, ask the person running the research for the list
+  rather than guessing names, and look for further organization names in the
+  repositories' own files (remotes, package metadata, catalog files). Then
+  look for the company's work in other organizations' repositories:
+  1. Clone each company repository with full history and all branches, and
+     list its committers from `git log --all`. A GitHub noreply address gives
+     the handle.
+  2. Query GH Archive, the public record of GitHub events, for those handles,
+     using the ClickHouse public playground over plain HTTP:
+     `curl -sS 'https://play.clickhouse.com/?user=play' --data-binary "SELECT
+     repo_name, event_type, count() c, min(created_at), max(created_at) FROM
+     github_events WHERE actor_login IN ('HANDLE') GROUP BY repo_name,
+     event_type ORDER BY c DESC FORMAT TSV"`. Pushes, pull requests, and
+     reviews are strong signals; stars and forks are not. Also query
+     `repo_name LIKE 'ORG/%'` for the company's organizations; that finds
+     repositories since deleted or made private, and more of its people. The
+     archive's date range is limited, so state it.
+  3. Admit an outside repository only after cloning it and finding the
+     commits by `git log --all --author`.
+
+  This is professional evidence about clients, partners, and project scope,
+  not about people. Record organizations and repositories, never personal
+  details. Treat a client relationship as stated only when a source states
+  it. Do not use GitHub search or API tools beyond the repositories the
+  environment permits; use the routes above.
 - Video and podcasts, at every length (Shorts, clips, and social video drops
   included): enumerate every video on the company's own channels (YouTube,
   LinkedIn, X, Instagram, TikTok, Vimeo, and video embedded on the company
