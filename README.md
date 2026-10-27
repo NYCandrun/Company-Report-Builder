@@ -182,6 +182,12 @@ concrete reason.
 - Web pages: HTTP capture with rendered-order text extraction; pages built by
   JavaScript fall back to a headless browser when the host has one.
 - PDFs: `pdftotext` with page markers.
+- GitHub: public repositories, directories, and files are captured from a
+  shallow git clone (README, file tree, file contents, last commit date), since
+  GitHub's web pages refuse automated requests. Organization listings need the
+  GitHub API and are recorded as blocked; their repositories are captured
+  individually. `recapture --blocked` re-queues blocked sources after a capture
+  method improves.
 - Video and audio: a timestamped `transcript.txt`. YouTube tries published
   captions, then yt-dlp captions with the default, `web_embedded`, and
   `android_vr` player clients, then the audio through yt-dlp, then audio

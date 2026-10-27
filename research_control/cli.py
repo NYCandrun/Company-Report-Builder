@@ -12,7 +12,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 
 from research_control import PASS, __version__
-from research_control.adaptive import advance, complete_work, open_runtime, retry_media, runtime_status
+from research_control.adaptive import advance, complete_work, open_runtime, requeue_captures, retry_media, runtime_status
 from research_control.capture import capture_source_part, capture_url
 from research_control.checks import check_phase
 from research_control.discovery import DISCOVERY_CHANNELS, DiscoveryEngine, DiscoveryPolicy, public_fetch
@@ -333,6 +333,10 @@ def _parser() -> argparse.ArgumentParser:
     media_retry = media_sub.add_parser("retry", help="re-queue media captures whose transcript was unavailable")
     media_retry.add_argument("--source-id", action="append", default=[])
 
+    recapture = subparsers.add_parser("recapture", help="re-queue chosen or blocked captures after a capture method improves")
+    recapture.add_argument("--source-id", action="append", default=[])
+    recapture.add_argument("--blocked", action="store_true", help="re-queue every capture whose receipt is blocked")
+
     reduce = subparsers.add_parser("reduce", help="merge isolated worker parts as the single writer")
     reduce.add_argument("kind", choices=["discovery", "capture", "extraction"])
 
@@ -524,6 +528,11 @@ def main() -> None:
             return
         if args.command == "media":
             _print_json(retry_media(root, args.source_id))
+            return
+        if args.command == "recapture":
+            if not args.source_id and not args.blocked:
+                raise ValueError("recapture needs --source-id or --blocked")
+            _print_json(requeue_captures(root, args.source_id, blocked=args.blocked))
             return
         if args.command == "reduce":
             if args.kind == "extraction":

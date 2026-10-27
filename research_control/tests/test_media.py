@@ -65,6 +65,14 @@ class MediaTests(unittest.TestCase):
             _label_speakers(words, turns),
         )
 
+    def test_github_organization_listing_is_recorded_as_blocked_with_a_reason(self) -> None:
+        from research_control.capture import auto_capture_source
+
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = auto_capture_source(Path(directory), url="https://github.com/ExampleOrg", source_id="G1", grade="P")
+            self.assertEqual("blocked", receipt["status"])
+            self.assertIn("organization", receipt["reason"])
+
 
 if __name__ == "__main__":
     unittest.main()

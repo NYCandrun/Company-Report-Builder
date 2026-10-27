@@ -5,11 +5,13 @@ from __future__ import annotations
 import csv
 import ipaddress
 import json
+import os
 import re
 import shutil
 import socket
 import subprocess
 import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -498,6 +500,11 @@ def auto_capture_source(
     """
     from research_control.media import AUDIO_SUFFIXES
 
+    if (urlparse(url).hostname or "").casefold().removeprefix("www.") == "github.com":
+        try:
+            return _github_capture(root, url=url, source_id=source_id, grade=grade)
+        except Exception as error:
+            return _blocked_receipt(root, source_id, url, f"{type(error).__name__}: {error}")
     prior_transcript = _reusable_transcript(root, source_id, url) if media else None
     if media and urlparse(url).path.casefold().endswith(AUDIO_SUFFIXES):
         # A direct audio or video file has no page text; its transcript is the derivative.
@@ -636,3 +643,102 @@ def _capture_page(
             "JavaScript-rendered page; text taken from the rendered DOM",
         )
     return receipt
+
+
+GIT_CACHE = "tools/outputs/git-cache"
+_repo_locks: dict[str, threading.Lock] = {}
+_repo_locks_guard = threading.Lock()
+
+
+def _git(args: list[str], cwd: Path | None = None, timeout: int = 60) -> str:
+    result = subprocess.run(["git", *args], cwd=cwd, text=True, capture_output=True, timeout=timeout)
+    if result.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args[:2])} failed: {result.stderr.strip()[:300]}")
+    return result.stdout
+
+
+def _github_checkout(root: Path, owner: str, repo: str) -> Path:
+    """Shallow-clone a public repository once per run and reuse it for every source in it."""
+    key = f"{owner}/{repo}".casefold()
+    with _repo_locks_guard:
+        lock = _repo_locks.setdefault(key, threading.Lock())
+    target = root / GIT_CACHE / owner.casefold() / repo.casefold()
+    with lock:
+        if (target / ".git").is_dir():
+            return target
+        target.parent.mkdir(parents=True, exist_ok=True)
+        command = ["clone", "--depth", "1", "--quiet", f"https://github.com/{owner}/{repo}", str(target)]
+        environment = {**os.environ, "GIT_LFS_SKIP_SMUDGE": "1", "GIT_TERMINAL_PROMPT": "0"}
+        for attempt in (1, 2):
+            result = subprocess.run(["git", *command], text=True, capture_output=True, timeout=900, env=environment)
+            if result.returncode == 0:
+                return target
+            shutil.rmtree(target, ignore_errors=True)
+            # One retry for the git proxy's per-repository concurrency limit.
+            if attempt == 1 and "429" in result.stderr:
+                time.sleep(5)
+                continue
+            raise RuntimeError(f"git clone of {owner}/{repo} failed: {result.stderr.strip()[:300]}")
+    raise RuntimeError(f"git clone of {owner}/{repo} failed")
+
+
+def _github_capture(root: Path, *, url: str, source_id: str, grade: str) -> dict[str, Any]:
+    """Capture a public GitHub repository, directory, or file through git rather than web pages."""
+    parts = [part for part in urlparse(url).path.split("/") if part]
+    if len(parts) < 2:
+        raise RuntimeError(
+            "a GitHub organization or user listing needs the GitHub API, which this session cannot reach; "
+            "its public repositories are captured individually"
+        )
+    owner, repo = parts[0], parts[1].removesuffix(".git")
+    checkout = _github_checkout(root, owner, repo)
+    relative = "/".join(parts[4:]) if len(parts) > 4 and parts[2] in {"tree", "blob"} else ""
+    commit, committed = _git(["log", "-1", "--format=%H %cI"], cwd=checkout).split()
+    lines = [
+        f"Repository: {owner}/{repo}",
+        f"Source URL: {url}",
+        f"Captured commit: {commit} (committed {committed})",
+        "Method: shallow git clone of the public repository",
+        "",
+    ]
+    target = checkout / relative if relative else checkout
+    if target.is_file():
+        lines += [f"--- FILE: {relative} ---", target.read_text(encoding="utf-8", errors="replace")[:200_000]]
+    elif target.is_dir():
+        listed = _git(["ls-files", "--", relative or "."], cwd=checkout).splitlines()
+        lines += [f"--- FILE TREE ({len(listed)} files{', under ' + relative if relative else ''}) ---", *listed[:500]]
+        if len(listed) > 500:
+            lines.append(f"... {len(listed) - 500} more files")
+        for readme in sorted(target.glob("README*")):
+            if readme.is_file():
+                lines += ["", f"--- {readme.relative_to(checkout)} ---", readme.read_text(encoding="utf-8", errors="replace")[:100_000]]
+    else:
+        raise RuntimeError(f"{relative} is not in {owner}/{repo} at its default branch head")
+    directory = root / "01-sources/captures" / source_id
+    directory.mkdir(parents=True, exist_ok=True)
+    text_path = directory / "content.txt"
+    atomic_write_text(text_path, "\n".join(lines).rstrip() + "\n")
+    content = text_path.read_text(encoding="utf-8")
+    relative_text = str(text_path.relative_to(root))
+    source = {
+        "id": source_id, "grade": grade,
+        "title": f"{owner}/{repo}" + (f": {relative}" if relative else ""),
+        "publisher": f"GitHub ({owner})", "url": url,
+        "date published": "", "date last modified": committed[:10],
+        "date captured": datetime.now(timezone.utc).date().isoformat(),
+        "local file": relative_text, "method": "shallow git clone of public repository",
+        "notes": f"Content at commit {commit[:12]}; last-modified is that commit's date, not a publication date",
+    }
+    receipt = {
+        "schema_version": "1.0.0", "task_type": "capture", "source_id": source_id, "status": "captured",
+        "source": source, "local_paths": [relative_text], "content_bytes": len(content.encode("utf-8")),
+        "estimated_tokens": max(1, len(content) // 4), "canonical_text_ready": True,
+        "captured_at": utc_now(),
+        "disposition": {
+            "input_id": source_id, "disposition": "completed", "reason": "captured from git",
+            "evidence_paths": [relative_text], "output_ids": [source_id],
+        },
+    }
+    receipt_path = root / "tools/outputs/worker-parts/capture" / f"{source_id}.json"
+    atomic_write_json(receipt_path, receipt)
+    return {**receipt, "receipt": str(receipt_path.relative_to(root))}

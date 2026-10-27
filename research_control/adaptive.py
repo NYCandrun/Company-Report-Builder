@@ -246,6 +246,23 @@ def retry_media(root: Path, source_ids: list[str] | None = None) -> dict[str, An
     return {"requeued": requeued, "next": "python3 -m research_control run"}
 
 
+def requeue_captures(root: Path, source_ids: list[str] | None = None, *, blocked: bool = False) -> dict[str, Any]:
+    """Re-queue chosen captures, or every blocked one, after a capture method improves."""
+    selected = set(source_ids or [])
+    requeued: list[str] = []
+    with open_runtime(root) as store:
+        for task in store.tasks(states={"succeeded"}):
+            if task["task_type"] != "capture":
+                continue
+            source_id = task["metadata"].get("source_id", "")
+            receipt_path = root / task["metadata"]["receipt"]
+            receipt = load_json(receipt_path) if receipt_path.is_file() else {}
+            if source_id in selected or (blocked and receipt.get("status") == "blocked"):
+                store.mark_stale(task["task_id"], "recapture requested")
+                requeued.append(source_id)
+    return {"requeued": requeued, "next": "python3 -m research_control run"}
+
+
 def runtime_status(root: Path) -> dict[str, Any]:
     state = load_state(root)
     with open_runtime(root) as store:
