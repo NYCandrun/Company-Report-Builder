@@ -568,7 +568,7 @@ def auto_capture_source(
 
     if (urlparse(url).hostname or "").casefold().removeprefix("www.") == "github.com":
         try:
-            return _github_capture(root, url=url, source_id=source_id, grade=grade)
+            return _clear_stale_block(root, source_id, _github_capture(root, url=url, source_id=source_id, grade=grade))
         except Exception as error:
             return _blocked_receipt(root, source_id, url, f"{type(error).__name__}: {error}")
     prior_transcript = _reusable_transcript(root, source_id, url) if media else None
@@ -578,7 +578,7 @@ def auto_capture_source(
     else:
         receipt = _capture_page(root, url=url, source_id=source_id, grade=grade, store=store, use_browser=use_browser)
     if not media:
-        return receipt
+        return _clear_stale_block(root, source_id, receipt)
     from research_control.media import transcribe
 
     directory = root / "01-sources/captures" / source_id
@@ -694,6 +694,13 @@ def _browser_capture(root: Path, *, url: str, source_id: str, grade: str, http_r
     receipt_path = root / "tools/outputs/worker-parts/capture" / f"{source_id}.json"
     atomic_write_json(receipt_path, receipt)
     return {**receipt, "receipt": str(receipt_path.relative_to(root))}
+
+
+def _clear_stale_block(root: Path, source_id: str, receipt: dict[str, Any]) -> dict[str, Any]:
+    """A successful capture removes the BLOCKED.txt an earlier refused attempt left behind."""
+    if receipt.get("status") == "captured":
+        (root / "01-sources/captures" / source_id / "BLOCKED.txt").unlink(missing_ok=True)
+    return receipt
 
 
 def _capture_page(

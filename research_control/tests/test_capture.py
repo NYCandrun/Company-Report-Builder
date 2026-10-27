@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from research_control.capture import TextExtractor, _blocked_receipt, _refusal_marker
+from research_control.capture import TextExtractor, _blocked_receipt, _clear_stale_block, _refusal_marker
 
 
 class TextExtractionTests(unittest.TestCase):
@@ -39,6 +39,14 @@ class RefusalTests(unittest.TestCase):
             receipt = _blocked_receipt(root, "SRC-1", "https://www.youtube.com/watch?v=abc", "bot check")
             self.assertEqual("blocked", receipt["status"])
             self.assertEqual(["BLOCKED.txt", "transcript.txt"], sorted(item.name for item in capture.iterdir()))
+
+
+    def test_successful_capture_clears_an_earlier_block(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _blocked_receipt(root, "SRC-2", "https://example.com/a", "HTTP 429")
+            _clear_stale_block(root, "SRC-2", {"status": "captured"})
+            self.assertFalse((root / "01-sources/captures/SRC-2/BLOCKED.txt").exists())
 
 
 if __name__ == "__main__":
