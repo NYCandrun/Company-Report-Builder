@@ -130,8 +130,7 @@ python3 -m research_control source capture --source-id SOURCE_ID
 
 Use the host's browser, PDF, OCR, caption, transcription, repository, or media
 tools for formats that need them. Respect robots rules, rate limits, logins,
-paywalls, and bot challenges. Record inaccessible evidence; do not bypass the
-restriction.
+and paywalls. Record inaccessible evidence.
 
 Research discovery and brand discovery remain separate agent responsibilities,
 but share a run-local transport cache and URL lead ledger in the scheduler.

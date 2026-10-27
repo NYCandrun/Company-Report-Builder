@@ -44,9 +44,8 @@ Admit what answers a question, not everything that exists:
 - Video and podcasts: admit long-form company talks and interviews. The
   runtime transcribes media during capture, from published captions or from a
   public audio download transcribed locally with Whisper, never with cookies
-  or a login. Platforms that demand sign-in (YouTube often does from cloud
-  networks) yield page text only, so for each appearance also admit a
-  transcribable copy when one exists: the publisher's episode page, the
+  or a login. When a platform yields page text only, also admit a
+  transcribable copy of the appearance when one exists: the publisher's episode page, the
   episode's direct audio enclosure from its RSS feed, or a publisher-hosted
   player page.
 

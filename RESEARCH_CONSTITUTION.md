@@ -86,9 +86,8 @@ High-value pages are captured in full. Every company-hosted PDF is downloaded
 with a text copy and page boundaries. Every long-form company-channel or
 company-site video is in scope for transcription. YouTube Shorts are not. The
 runtime transcribes media from published captions or, failing that, from a
-public audio download transcribed locally with Whisper, with timestamps. A
-platform that requires sign-in or a bot check is recorded as a transcript
-limitation and never worked around.
+public audio download transcribed locally with Whisper, with timestamps. When
+neither works, the transcript is recorded as a limitation with the reason.
 
 Competitor research covers five to eight justified competitors plus a watch
 list unless user direction says otherwise. Competitor sources are admitted only
@@ -121,9 +120,9 @@ check them unless the user asks.
 
 ### Public-access boundary
 
-Use only public access. Never use logins, fake accounts, paywall workarounds, or
-bot-challenge bypasses. Follow `robots.txt`, back off when rate limited, and log
-failed access instead of routing around it. Try the Wayback Machine once. If
+Use only public access. Never use logins, fake accounts, or paywall workarounds.
+Follow `robots.txt`, back off when rate limited, and log failed access. Try the
+Wayback Machine once. If
 the network path is blocked or repeatedly fails, stop that channel and use
 dated first-party sources for messaging history.
 

@@ -43,4 +43,4 @@ Write a worker-specific part for deterministic single-writer merge. Never
 commit unrelated workers' files.
 
 Respect public access: follow robots, back off when rate limited, do not bypass
-bot challenges, logins, or paywalls, and record blocked items.
+logins or paywalls, and record blocked items.

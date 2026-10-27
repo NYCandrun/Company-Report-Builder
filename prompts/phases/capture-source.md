@@ -26,4 +26,4 @@ derivative exists.
 If access is prohibited or fails after the permitted retry, create the assigned
 source directory with a nonempty `BLOCKED.txt` and write a receipt with
 `status: blocked`, the reason, access method, and evidence. Do not bypass login,
-paywall, robots, or bot controls. Do not edit the canonical source manifest.
+paywall, or robots controls. Do not edit the canonical source manifest.

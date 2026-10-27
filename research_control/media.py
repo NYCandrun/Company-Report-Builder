@@ -1,9 +1,9 @@
 """Timestamped transcripts for public video and audio sources.
 
 Order of preference: published captions, then a public audio download
-transcribed locally with Whisper. Downloads never use cookies, accounts, or
-bot-challenge workarounds; a platform that demands sign-in is recorded as
-blocked. Machine transcripts do not establish speaker identity.
+transcribed locally with Whisper. Downloads never use cookies or accounts; a
+source that yields neither is recorded with the reason. Machine transcripts do
+not establish speaker identity.
 
 The tools are optional host capabilities (``yt-dlp``, ``youtube-transcript-api``,
 ``faster-whisper``). When one is missing the transcript is recorded as
