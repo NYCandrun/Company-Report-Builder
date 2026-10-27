@@ -110,7 +110,9 @@ present a capture date as a publication date.
 
 When an input's source is listed in `tools/lists/supplement-sources.json`, it
 was recaptured with more content after its earlier facts were filed. Read the
-facts already filed from it (search `02-facts/` for its source ID) and extract
+facts already filed from it (search `02-facts/` for its source ID) and the
+candidates earlier batches extracted from it but not yet filed
+(`tools/outputs/worker-parts/extraction/*.candidates.jsonl`, same `source_id`), and extract
 what they do not already cover, across every dimension in "Repositories" and
 "Business records and conversations" above and the questions the list's reason
 names (earlier passes were thinner than these rules ask), plus any earlier
