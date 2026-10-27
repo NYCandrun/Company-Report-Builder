@@ -68,9 +68,18 @@ Admit what answers a question, not everything that exists:
 
   This is professional evidence about clients, partners, and project scope,
   not about people. Record organizations and repositories, never personal
-  details. Treat a client relationship as stated only when a source states
-  it. Do not use GitHub search or API tools beyond the repositories the
-  environment permits; use the routes above.
+  details. A client relationship is stated when a source states it. It may
+  also be inferred when the evidence is sufficient, for example:
+  - several of the company's people committing to one outside organization's
+    repositories;
+  - sustained work over weeks;
+  - work shaped to that organization (its brand, data, systems, or names in
+    branches and files).
+
+  Record such a relationship as an inference, naming the evidence and its
+  strength. A single commit, a fork, a demo, or one person's activity alone
+  is a lead, not an inferred client. Do not use GitHub search or API tools
+  beyond the repositories the environment permits; use the routes above.
 - Video and podcasts, at every length (Shorts, clips, and social video drops
   included): enumerate every video on the company's own channels (YouTube,
   LinkedIn, X, Instagram, TikTok, Vimeo, and video embedded on the company
