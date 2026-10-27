@@ -31,7 +31,7 @@ VERDICT_VALUES = ("confirmed", "corrected", "unsupported", "source unreachable")
 # Soft shard size: one worker's careful read of the captures behind it. A
 # source's facts stay together so its capture is read once.
 SHARD_FACTS = 50
-FACT_ID = re.compile(r"\b[A-Z][A-Z0-9-]*-[A-Z]*\d+[a-z]?\b")
+FACT_ID = re.compile(r"\b[A-Z][A-Z0-9-]*-[A-Z]*\d{3,}[a-z]?\b")
 
 
 def _facts(root: Path) -> dict[str, dict[str, str]]:

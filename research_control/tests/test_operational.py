@@ -394,6 +394,12 @@ class OperationalRunTests(unittest.TestCase):
             from research_control.report_outline import write_report_outline
 
             complete_task(root, "final.report-outline", "runtime-executor", lambda: write_report_outline(root))
+            complete_task(root, "final.findings", "findings-worker", lambda: text(
+                root, "05-synthesis/findings.md",
+                "# Findings\n\nEvery finding below is my inference from the cited facts.\n\n"
+                "## The company in one paragraph\n\nAcme sells workflow software [ACME-001].\n\n"
+                "## Findings\n\n1. Acme is a software company. Evidence: ACME-001.\n\n"
+                "## The report plan\n\nThe offering part opens with the one product [ACME-001].\n"))
             complete_task(root, "final.write-brief", "brief-writer", write_brief)
             complete_task(root, "final.model-diagrams", "diagram-modeler", lambda: write_diagram_models(root))
             complete_task(root, "final.build-diagrams", "diagram-builder", lambda: write_diagram_artifacts(root))

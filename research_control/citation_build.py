@@ -68,14 +68,30 @@ def _part(link: dict[str, Any]) -> tuple[str, str, str] | None:
 PASSAGE_WORDS = 6
 
 
+def _passage(quote: str) -> str:
+    """The first words of a fact's quote, so the source note carries the evidence itself."""
+    words = quote.split()
+    if not words:
+        return ""
+    return "\u201c" + " ".join(words[:PASSAGE_WORDS]) + ("\u2026" if len(words) > PASSAGE_WORDS else "") + "\u201d"
+
+
 def _place(link: dict[str, Any], part: tuple[str, str, str] | None, quote: str = "") -> tuple[str, float] | None:
     """Where in the source a fact sits, for the source list: a recording's timestamp, the lines
-    of a file or diff, or a page's quoted passage (its first words); with a sort key."""
-    anchor = str(link.get("anchor", ""))
+    of a file or diff, or a page's quoted passage (its first words), each with the quoted
+    words so the note carries the evidence; with a sort key."""
     if link.get("kind", "page") == "page" and link.get("located") and quote.strip():
-        words = quote.split()
-        label = "\u201c" + " ".join(words[:PASSAGE_WORDS]) + ("\u2026" if len(words) > PASSAGE_WORDS else "") + "\u201d"
-        return label, 0.0
+        return _passage(quote), 0.0
+    where = _where(link, part)
+    if where is None:
+        return None
+    label, order = where
+    passage = _passage(quote)
+    return (f"{label} {passage}" if passage else label), order
+
+
+def _where(link: dict[str, Any], part: tuple[str, str, str] | None) -> tuple[str, float] | None:
+    anchor = str(link.get("anchor", ""))
     clock = CLOCK.match(anchor)
     if link.get("kind") == "recording" and clock:
         hours, minutes, seconds = (int(value) for value in clock.groups())

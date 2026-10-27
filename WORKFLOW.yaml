@@ -109,7 +109,7 @@
         "frontier": {
           "model_class": "strongest_available",
           "effort": "high",
-          "task_types": ["verification", "devils_advocate", "diagram_modeler"]
+          "task_types": ["findings", "verification", "devils_advocate", "diagram_modeler"]
         }
       }
     },
@@ -364,6 +364,26 @@
           "metadata": {"planner": "static-profile", "single_writer": true, "executor": "runtime"}
         },
         {
+          "id": "findings",
+          "task_type": "findings",
+          "prompt": "prompts/phases/findings.md",
+          "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
+          "inputs": [
+            {"id": "scope_map", "path": "00-scope.md", "required": true},
+            {"id": "report_outline", "path": "tools/lists/report-outline.json", "required": true},
+            {"id": "reviewed_synthesis", "path": "05-synthesis/{product-map,offering,customers-proof,competitors,glossary,messaging-timeline,organization,direction,inference-catalogue,open-questions}.md", "required": true},
+            {"id": "reviewed_timelines", "path": "03-timelines/*.md", "required": false},
+            {"id": "fact_digests", "path": "tools/digests/*.md", "required": true},
+            {"id": "cited_fact_rows", "path": "tools/outputs/cited-fact-rows.md", "required": true},
+            {"id": "review_decisions", "path": "06-checks/review-decisions.md", "required": false}
+          ],
+          "depends_on": ["report-outline"],
+          "outputs": ["05-synthesis/findings.md"],
+          "independent": false,
+          "exclusive_inputs": false,
+          "validators": []
+        },
+        {
           "id": "write-brief",
           "task_type": "brief_writer",
           "prompt": "prompts/phases/brief-writing.md",
@@ -376,7 +396,7 @@
             {"id": "verification_verdicts", "path": "tools/outputs/verification-verdicts.jsonl", "required": true},
             {"id": "brand_guide", "path": "07-final-report/brand-guide.html", "required": true}
           ],
-          "depends_on": ["brand-guide", "report-outline"],
+          "depends_on": ["brand-guide", "report-outline", "findings"],
           "outputs": ["05-synthesis/company-brief.md", "05-synthesis/design-notes.md", "05-synthesis/design/style.css", "tools/outputs/citation-map-company-brief.json", "tools/outputs/exhibit-map.json"],
           "independent": false,
           "exclusive_inputs": true,
@@ -394,6 +414,7 @@
             {"id": "verification_verdicts", "path": "tools/outputs/verification-verdicts.jsonl", "required": true},
             {"id": "reviewed_timelines", "path": "03-timelines/*.md", "required": false}
           ],
+          "depends_on": ["findings"],
           "outputs": ["07-final-report/diagram-models.md", "tools/outputs/diagram-models.json"],
           "independent": true,
           "exclusive_inputs": false,
@@ -874,7 +895,7 @@
         "required_reconciliations": ["final_cited_facts", "citation_sources", "visual_pages", "visual_diagrams"],
         "required_validators": ["final_artifact_contract", "reader_facing_text", "american_english", "new_cited_fact_verification", "citation_structure", "exhibit_mapping", "brand_artifacts", "brand_visual_records", "diagram_models", "diagram_style_spec", "diagram_artifacts", "diagram_visual_records", "design_check", "visual_audit", "visual_records", "publication_decisions", "artifact_binding"],
         "required_semantic_reviews": ["american_english_review", "citation_claim_a", "citation_claim_b", "visual_review", "orchestrator_page_review"],
-        "required_worker_task_types": ["brief_writer", "diagram_modeler", "diagram_builder", "assembler", "language_review", "citation_claim_review", "visual_review", "publication_fixer", "orchestrator_page_review"]
+        "required_worker_task_types": ["findings", "brief_writer", "diagram_modeler", "diagram_builder", "assembler", "language_review", "citation_claim_review", "visual_review", "publication_fixer", "orchestrator_page_review"]
       }
     },
     {

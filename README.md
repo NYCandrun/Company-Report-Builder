@@ -197,6 +197,22 @@ exhibit of accounts over time. There is no length target: the report is as long
 as the evidence needs, in tight copy with no filler or tangents. The cover's
 focus is the scope's `Focus:` line, or "The whole company".
 
+Between the reviewed synthesis and the writing there is a findings step, on
+the strongest model: it reads the synthesis files, the timelines, and the fact
+digests, decides what the evidence means, and writes `05-synthesis/findings.md`:
+the company in one paragraph; eight to fifteen findings, each a plain
+conclusion with its evidence, strength, and what cuts against it, joining
+sources that describe the same thing (a demo recording and the repository it
+produced); what the evidence does not show; the report plan (each part's main
+point, its sub-points, its exhibits with their takeaways, and what to leave
+out); and the one place each caveat is said. The writer writes to that plan,
+the diagram modeler follows it, and the reviews check against it. Every part
+and paragraph leads with its conclusion and the facts follow; a caveat is said
+once per part or exhibit, not in every sentence; an exhibit cell states the
+thing itself with its citations, and the source note the superscript opens
+carries the quoted passage, place, and date. On a rerun the writer reworks
+the existing brief to the plan, keeping its fact IDs and recorded corrections.
+
 Citations are built by script. The writer keeps fact IDs beside the words they
 support; `work check` (for the writer and the publication fixer) numbers each
 source on first use, links every superscript number to the cited fact's deep
@@ -209,8 +225,9 @@ fact's deep link agree.
 The source list is in order of first citation, and a reused source keeps its
 number. One page or recording is one entry, however often it is cited. A
 recording's entry lists every moment the report cites, in recording order,
-each linked to that moment (hovering over a superscript shows its timestamp
-too). A repository's files, commits, and unmerged changes are separate
+each linked to that moment and followed by the first words of what was said
+there (hovering over a superscript shows the same). A file's entry lists the
+cited lines the same way, each with the quoted words. A repository's files, commits, and unmerged changes are separate
 entries, each naming the file or commit and the lines cited. Sources captured
 without a title (a video page that refused the capture, a podcast audio file)
 take their title from the feed item their date came from or from the video's

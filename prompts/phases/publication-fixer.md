@@ -1,5 +1,9 @@
 TASK TYPE: PUBLICATION FINDING DISPOSITION AND FIX APPLICATION
 
+Keep the report's structure and conclusions as `05-synthesis/findings.md`
+plans them. A finding that would change them is for the orchestrator, not a
+fix.
+
 Read all independent language, citation-claim, exhibit, and visual reports.
 Give every finding one disposition: `apply`, `apply_in_part`, or `reject`, with
 a reason and evidence path. Record decisions in

@@ -32,7 +32,7 @@ dates. For recordings, use the live date when known and keep upload date in
 notes.
 
 ## Claim discipline
-<!-- only: source_discovery, extraction, filing, filing_review, synthesis, currency_review, verification, verification_fixer, technical_review, devils_advocate, insider_review, editor_review, fixer, brief_writer, diagram_modeler, citation_claim_review, publication_fixer, diagram_builder, orchestrator_page_review -->
+<!-- only: source_discovery, extraction, filing, filing_review, synthesis, currency_review, verification, verification_fixer, technical_review, devils_advocate, insider_review, editor_review, fixer, findings, brief_writer, diagram_modeler, citation_claim_review, publication_fixer, diagram_builder, orchestrator_page_review -->
 
 - Aims are not achievements.
 - `can` is not `does`. `some` is not `all`. `up to` is not typical.
@@ -59,13 +59,18 @@ notes.
     configuration, or document is stated, whatever other files say.
   - `Inferred` means the evidence supports it but no source names it. The
     mark goes on the relationship itself (for example "Microsoft (inferred
-    client: …)"), followed by the evidence and fact IDs.
+    client)") with its fact IDs.
   - `Lead` means an inference from thin evidence, such as one commit, a
     repository name, a demo, or one person's activity. Write it as
-    "Chubb (lead, thin evidence: …)", naming the evidence. A lead may appear
-    wherever it is relevant, but it carries the least weight: never use it to
-    support a conclusion on its own, and never count it with stated or
-    inferred relationships.
+    "Chubb (lead)" with its fact IDs. A lead may appear wherever it is
+    relevant, but it carries the least weight: never use it to support a
+    conclusion on its own, and never count it with stated or inferred
+    relationships.
+  - In working records (fact rows, synthesis files, the findings) name the
+    evidence after the mark ("Chubb (lead, thin evidence: one commit)"). In
+    the report the mark is one word with its citations, and the evidence
+    behind it is said once, where the relationship is first introduced or in
+    the exhibit's source line; the source note carries the quoted place.
 
   In the fact store, record the basis in the fact's notes (`Relationship
   basis: Stated`, `Inferred`, or `Lead (thin evidence)`), so every later step
@@ -92,16 +97,17 @@ organization responsible for the source. Put a person's name in notes unless a
 separate field is assigned.
 
 ## Currency
-<!-- only: extraction, filing_review, synthesis, currency_review, verification, verification_fixer, technical_review, devils_advocate, insider_review, editor_review, fixer, brief_writer, diagram_modeler, citation_claim_review, publication_fixer, diagram_builder, orchestrator_page_review -->
+<!-- only: extraction, filing_review, synthesis, currency_review, verification, verification_fixer, technical_review, devils_advocate, insider_review, editor_review, fixer, findings, brief_writer, diagram_modeler, citation_claim_review, publication_fixer, diagram_builder, orchestrator_page_review -->
 
 Every fact carries the date its source's content reflects, from
 `tools/outputs/source-dates.jsonl` (published, embedded upload date, last
 modified or last commit, or a live page's capture date), never a capture date
 standing in for an unknown publication date. Each source there has an age
 flag at the research date: `current`, `as of`, `dated` (more than two quarters
-old), or `undated`. Use them: `dated` evidence is cited with its date and age
-wherever it is used, and `undated` evidence never supports a claim about the
-present.
+old), or `undated`. Use them: `dated` evidence carries its date where it is
+introduced in a part or exhibit (an exhibit's source line can date the whole
+exhibit) and its age once there, and `undated` evidence never supports a
+claim about the present.
 
 A recording is dated by when it was recorded where it says so
 (`recorded_date` in source dates), with its posting date kept beside it; when
@@ -111,9 +117,10 @@ Evidence within the last quarter may support plain current wording. Older
 current-state evidence needs `as of <date>`. A repository, spreadsheet, or
 other document snapshot is dated by its own content or its last commit, not
 by when it was captured; every fact from it carries that date. When the
-snapshot is more than two quarters older than the research date, say so
-wherever it is used, for example "as of December 2025, about three quarters
-before this research", and never let it stand for the present. Plans,
+snapshot is more than two quarters older than the research date, say so once
+where it is introduced in each part or exhibit, for example "as of December
+2025, about three quarters before this research", and never let it stand for
+the present. Plans,
 forecasts, and targets are stated as plans with their date, not as results. Flagged rows use `last confirmed
 <date>` or `possibly retired`. A redirect is not retirement proof. When sources from different dates give different values for the
 same thing (a deal's stage, a headcount, a title), show the change over time
@@ -126,7 +133,7 @@ change. Never state a company dollar price as current unless the company
 publishes it.
 
 ## Citation meaning
-<!-- only: synthesis, verification_fixer, technical_review, devils_advocate, insider_review, editor_review, fixer, brief_writer, diagram_modeler, citation_claim_review, publication_fixer, orchestrator_page_review -->
+<!-- only: synthesis, verification_fixer, technical_review, devils_advocate, insider_review, editor_review, fixer, findings, brief_writer, diagram_modeler, citation_claim_review, publication_fixer, orchestrator_page_review -->
 
 A citation supports the exact adjacent words. It names where the source came
 from (publisher or channel, platform), its date, and resolves to the quoted

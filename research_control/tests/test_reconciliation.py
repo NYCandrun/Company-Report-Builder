@@ -216,7 +216,7 @@ class SourceListTests(unittest.TestCase):
                               "SRC-V,P,https://youtu.be/abcdefghijk,youtube.com,https://youtu.be/abcdefghijk,\n"
                               "SRC-W,P,,youtube.com,https://www.youtube.com/watch?v=abcdefghijk,\n")
             atomic_write_text(root / "02-facts/facts.md", "| Fact ID | Claim | Verbatim quote | Source ID | Grade |\n|---|---|---|---|---|\n" + "".join(
-                f"| PRD-00{n} | c | q | {source} | P |\n" for n, source in ((1, "SRC-R"), (2, "SRC-R"), (3, "SRC-R"), (4, "SRC-V"), (5, "SRC-W"), (6, "SRC-V"))))
+                f"| PRD-00{n} | c | said {n} | {source} | P |\n" for n, source in ((1, "SRC-R"), (2, "SRC-R"), (3, "SRC-R"), (4, "SRC-V"), (5, "SRC-W"), (6, "SRC-V"))))
             sha = "c75fda00ff0e41c8ee331ae312c8a07f1967653b"
             atomic_write_jsonl(root / "tools/outputs/fact-links.jsonl", [
                 {"fact_id": "PRD-001", "kind": "repository", "located": True, "anchor": f"src/run.py line 40 at {sha[:7]}",
@@ -240,18 +240,20 @@ class SourceListTests(unittest.TestCase):
             built = citation_build.build(root)
             data = load_json(root / citation_build.CITATION_MAP)
             # One file is one entry (lines in file order); a commit is another; the video is one entry
-            # under both of its addresses, with every cited moment in recording order.
-            self.assertEqual([(1, "file src/run.py", ["line 3", "line 40"]), (2, "commit e34f6f9", ["README.md line 60"]),
-                              (3, None, ["1:30", "8:13", "1:02:05"])],
+            # under both of its addresses, with every cited moment in recording order. Each place
+            # carries the first words of the quote, so the note shows the evidence itself.
+            self.assertEqual([(1, "file src/run.py", ["line 3 \u201csaid 2\u201d", "line 40 \u201csaid 1\u201d"]),
+                              (2, "commit e34f6f9", ["README.md line 60 \u201csaid 3\u201d"]),
+                              (3, None, ["1:30 \u201csaid 6\u201d", "8:13 \u201csaid 4\u201d", "1:02:05 \u201csaid 5\u201d"])],
                              [(note["n"], note.get("part"), [place["label"] for place in note["places"]]) for note in data["notes"]])
             self.assertEqual("Building agents", data["notes"][2]["title"])
             self.assertEqual([1, 2, 1, 3, 3], [item["n"] for item in data["citations"]])
             self.assertEqual([], citations.validate_map(data, root)["failures"])
             page = markdown_to_html((root / citation_build.BRIEF).read_text(encoding="utf-8"), "Company brief", "", data)
-            self.assertIn('data-cite="3" data-link="https://www.youtube.com/watch?v=abcdefghijk&amp;t=493s" title="8:13">3</a>', page)
+            self.assertIn('data-cite="3" data-link="https://www.youtube.com/watch?v=abcdefghijk&amp;t=493s" title="8:13 \u201csaid 4\u201d">3</a>', page)
             self.assertIn('<span class="part">File src/run.py</span>. Cited at <a href="https://github.com/acme/agent/blob/'
-                          f'{sha}/src/run.py?plain=1#L3">line 3</a>', page)
-            self.assertIn('Cited at <a href="https://www.youtube.com/watch?v=abcdefghijk&amp;t=90s">1:30</a>', page)
+                          f'{sha}/src/run.py?plain=1#L3">line 3 \u201csaid 2\u201d</a>', page)
+            self.assertIn('Cited at <a href="https://www.youtube.com/watch?v=abcdefghijk&amp;t=90s">1:30 \u201csaid 6\u201d</a>', page)
             self.assertEqual([], built["problems"])
 
 
@@ -366,3 +368,13 @@ class SourceTitleTests(unittest.TestCase):
         self.assertTrue(_cut_off("S8E3: Jaclyn Rice Nelson and h… - The Room Podcast"))
         self.assertTrue(_cut_off("Ep. 164: Beyond the Hype... - YouTube"))
         self.assertFalse(_cut_off("Tribe AI · Enterprise AI that ships, scales, and compounds"))
+
+
+class FactIdPatternTests(unittest.TestCase):
+    def test_model_names_and_standards_are_not_fact_ids(self) -> None:
+        from research_control import checks, publication, verification
+
+        text = "PRD-001 and CMP-1806 [CAND-8F5237B1BEBC-001] but not GPT-4o, SOC-2, AIUC-1, COVID-19 or Claude-3"
+        for pattern in (checks.FACT_ID, verification.FACT_ID, publication.FACT_ID):
+            self.assertEqual(["PRD-001", "CMP-1806", "CAND-8F5237B1BEBC-001"],
+                             [match.strip("[]") for match in pattern.findall(text)])

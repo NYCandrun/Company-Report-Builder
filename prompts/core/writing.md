@@ -10,8 +10,18 @@ Apply these rules to authored prose. Verbatim quotes preserve their source.
 - Use no semicolon to join independent sentences.
 - Never use the word `suggested`.
 - State facts directly and explicitly.
-- Keep copy tight. Lead each paragraph with its point, then show the facts
-  behind it. Length follows the evidence: as long as it needs, no longer.
+- Say what the facts mean, not only what they are. A page that lists facts
+  in a row, however well cited, has not done its job: every part and every
+  paragraph opens with what the reader should conclude, and the facts that
+  show it follow. Inference stays marked.
+- Keep copy tight. Length follows the evidence: as long as it needs, no longer.
+- Qualify once. A caveat (a date's age, a probable speaker, proof the company
+  wrote itself, a plan rather than a result) is said where it matters, once
+  per part or exhibit, not attached to every sentence that touches it.
+- In an exhibit cell, state the thing itself in a few words with its
+  citations: the price, the stage and its date, the count, the name. Do not
+  describe or allude to the evidence in the cell; the superscript's source
+  note carries the quoted passage, place, and date.
 - Write no filler: do not restate a heading, announce what a section will do,
   repeat what an earlier paragraph or part said, or add general commentary the
   evidence does not support.

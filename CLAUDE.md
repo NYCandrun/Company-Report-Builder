@@ -97,7 +97,7 @@ select a model and effort per subagent, so apply the route on every dispatch:
 
 | Tier | Model class | Subagent model | Effort | Task types |
 |---|---|---|---|---|
-| `frontier` | `strongest_available` | `fable` (Claude Fable 5.1) | `high` | cited-fact verification, devil's-advocate review, diagram modeling |
+| `frontier` | `strongest_available` | `fable` (Claude Fable 5.1) | `high` | findings and report plan, cited-fact verification, devil's-advocate review, diagram modeling |
 | `strong` | `flagship_capable` | `opus` (Claude Opus 5.5) | `high` | every task type not listed in another tier |
 | `standard` | `balanced_capable` | `sonnet` (Claude Sonnet 5.5) | `medium` | discovery, triage, re-triage, filing spot check, language review |
 | `economy` | `faster_capable` | `haiku` (Claude Haiku 5.5) | `low` | assembler |

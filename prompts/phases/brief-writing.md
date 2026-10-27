@@ -7,6 +7,18 @@ that the table lacks; do not read the fact store whole. Follow the outline and
 exhibit specifications below.
 Keep fact IDs beside the exact supported words in Markdown.
 
+Read `05-synthesis/findings.md` first. It states what the evidence means and
+plans the report: the findings, the main point of each part, the sub-points
+in order, the exhibits with their takeaways, what to leave out, and the one
+place each caveat is said. Write to that plan. Depart from it only where the
+facts require, and name each departure in your report to the orchestrator.
+
+If `05-synthesis/company-brief.md` already exists, this is a revision. Rework
+it to the plan rather than starting over: keep every fact ID beside the words
+it supports, keep the corrections recorded in `06-checks/review-decisions.md`
+and `06-checks/publication-decisions.md`, drop what the plan leaves out, and
+add facts from the cited rows where the plan calls for them.
+
 Use `07-final-report/brand-guide.html` only to derive the brief's typography,
 color, spacing, and print presentation. It is not factual evidence and must not
 change the research claims, architecture, or citations. Record any designed
@@ -29,9 +41,13 @@ the reader. Write, in order:
    heading. Answer every question the part `covers`, under plain topical
    subheadings (for example "Partnerships with AI labs and cloud providers"),
    never phrased as the question and never as "you asked". Open each part
-   with one or two sentences that state its main point, then go from the
-   general to the specific. Where something changed, show the change with
-   dates. Where evidence is thin, say so briefly instead of filling the space.
+   with the main point the plan gives it, then its sub-points in the plan's
+   order, each paragraph leading with what the reader should conclude and
+   following with the facts that show it. Where something changed, show the
+   change with dates. Where evidence is thin, say so once instead of filling
+   the space. Say each caveat (a date's age, a probable speaker, proof the
+   company wrote itself, a plan rather than a result) where the plan places
+   it, once per part or exhibit, not in every sentence that touches it.
    - The part on what the company sells opens with a portfolio exhibit of
      every offering (products, services, engagement types), each marked
      `Stated`, `Inferred`, or `Lead` with its evidence, and holds the product
@@ -60,10 +76,13 @@ Use about ten, not twenty, and put the rest in prose. For each:
 - a title line before it, in bold, that states its takeaway as a sentence
   ("Tribe sets itself against the large consulting firms"), and beneath it a
   line saying where its figures come from;
-- at most five columns, and cells of a few words to a short sentence, never
-  a paragraph: the evidence is the citation superscripts beside the cell's
-  words, not text in the cell, and a relationship mark is one word
-  (`Stated`, `Inferred`, `Lead`) with its basis in the source note;
+- at most five columns, and cells of a few words, never a paragraph. A cell
+  states the thing itself (the price, the stage and its date, the count, the
+  name) with its citations beside it; it never describes or alludes to the
+  evidence for it ("stated in one June 2026 record"). The source note a
+  superscript opens carries the quoted passage, the place, and the date, so
+  the cell does not have to. A relationship mark is one word (`Stated`,
+  `Inferred`, `Lead`) with its citations;
 - rows sorted by one rule the reader can see (date, strength of evidence,
   size), and dividing rules between groups;
 - one kind of thing per exhibit. Sort by what a thing is before listing it:

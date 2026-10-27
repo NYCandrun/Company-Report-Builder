@@ -16,7 +16,7 @@ from research_control.diagram_contract import DIAGRAM_SPECS
 from research_control.io import atomic_write_json, atomic_write_text, load_json, utc_now
 
 
-FACT_ID = re.compile(r"(?<![A-Za-z0-9])\[?[A-Z][A-Z0-9-]*-[A-Z]*\d+[a-z]?\]?")
+FACT_ID = re.compile(r"(?<![A-Za-z0-9])\[?[A-Z][A-Z0-9-]*-[A-Z]*\d{3,}[a-z]?\]?")
 DEFAULT_CSS = """
 :root { color-scheme: light; --ink: #17202a; --muted: #5b6573; --accent: #175cd3; --line: #d8dee8; }
 * { box-sizing: border-box; }

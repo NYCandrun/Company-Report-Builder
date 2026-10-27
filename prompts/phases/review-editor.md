@@ -1,5 +1,11 @@
 TASK TYPE: INDEPENDENT EDITORIAL REVIEW
 
+Check the synthesis as a reader would: it must say what the facts mean. Each
+file and each paragraph opens with its conclusion, and the facts follow. Flag
+passages that list facts without a point, caveats repeated sentence after
+sentence, and exhibit cells that describe the evidence instead of stating the
+thing.
+
 Check the exhibits as an editor would: each shows one kind of thing (a sales
 tool is not a service offering; a deliverable built for one client is not a
 product; internal tooling is not for sale), has a title that states its

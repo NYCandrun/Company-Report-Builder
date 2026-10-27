@@ -338,7 +338,15 @@ customers, its people, and its direction, then the catalog, open questions,
 evidence limits, and sources. Each research question is answered in the part it
 belongs to, under plain topical headings. The portfolio exhibit opens the
 offering part; the product map and messaging timeline appear only in their
-intended parts. There is no page or word target.
+intended parts. There is no page or word target. Before the brief is written,
+a findings step on the strongest model reads the reviewed synthesis and the
+fact digests and writes what the evidence means and how the report is to be
+built (`05-synthesis/findings.md`): the findings as plain conclusions with
+their evidence and strength, the gaps, each part's main point and sub-points,
+its exhibits and their takeaways, what to leave out, and the one place each
+caveat is said. The brief is written to that plan: conclusions first, the
+facts after, each caveat once per part or exhibit, and exhibit cells that
+state the thing itself while the source note carries the quoted evidence.
 
 The open-questions section frames unresolved questions neutrally as what the author would want
 to understand early. Names appear only when factually useful, not as task

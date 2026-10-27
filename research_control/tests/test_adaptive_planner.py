@@ -707,10 +707,34 @@ class WorkerBriefTests(unittest.TestCase):
             exempt = {"scope", "triage", "capture"}
             for task_type in sorted(carriers - exempt):
                 self.assertIn("## Claim discipline", _prompt(root, "prompts/core/evidence.md", task_type), task_type)
-            for task_type in ("diagram_builder", "orchestrator_page_review", "brief_writer", "diagram_modeler"):
+            for task_type in ("diagram_builder", "orchestrator_page_review", "brief_writer", "diagram_modeler", "findings"):
                 text = _prompt(root, "prompts/core/evidence.md", task_type)
                 self.assertIn("## Currency", text, task_type)
                 self.assertIn("diagram label", text, task_type)
+
+    def test_the_report_is_planned_from_findings_before_it_is_written(self) -> None:
+        import json
+
+        document = json.loads((SOURCE_ROOT / "WORKFLOW.yaml").read_text(encoding="utf-8"))
+        final = {task["id"]: task for task in document["execution_profiles"]["final"]["tasks"]}
+        findings = final["findings"]
+        # The findings step reads the reviewed synthesis and the digests after the outline exists.
+        self.assertEqual(("findings", "prompts/phases/findings.md", ["report-outline"], ["05-synthesis/findings.md"]),
+                         (findings["task_type"], findings["prompt"], findings["depends_on"], findings["outputs"]))
+        self.assertTrue(any(item["path"].startswith("tools/digests/") for item in findings["inputs"]))
+        # The writer and the diagram modeler follow its plan, and the report is not done without it.
+        self.assertIn("findings", final["write-brief"]["depends_on"])
+        self.assertIn("findings", final["model-diagrams"]["depends_on"])
+        tiers = document["adaptive_runtime"]["model_routing"]["tiers"]
+        self.assertIn("findings", tiers["frontier"]["task_types"])
+        gates = [phase["gate"] for phase in document["phases"] if "gate" in phase and "brief_writer" in phase["gate"].get("required_worker_task_types", [])]
+        self.assertTrue(gates and all("findings" in gate["required_worker_task_types"] for gate in gates))
+        prompt = (SOURCE_ROOT / "prompts/phases/findings.md").read_text(encoding="utf-8")
+        for words in ("05-synthesis/findings.md", "report plan", "say once", "describe the same thing"):
+            self.assertIn(words, prompt.lower() if words == "say once" else prompt, words)
+        writer = (SOURCE_ROOT / "prompts/phases/brief-writing.md").read_text(encoding="utf-8")
+        self.assertIn("Read `05-synthesis/findings.md` first", writer)
+        self.assertIn("states the thing itself", writer)
 
 
 class GateRefreshTests(unittest.TestCase):

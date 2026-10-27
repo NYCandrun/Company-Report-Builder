@@ -31,7 +31,8 @@ from research_control.reporting import make_validation_report
 from research_control.validators import american, brand, citations, dates, diagrams, exhibits, facts, quotes, sources, tags, visual_records, writing_rules
 
 
-FACT_ID = re.compile(r"\b[A-Z][A-Z0-9-]*-[A-Z]*\d+[a-z]?\b")
+# Fact IDs end in at least three digits (zero-padded), so "GPT-4o", "SOC-2" and "AIUC-1" are not IDs.
+FACT_ID = re.compile(r"\b[A-Z][A-Z0-9-]*-[A-Z]*\d{3,}[a-z]?\b")
 def _report(
     root: Path,
     checker: str,

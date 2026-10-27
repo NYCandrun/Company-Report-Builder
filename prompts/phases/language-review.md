@@ -4,8 +4,11 @@ Review the company-brief Markdown, diagram captions, and rendered reader-facing
 text. Check spelling,
 punctuation, quote style, terminology, directness, and every rule in the
 writing core, including tight copy: flag filler, tangents, points repeated
-across parts, and facts shown without the date or context that gives them
-their meaning. Preserve proper nouns, source titles, URLs, file names, fact
+across parts, paragraphs that list facts without a point, caveats repeated in
+every sentence, exhibit cells that describe the evidence instead of stating
+the thing, and facts shown without the date or context that gives them their
+meaning. Where `05-synthesis/findings.md` exists, each part must make the
+points it plans, in its order. Preserve proper nouns, source titles, URLs, file names, fact
 IDs, and verbatim quotations.
 
 Do not edit the deliverables. Write `06-checks/american-english.md` with the
