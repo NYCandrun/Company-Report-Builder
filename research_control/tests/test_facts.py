@@ -5,6 +5,8 @@ import unittest
 from pathlib import Path
 
 from research_control import FAIL, PASS
+from research_control.io import atomic_write_jsonl, load_jsonl
+from research_control.reducers import reduce_extraction_parts
 from research_control.validators.dates import validate_fact_dates, validate_source_dates
 from research_control.validators.facts import validate_records
 from research_control.validators.quotes import validate as validate_quotes
@@ -80,6 +82,31 @@ class FactValidatorTests(unittest.TestCase):
             date_report = validate_fact_dates([wrong_date], root, ["facts.md"], {"WEB-001": "2026-01-01"})
             self.assertEqual(FAIL, date_report["status"])
             self.assertTrue(any("does not match manifest" in item for item in date_report["failures"]))
+
+
+
+class ExtractionReducerTests(unittest.TestCase):
+    def test_reducer_reads_only_current_batches(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parts = root / "tools/outputs/worker-parts/extraction"
+            for batch in ("aaa", "bbb"):
+                atomic_write_jsonl(parts / f"{batch}.candidates.jsonl", [
+                    {"candidate_id": f"CAND-{batch.upper()}-001", "source_id": "SRC-1"},
+                ])
+                atomic_write_jsonl(parts / f"{batch}.dispositions.jsonl", [{
+                    "assignment_id": f"facts.extract.{batch}", "input_id": "SRC-1", "source_id": "SRC-1",
+                    "disposition": "completed", "evidence_paths": [], "output_ids": [f"CAND-{batch.upper()}-001"],
+                }])
+            current = [{"metadata": {
+                "candidate_part": "tools/outputs/worker-parts/extraction/bbb.candidates.jsonl",
+                "disposition_part": "tools/outputs/worker-parts/extraction/bbb.dispositions.jsonl",
+            }}]
+            # Batch aaa was superseded by bbb over the same source; only bbb counts.
+            report = reduce_extraction_parts(root, current)
+            self.assertEqual(1, report["candidates"])
+            merged = load_jsonl(root / "tools/candidates/all.jsonl")
+            self.assertEqual(["CAND-BBB-001"], [row["candidate_id"] for row in merged])
 
 
 if __name__ == "__main__":

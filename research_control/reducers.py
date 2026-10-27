@@ -217,10 +217,15 @@ def reduce_capture_parts(root: Path, store: RuntimeStore) -> dict[str, Any]:
     }
 
 
-def reduce_extraction_parts(root: Path) -> dict[str, Any]:
+def reduce_extraction_parts(root: Path, batches: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Merge extraction parts; with ``batches``, only those batches' parts (superseded ones are left out)."""
     directory = root / "tools/outputs/worker-parts/extraction"
-    candidate_paths = sorted(directory.glob("*.candidates.jsonl")) if directory.is_dir() else []
-    disposition_paths = sorted(directory.glob("*.dispositions.jsonl")) if directory.is_dir() else []
+    if batches is not None:
+        candidate_paths = sorted(root / task["metadata"]["candidate_part"] for task in batches)
+        disposition_paths = sorted(root / task["metadata"]["disposition_part"] for task in batches)
+    else:
+        candidate_paths = sorted(directory.glob("*.candidates.jsonl")) if directory.is_dir() else []
+        disposition_paths = sorted(directory.glob("*.dispositions.jsonl")) if directory.is_dir() else []
     if not candidate_paths or not disposition_paths:
         raise ValueError("extraction worker parts are missing")
     candidates: list[dict[str, Any]] = []

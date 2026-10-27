@@ -445,6 +445,12 @@ class AdaptivePlanner:
                 ),
                 created,
             )
+        # Batch IDs hash their slices, so a source whose text changed after
+        # triage lands in a new batch; retire the batches it replaced.
+        current = set(extraction_ids)
+        for task in self.store.tasks(phase="facts"):
+            if task["task_type"] == "extraction" and task["task_id"] not in current and task["state"] not in ACTIVE_STATES:
+                self.store.supersede(task["task_id"], "replaced by a batch over the current source slices")
         extraction_tasks = [self.store.task(task_id) for task_id in extraction_ids]
         reducer_id = "facts.reduce-extraction"
         if extraction_ids and all(task and task["state"] == "succeeded" for task in extraction_tasks):

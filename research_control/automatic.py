@@ -102,7 +102,9 @@ HANDLERS: dict[str, Callable[[Path, RuntimeStore, dict[str, Any]], Any]] = {
     "discovery_reducer": lambda root, store, _task: reduce_discovery(root, store),
     "capture": _capture,
     "capture_reducer": lambda root, store, _task: reduce_capture_parts(root, store),
-    "extraction_reducer": lambda root, _store, _task: reduce_extraction_parts(root),
+    "extraction_reducer": lambda root, store, _task: reduce_extraction_parts(root, [
+        task for task in store.tasks(phase="facts", states={"succeeded"}) if task["task_type"] == "extraction"
+    ]),
 }
 
 
