@@ -17,7 +17,7 @@ from research_control.capture import capture_source_part, capture_url
 from research_control.checks import check_phase
 from research_control.discovery import DISCOVERY_CHANNELS, DiscoveryEngine, DiscoveryPolicy, public_fetch
 from research_control.gates.release import check_release
-from research_control.io import utc_now, workflow
+from research_control.io import atomic_write_json, load_json, utc_now, workflow
 from research_control.orchestration import (
     current_phase,
     fail_task,
@@ -269,6 +269,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     work_restore.add_argument("task_id")
     work_restore.add_argument("--reason", required=True)
+    limits_parser = subparsers.add_parser(
+        "limits", help="orchestrator: set this run's agent concurrency for the environment it runs in"
+    )
+    limits_parser.add_argument("--global", dest="global_concurrency", type=int)
+    limits_parser.add_argument("--per-host", dest="per_host_concurrency", type=int)
     scope_parser = subparsers.add_parser("scope", help="orchestrator: change the research questions mid-run")
     scope_sub = scope_parser.add_subparsers(dest="scope_command", required=True)
     scope_add = scope_sub.add_parser(
@@ -431,6 +436,22 @@ def main() -> None:
             return
         if args.command == "supplement":
             _print_json(add_supplement(root, args.source_id, args.reason))
+            return
+        if args.command == "limits":
+            from research_control.adaptive import RUNTIME_LIMITS
+
+            path = root / RUNTIME_LIMITS
+            current = load_json(path) if path.is_file() else {}
+            for key in ("global_concurrency", "per_host_concurrency"):
+                value = getattr(args, key)
+                if value is not None:
+                    if value < 1:
+                        raise ValueError(f"{key} must be positive")
+                    current[key] = value
+            atomic_write_json(path, current)
+            with open_runtime(root):
+                pass
+            _print_json(current)
             return
         if args.command == "scope":
             from research_control.orchestration import append_history

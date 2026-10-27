@@ -210,7 +210,10 @@ actually return) and raise or lower any limit when that would finish the work
 faster without failures. Override with `RESEARCH_CONTROL_RUNTIME_WORKERS`,
 `RESEARCH_CONTROL_PER_HOST`, `RESEARCH_CONTROL_HOST_INTERVAL`,
 `RESEARCH_CONTROL_WHISPER_JOBS`, `RESEARCH_CONTROL_BROWSER_JOBS`,
-`RESEARCH_CONTROL_AGENT_CONCURRENCY`, and `RESEARCH_CONTROL_AGENT_PER_HOST`.
+`RESEARCH_CONTROL_AGENT_CONCURRENCY`, and `RESEARCH_CONTROL_AGENT_PER_HOST`
+for one command, or set the agent limits for the rest of the run with
+`python3 -m research_control limits --global N --per-host N` (kept in
+`tools/lists/runtime-limits.json`; a command-line variable still wins).
 Long transcriptions should never hold up page capture.
 Each capture writes a terminal receipt:
 `captured` with a canonical UTF-8 text derivative, or `blocked` with the

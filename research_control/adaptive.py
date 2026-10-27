@@ -21,9 +21,16 @@ from research_control.triage import validate_retriage, validate_triage
 from research_control.runtime import ACTIVE_STATES, DISCOVERY_TERMINAL, SATISFIED_STATES, RuntimeStore
 
 
+RUNTIME_LIMITS = "tools/lists/runtime-limits.json"
+
+
 def open_runtime(root: Path) -> RuntimeStore:
     state = load_state(root)
     configuration = workflow(root / "WORKFLOW.yaml").get("adaptive_runtime", {}).get("scheduler", {})
+    # The orchestrator's tuning for this environment (`limits`) outlasts one
+    # command; an environment variable still wins for a single invocation.
+    limits = root / RUNTIME_LIMITS
+    configuration = {**configuration, **(load_json(limits) if limits.is_file() else {})}
     store = RuntimeStore(root)
     # WORKFLOW.yaml values are defaults; the orchestrator may tune them for the environment.
     store.initialize(
