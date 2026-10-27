@@ -352,3 +352,14 @@ class SharedRecordFileTests(unittest.TestCase):
             path.write_text('{"reason": "labelled by an earlier pass"}\n{"reason": "a new programme page"}\n', encoding="utf-8")
             self.assertEqual(2, len(american.check_file(path)))
             self.assertEqual(['line 2: "programme" (use program)'], american.check_file(path, from_line=2))
+
+
+class SourceTitleTests(unittest.TestCase):
+    def test_platform_suffixes_are_dropped_and_cut_off_titles_are_noticed(self) -> None:
+        from research_control.citation_build import _clean_title, _cut_off
+
+        self.assertEqual("S13 E9: Forward-Deployed AI", _clean_title("S13 E9: Forward-Deployed AI - YouTube"))
+        self.assertEqual("The Room Podcast", _clean_title("The Room Podcast - Apple Podcasts"))
+        self.assertTrue(_cut_off("S8E3: Jaclyn Rice Nelson and h… - The Room Podcast"))
+        self.assertTrue(_cut_off("Ep. 164: Beyond the Hype... - YouTube"))
+        self.assertFalse(_cut_off("Tribe AI · Enterprise AI that ships, scales, and compounds"))

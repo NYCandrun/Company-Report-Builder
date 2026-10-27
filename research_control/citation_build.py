@@ -85,6 +85,19 @@ def _place(link: dict[str, Any], part: tuple[str, str, str] | None) -> tuple[str
     return (detail, float(lines.group(1)) if lines else 0.0) if detail else None
 
 
+PLATFORM_SUFFIX = re.compile(r"\s*(?:[-|·]\s*)?(?:YouTube|Apple Podcasts|Spotify|LinkedIn|GitHub)\s*$", re.I)
+
+
+def _clean_title(title: str) -> str:
+    """A page's own title without the platform's name tacked on the end."""
+    return PLATFORM_SUFFIX.sub("", title.strip()).strip(" -|·")
+
+
+def _cut_off(title: str) -> bool:
+    """Platforms shorten long titles in the page title ("S8E3: Jaclyn Rice Nelson and h…")."""
+    return bool(re.search(r"(?:\.\.\.|…)(?:\s*[-|·]|\s*$)", title))
+
+
 def _found_title(source: dict[str, str], dated: dict[str, Any], known: dict[str, Any], fetch: bool) -> tuple[str, str]:
     """(title, publisher) for a source captured without a title: from the feed item its date was
     read from, a YouTube video's own title (fetched once and kept), or a plain description."""
@@ -92,12 +105,13 @@ def _found_title(source: dict[str, str], dated: dict[str, Any], known: dict[str,
     if source_id in known:
         return known[source_id]["title"], known[source_id].get("publisher", "")
     basis = str(dated.get("basis", ""))
+    video = YOUTUBE.search(url)
     for pattern, title_group, show_group in ((r'\(([^()"]+)\) item "([^"]+)"', 2, 1), (r'item "([^"]+)"', 1, 0),
                                              (r'\(([^,()"]+), "([^"]+)"\)', 2, 1)):
         match = re.search(pattern, basis)
-        if match:
+        if match and not (video and fetch and _cut_off(match.group(title_group))):
+            # A feed item's title; a cut-off one for a video is replaced by the video's own title below.
             return match.group(title_group).rstrip(". "), match.group(show_group) if show_group else ""
-    video = YOUTUBE.search(url)
     if video and fetch:
         try:
             request = Request(f"https://www.youtube.com/oembed?format=json&url={quote('https://www.youtube.com/watch?v=' + video.group(1), safe='')}",
@@ -261,10 +275,11 @@ def build(root: Path, write: bool = True) -> dict[str, Any]:
             if key not in number_for:
                 number_for[key] = len(notes) + 1
                 dated = dates.get(source_id, {})
-                title, publisher = source.get("title", ""), source.get("publisher") or dated.get("publisher", "")
-                if not title or title.startswith("http"):
-                    title, found_publisher = _found_title(source, dated, known, fetch=write)
-                    publisher = found_publisher or publisher
+                title, publisher = _clean_title(source.get("title", "")), source.get("publisher") or dated.get("publisher", "")
+                if not title or title.startswith("http") or _cut_off(title):
+                    found, found_publisher = _found_title(source, dated, known, fetch=write)
+                    if found and not (_cut_off(found) and title and not title.startswith("http")):
+                        title, publisher = found, found_publisher or publisher
                 notes.append({
                     "n": number_for[key], "source_ids": [source_id], "url": part[2] if part else source.get("url", ""),
                     "title": title, "publisher": publisher,

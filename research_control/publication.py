@@ -170,6 +170,12 @@ def markdown_to_html(markdown: str, title: str, css: str, citation_map: dict[str
         flush_table()
         heading = re.match(r"^(#{1,4})\s+(.*)$", line)
         item = re.match(r"^\s*[-*]\s+(.*)$", line)
+        if re.fullmatch(r"\s*(?:-{3,}|\*{3,}|_{3,})\s*", line):
+            # A dividing rule (the catalog separates stated items from leads with one).
+            flush_paragraph()
+            flush_list()
+            body.append("<hr>")
+            continue
         if heading:
             flush_paragraph()
             flush_list()
@@ -312,6 +318,18 @@ def _pdf_pages(path: Path) -> int:
     return len(re.findall(rb"/Type\s*/Page\b", path.read_bytes()))
 
 
+def _chromium() -> str | None:
+    """A Chromium to print PDFs with: on PATH, in Playwright's browser folders (the cloud
+    container keeps one there, off PATH), or in the usual desktop places."""
+    candidates = [shutil.which(name) for name in ("chromium", "chromium-browser", "google-chrome", "chrome")]
+    for base in (os.environ.get("PLAYWRIGHT_BROWSERS_PATH"), "/opt/pw-browsers", str(Path.home() / ".cache/ms-playwright")):
+        if base and Path(base).is_dir():
+            candidates += sorted((str(path) for path in Path(base).glob("chromium*/chrome-linux*/chrome")), reverse=True)
+            candidates += sorted((str(path) for path in Path(base).glob("chromium*/chrome-mac*/Chromium.app/Contents/MacOS/Chromium")), reverse=True)
+    candidates.append("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+    return next((candidate for candidate in candidates if candidate and Path(candidate).is_file()), None)
+
+
 def render_pdf(html_path: Path, markdown: str, pdf_path: Path) -> tuple[str, int]:
     if os.environ.get("RESEARCH_CONTROL_PDF_RENDERER", "").lower() == "stdlib":
         return "stdlib-pdf", make_pdf(reader_text(markdown), pdf_path)
@@ -320,18 +338,7 @@ def render_pdf(html_path: Path, markdown: str, pdf_path: Path) -> tuple[str, int
     commands: list[tuple[str, list[str]]] = []
     if executable := shutil.which("weasyprint"):
         commands.append(("weasyprint", [executable, html_path.as_uri(), str(pdf_path)]))
-    chrome = next(
-        (
-            candidate for candidate in (
-                shutil.which("chromium"),
-                shutil.which("chromium-browser"),
-                shutil.which("google-chrome"),
-                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-            )
-            if candidate and Path(candidate).is_file()
-        ),
-        None,
-    )
+    chrome = _chromium()
     if chrome:
         commands.append(("chromium", [
             chrome,
@@ -352,7 +359,8 @@ def render_pdf(html_path: Path, markdown: str, pdf_path: Path) -> tuple[str, int
             pages = _pdf_pages(pdf_path)
             if pages:
                 return name, pages
-    return "stdlib-pdf", make_pdf(markdown, pdf_path)
+    # No page renderer: the plain-text PDF is a placeholder, and the metadata says so.
+    return "stdlib-pdf (no browser renderer found; install Chromium or WeasyPrint)", make_pdf(markdown, pdf_path)
 
 
 def make_page_previews(pdf_path: Path, markdown: str, directory: Path, slug: str) -> tuple[str, list[str]]:
