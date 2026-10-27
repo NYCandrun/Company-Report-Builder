@@ -792,7 +792,7 @@ def _task_failures(root: Path, phase_id: str) -> tuple[list[str], list[str]]:
         ]
         unknowns = [
             f"task incomplete: {task['task_id']} ({task['state']})"
-            for task in tasks if task["state"] not in {"succeeded", "failed", "blocked", "cancelled"}
+            for task in tasks if task["state"] not in {"succeeded", "superseded", "failed", "blocked", "cancelled"}
         ]
         if not tasks and phase_id not in {"bootstrap", "release_acceptance"}:
             unknowns.append(f"adaptive planner registered no work for phase {phase_id}")

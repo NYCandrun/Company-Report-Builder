@@ -139,10 +139,15 @@ class AdaptivePlannerTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     _require_discovery_lease(store, "video")
                 engine.reopen_channel("video", "scope now includes Shorts and leader appearances")
+                # An older planner may already have marked the grouped task stale.
+                store.mark_stale("capture.discover.media-social", "video channel reopened")
                 AdaptivePlanner(root, store).reconcile()
                 self.assertEqual("ready", store.task("capture.discover.video")["state"])
                 self.assertIsNone(store.task("capture.discover.podcasts"))
-                self.assertEqual("succeeded", store.task("capture.discover.media-social")["state"])
+                self.assertIsNone(store.task("capture.discover.social"))
+                self.assertEqual("superseded", store.task("capture.discover.media-social")["state"])
+                packets = [item["task_id"] for item in emit_ready_packets(root, store, "capture")["packets"]]
+                self.assertNotIn("capture.discover.media-social", packets)
                 store.claim("video-worker", task_id="capture.discover.video")
                 store.start("capture.discover.video", "video-worker")
                 _require_discovery_lease(store, "video")

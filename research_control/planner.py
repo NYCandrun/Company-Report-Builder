@@ -12,7 +12,7 @@ from research_control.discovery import DISCOVERY_CHANNELS, DiscoveryEngine
 from research_control.io import atomic_write_jsonl, atomic_write_text, load_json, workflow
 from research_control.triage import TRIAGE_DECISIONS, TRIAGE_EXCERPT_CHARACTERS, TRIAGE_INDEX, triage_included
 from research_control.orchestration import TASK_SCHEMAS, current_phase, load_state
-from research_control.runtime import DISCOVERY_TERMINAL, UNCAPTURED_RELEVANCE, RuntimeStore, WorkItem
+from research_control.runtime import DISCOVERY_TERMINAL, SATISFIED_STATES, UNCAPTURED_RELEVANCE, RuntimeStore, WorkItem
 
 
 COMPLETION_RULE = "first-party fixed point plus question sufficiency or saturation; never a source count"
@@ -125,13 +125,31 @@ class AdaptivePlanner:
             channels = task["metadata"].get("channels") or []
             if task["task_type"] != "source_discovery" or len(channels) < 2 or channel not in channels:
                 continue
-            if task["state"] != "succeeded":
+            if task["state"] not in {"succeeded", "superseded", "stale", "ready"}:
                 continue
             receipt_path = self.root / task["metadata"]["receipts"][channels.index(channel)]
             receipt = load_json(receipt_path) if receipt_path.is_file() else {}
             if receipt.get("status") == current.get("state") and receipt.get("evidence") == current.get("completion_evidence"):
                 return task["task_id"]
         return None
+
+    def _supersede_split_groups(self) -> None:
+        """Retire a grouped discovery task once any of its channels has its own task.
+
+        Its other channels stay covered by its matching receipts; it is never
+        redispatched as a group.
+        """
+        for task in self.store.tasks(phase="capture"):
+            channels = task["metadata"].get("channels") or []
+            if task["task_type"] != "source_discovery" or len(channels) < 2:
+                continue
+            if task["state"] in {"superseded", "leased", "running", "validating"}:
+                continue
+            split = [channel for channel in channels if self.store.task(discovery_task_id(channel))]
+            if split:
+                self.store.supersede(
+                    task["task_id"], f"discovery split per channel; {', '.join(split)} now have their own tasks"
+                )
 
     def _plan_capture(self) -> list[str]:
         created: list[str] = []
@@ -186,6 +204,7 @@ class AdaptivePlanner:
                 created,
             )
 
+        self._supersede_split_groups()
         for task_id in discovery_ids:
             task = self.store.task(task_id)
             if not task or task["state"] != "succeeded" or len(task["metadata"]["channels"]) != 1:
@@ -198,7 +217,7 @@ class AdaptivePlanner:
                 self.store.mark_stale(task_id, f"discovery channel {channel} changed after the worker receipt")
         discovery_tasks = [self.store.task(task_id) for task_id in discovery_ids]
         discovery_done = bool(channels) and all(item["state"] in DISCOVERY_TERMINAL for item in channels)
-        workers_done = all(task and task["state"] == "succeeded" for task in discovery_tasks)
+        workers_done = all(task and task["state"] in SATISFIED_STATES for task in discovery_tasks)
         barrier_id = "capture.reduce-discovery"
         if discovery_done and workers_done:
             self._add(
@@ -225,7 +244,7 @@ class AdaptivePlanner:
 
         barrier = self.store.task(barrier_id)
         if barrier and barrier["state"] == "succeeded" and any(
-            task and task["state"] != "succeeded"
+            task and task["state"] not in SATISFIED_STATES
             or (task and str(task.get("finished_at") or "") > str(barrier.get("finished_at") or ""))
             for task in discovery_tasks
         ):

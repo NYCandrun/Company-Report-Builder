@@ -40,10 +40,14 @@ TASK_STATES = {
     "blocked",
     "stale",
     "cancelled",
+    "superseded",
 }
 ACTIVE_STATES = {"leased", "running", "validating"}
 SUCCESS_STATES = {"succeeded"}
-FINAL_STATES = {"succeeded", "failed", "blocked", "cancelled"}
+FINAL_STATES = {"succeeded", "failed", "blocked", "cancelled", "superseded"}
+# A superseded task's finished work was handed to replacement tasks; it satisfies
+# dependencies and phase accounting like a success but is never redone.
+SATISFIED_STATES = {"succeeded", "superseded"}
 DISCOVERY_TERMINAL = {"saturated", "sufficient", "not_applicable", "blocked", "incomplete"}
 DISCOVERY_COMPLETE = {"saturated", "sufficient", "not_applicable"}
 # Sources that are recorded with provenance but never assigned capture work.
@@ -447,7 +451,7 @@ class RuntimeStore:
                     """
                     SELECT COUNT(*) FROM dependencies d
                     JOIN tasks parent ON parent.task_id=d.depends_on
-                    WHERE d.task_id=? AND parent.state!='succeeded'
+                    WHERE d.task_id=? AND parent.state NOT IN ('succeeded', 'superseded')
                     """,
                     (row["task_id"],),
                 ).fetchone()[0]
@@ -514,6 +518,24 @@ class RuntimeStore:
                 self.event("task_stale", task_id, {"reason": "input, output, or upstream hash changed"})
         self.refresh_ready()
         return sorted(stale)
+
+    def supersede(self, task_id: str, reason: str) -> dict[str, Any]:
+        """Retire a finished or idle task whose work now belongs to replacement tasks."""
+        task = self.task(task_id)
+        if not task:
+            raise KeyError(f"unknown task: {task_id}")
+        if task["state"] in ACTIVE_STATES:
+            raise ValueError(f"{task_id}: cannot supersede active work")
+        if task["state"] == "superseded":
+            return task
+        with self.connection:
+            self.connection.execute(
+                "UPDATE tasks SET state='superseded', last_error=?, updated_at=? WHERE task_id=?",
+                (reason, utc_now(), task_id),
+            )
+        self.event("task_superseded", task_id, {"reason": reason})
+        self.refresh_ready()
+        return self.task(task_id) or task
 
     def mark_stale(self, task_id: str, reason: str) -> dict[str, Any]:
         task = self.task(task_id)
