@@ -12,7 +12,7 @@ from research_control.discovery import DISCOVERY_CHANNELS, DiscoveryEngine
 from research_control.io import atomic_write_jsonl, atomic_write_text, load_json, workflow
 from research_control.triage import TRIAGE_DECISIONS, TRIAGE_EXCERPT_CHARACTERS, TRIAGE_INDEX, triage_included
 from research_control.orchestration import TASK_SCHEMAS, current_phase, load_state
-from research_control.runtime import DISCOVERY_TERMINAL, SATISFIED_STATES, UNCAPTURED_RELEVANCE, RuntimeStore, WorkItem
+from research_control.runtime import ACTIVE_STATES, DISCOVERY_TERMINAL, FINAL_STATES, SATISFIED_STATES, UNCAPTURED_RELEVANCE, RuntimeStore, WorkItem
 
 
 COMPLETION_RULE = "first-party fixed point plus question sufficiency or saturation; never a source count"
@@ -251,6 +251,13 @@ class AdaptivePlanner:
             # Discovery reopened after the snapshot: refresh the snapshot. Captures
             # already done stay valid; new sources wait for the refreshed barrier.
             self.store.mark_stale(barrier_id, "discovery changed after the discovery snapshot")
+            barrier = self.store.task(barrier_id)
+        if barrier and barrier["state"] not in ACTIVE_STATES | FINAL_STATES:
+            # A channel task created after the snapshot (a split or reopened channel)
+            # must finish before the snapshot is refreshed.
+            for task_id in discovery_ids:
+                if task_id not in barrier["depends_on"]:
+                    self.store.add_dependency(barrier_id, task_id)
             barrier = self.store.task(barrier_id)
         capture_ids: list[str] = []
         if barrier and barrier["state"] == "succeeded":
