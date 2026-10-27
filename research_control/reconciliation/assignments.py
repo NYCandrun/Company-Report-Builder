@@ -105,7 +105,11 @@ def superseded_tasks(root: Path) -> set[str]:
 
 
 def validate_ledger(root: Path, records: list[dict[str, Any]], task_types: set[str] | None = None) -> dict[str, Any]:
+    from research_control.supplement import base_source, supplement_sources
+
     retired = superseded_tasks(root)
+    # A supplemented source is read again by a supplement batch on purpose.
+    supplemented = set(supplement_sources(root))
     records = [row for row in records if str(row.get("task_id", "")) not in retired]
     selected = [row for row in records if task_types is None or row.get("task_type") in task_types]
     final_output_owner: dict[str, tuple[str, str]] = {}
@@ -144,6 +148,8 @@ def validate_ledger(root: Path, records: list[dict[str, Any]], task_types: set[s
             failures.append(f"{task_id}: attempt must be positive")
         if row.get("exclusive_inputs"):
             for input_id in row.get("input_ids", []):
+                if row.get("task_type") == "extraction" and base_source(input_id) in supplemented:
+                    continue
                 ownership_key = (str(row.get("phase", "")), str(input_id))
                 owner = exclusive_owner.get(ownership_key)
                 if owner is not None and owner != task_id and owner not in row.get("depends_on", []):

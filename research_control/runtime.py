@@ -541,6 +541,38 @@ class RuntimeStore:
         self.refresh_ready()
         return sorted(stale)
 
+    def restore(self, task_id: str, reason: str) -> dict[str, Any]:
+        """Return a superseded task, or one marked for rerun, to succeeded.
+
+        Allowed only when its last attempt succeeded and the outputs it recorded
+        are unchanged on disk, so the restored result is exactly the one that
+        was produced and validated.
+        """
+        task = self.task(task_id)
+        if not task:
+            raise KeyError(f"unknown task: {task_id}")
+        if task["state"] not in {"superseded", "stale", "ready", "planned"}:
+            raise ValueError(f"{task_id}: cannot restore a task in state {task['state']}")
+        last = self.connection.execute(
+            "SELECT state, finished_at FROM attempts WHERE task_id=? ORDER BY attempt DESC LIMIT 1", (task_id,)
+        ).fetchone()
+        if not last or last["state"] != "succeeded" or not task["output_hashes"]:
+            raise ValueError(f"{task_id}: its last attempt did not succeed, so there is no completed work to restore")
+        changed = [
+            relative for relative, digest in task["output_hashes"].items()
+            if hash_path(self.root / relative) != digest
+        ]
+        if changed:
+            raise ValueError(f"{task_id}: outputs changed since it finished: {', '.join(changed[:5])}")
+        with self.connection:
+            self.connection.execute(
+                "UPDATE tasks SET state='succeeded', last_error=NULL, finished_at=?, updated_at=? WHERE task_id=?",
+                (last["finished_at"], utc_now(), task_id),
+            )
+        self.event("task_restored", task_id, {"reason": reason})
+        self.refresh_ready()
+        return self.task(task_id) or task
+
     def supersede(self, task_id: str, reason: str) -> dict[str, Any]:
         """Retire a finished or idle task whose work now belongs to replacement tasks."""
         task = self.task(task_id)

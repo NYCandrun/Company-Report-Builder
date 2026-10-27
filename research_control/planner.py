@@ -10,8 +10,10 @@ from typing import Any
 
 from research_control.discovery import ALTERNATES_PART, BLOCKED_SOURCES_LIST, DISCOVERY_CHANNELS, MEDIA_CHANNELS, DiscoveryEngine
 from research_control import verification
+from research_control.supplement import SUPPLEMENT_FACTS, SUPPLEMENT_REPORT, base_source, supplement_sources
 from research_control.media import is_media_url
 from research_control.io import atomic_write_jsonl, atomic_write_text, load_json, load_jsonl, workflow
+from research_control.validators.facts import load_fact_tables
 from research_control.triage import TRIAGE_DECISIONS, TRIAGE_EXCERPT_CHARACTERS, TRIAGE_INDEX, triage_included
 from research_control.orchestration import TASK_SCHEMAS, current_phase, load_state
 from research_control.runtime import ACTIVE_STATES, DISCOVERY_TERMINAL, FINAL_STATES, SATISFIED_STATES, UNCAPTURED_RELEVANCE, RuntimeStore, WorkItem
@@ -86,6 +88,8 @@ class AdaptivePlanner:
             created.extend(self._plan_verification())
         elif phase not in {"bootstrap", "release_acceptance"}:
             created.extend(self._plan_static(phase))
+            if phase == "initial_synthesis":
+                created.extend(self._plan_supplement())
         self.store.refresh_ready()
         tasks = self.store.tasks(phase=phase)
         return {
@@ -122,16 +126,69 @@ class AdaptivePlanner:
         # Definitions are topologically ordered in WORKFLOW.yaml.
         definitions = self.document.get("execution_profiles", {}).get(phase_id, {}).get("tasks", [])
         planned = {f"{phase_id}.{definition['id']}" for definition in definitions}
-        for task in self.store.tasks(phase=phase_id):
-            # A task the current profile no longer defines (the profile changed
-            # mid-run) is retired once it is not running; early-dispatch work stays.
-            if (
-                task["task_id"] not in planned and task["metadata"].get("planner") == "static-profile"
-                and task["state"] not in ACTIVE_STATES | {"superseded"}
-            ):
+        earlier = [
+            task for task in self.store.tasks(phase=phase_id)
+            if task["task_id"] not in planned and task["metadata"].get("planner") == "static-profile"
+            and task["state"] != "superseded"
+        ]
+        if earlier and all(task["state"] in SATISFIED_STATES for task in earlier):
+            # The phase was done under an earlier profile and that work still
+            # holds: a profile change applies when the phase next needs redoing.
+            return created
+        for task in earlier:
+            # Work the changed profile no longer defines is retired once it is
+            # not running, and the phase is planned under the current profile.
+            if task["state"] not in ACTIVE_STATES:
                 self.store.supersede(task["task_id"], "no longer defined by the workflow profile")
         for definition in definitions:
             self._add(self._plan_profile_task(phase_id, definition["id"]), created)
+        return created
+
+    def _plan_supplement(self) -> list[str]:
+        """Reconcile synthesis with facts filed from supplemented sources, revising only what they affect."""
+        created: list[str] = []
+        sources = supplement_sources(self.root)
+        synthesis = [task for task in self.store.tasks(phase="initial_synthesis") if task["task_type"] == "synthesis"]
+        if not sources or not synthesis or not all(task["state"] in SATISFIED_STATES for task in synthesis):
+            return created
+        identifier = sha256("\n".join(sorted(sources)).encode("utf-8")).hexdigest()[:12]
+        task_id = f"initial_synthesis.supplement-{identifier}"
+        if not self.store.task(task_id):
+            # Facts from supplemented sources that the synthesis does not cite yet.
+            cited: set[str] = set()
+            for path in sorted((self.root / "05-synthesis").glob("*.md")):
+                cited.update(verification.FACT_ID.findall(path.read_text(encoding="utf-8", errors="replace")))
+            fact_rows = load_fact_tables(sorted((self.root / "02-facts").glob("*.md")))
+            new_facts = [
+                row["fact_id"] for row in fact_rows
+                if row.get("source_id") in sources and row.get("fact_id") and row["fact_id"] not in cited
+            ]
+            atomic_write_text(self.root / SUPPLEMENT_FACTS, "".join(f"{fact_id}\n" for fact_id in new_facts))
+        self._add(
+            WorkItem(
+                task_id=task_id,
+                phase="initial_synthesis",
+                task_type="synthesis",
+                inputs=[
+                    {"id": "supplement_facts", "path": SUPPLEMENT_FACTS, "required": True},
+                    {"id": "fact_store", "path": "02-facts/*.md", "required": True},
+                ],
+                outputs=["05-synthesis/*.md", SUPPLEMENT_REPORT],
+                prompt_files=[
+                    "prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md",
+                    "prompts/phases/synthesis-supplement.md",
+                ],
+                depends_on=[task["task_id"] for task in synthesis],
+                schema_files=[],
+                validators=["synthesis_fact_ids", "synthesis_writing_rules"],
+                priority=50,
+                independent=True,
+                exclusive_inputs=False,
+                output_mode="revise",
+                metadata={"supplement_sources": sorted(sources)},
+            ),
+            created,
+        )
         return created
 
     def _plan_profile_task(self, phase_id: str, task_key: str, *, metadata: dict[str, Any] | None = None) -> WorkItem:
@@ -742,27 +799,42 @@ class AdaptivePlanner:
         return slices
 
     def _unchanged_batches(self, slices: list[dict[str, Any]]) -> tuple[list[str], list[dict[str, Any]]]:
-        """Keep extraction batches whose every slice is unchanged; return them and the slices left to pack.
+        """Keep extraction batches whose slices still hold; return them and the slices left to pack.
 
-        A recapture after extraction then re-extracts only the batches holding
-        a changed source, instead of repacking (and re-extracting) the corpus.
+        A recapture after extraction then re-extracts only what changed instead
+        of repacking the corpus. A supplemented source is different: the facts
+        extracted from its earlier text stand, so the batch that read it is
+        kept, and its current text is extracted again as a supplement (its
+        slices may be covered by more than one batch; filing removes duplicates).
         """
         current = {item["id"]: item for item in slices}
+        supplemented = set(supplement_sources(self.root))
         kept: list[str] = []
         covered: set[str] = set()
-        for task in self.store.tasks(phase="facts"):
-            if task["task_type"] != "extraction" or task["state"] == "superseded":
-                continue
+        tasks = [
+            task for task in self.store.tasks(phase="facts")
+            if task["task_type"] == "extraction" and task["state"] != "superseded"
+        ]
+        # Finished batches first, oldest first, so completed work keeps its slices.
+        tasks.sort(key=lambda task: (task["state"] != "succeeded", task["created_at"], task["task_id"]))
+
+        def same(item: dict[str, Any]) -> bool:
+            now = current.get(item.get("id"))
+            return bool(now) and all(item.get(key) == now.get(key) for key in ("path", "token_start", "token_end")) \
+                and item.get("sha256", now["sha256"]) == now["sha256"]
+
+        for task in tasks:
             inputs = task["inputs"]
-            unchanged = all(
-                item.get("id") in current and item["id"] not in covered
-                and all(item.get(key) == current[item["id"]].get(key) for key in ("path", "token_start", "token_end"))
-                and item.get("sha256", current[item["id"]]["sha256"]) == current[item["id"]]["sha256"]
-                for item in inputs
-            )
-            if inputs and unchanged:
+            holds = True
+            for item in inputs:
+                if base_source(item.get("id", "")) in supplemented:
+                    continue
+                if not same(item) or item["id"] in covered:
+                    holds = False
+                    break
+            if inputs and holds:
                 kept.append(task["task_id"])
-                covered.update(item["id"] for item in inputs)
+                covered.update(item["id"] for item in inputs if same(item))
         return kept, [item for item in slices if item["id"] not in covered]
 
     def _pack_slices(self, slices: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:

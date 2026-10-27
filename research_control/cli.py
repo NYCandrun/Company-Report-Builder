@@ -30,6 +30,7 @@ from research_control.orchestration import (
     status_summary,
 )
 from research_control.planner import ALTERNATES_TASK, discovery_task_id
+from research_control.supplement import add_supplement
 from research_control.provision import RUNS_DIRECTORY, provision_run, run_slug, sync_engine
 from research_control.publication import render
 from research_control.reducers import reduce_capture_parts, reduce_discovery, reduce_extraction_parts
@@ -121,6 +122,7 @@ def preflight(root: Path) -> int:
         "prompts/phases/alternate-copies.md",
         "prompts/phases/synthesis-groundwork.md",
         "prompts/phases/currency-review.md",
+        "prompts/phases/synthesis-supplement.md",
         "prompts/phases/brand-guide.md",
         "prompts/phases/diagram-modeling.md",
         "prompts/phases/diagram-building.md",
@@ -257,6 +259,16 @@ def _parser() -> argparse.ArgumentParser:
     )
     work_rerun.add_argument("task_id")
     work_rerun.add_argument("--reason", required=True)
+    work_restore = work_sub.add_parser(
+        "restore", help="orchestrator: restore a superseded or rerun-marked task whose last attempt succeeded"
+    )
+    work_restore.add_argument("task_id")
+    work_restore.add_argument("--reason", required=True)
+    supplement = subparsers.add_parser(
+        "supplement", help="orchestrator: extract a recaptured source's new text as a supplement to its filed facts"
+    )
+    supplement.add_argument("--source-id", action="append", required=True)
+    supplement.add_argument("--reason", required=True)
 
     task = subparsers.add_parser("task", help="record task attempt lifecycle")
     task_sub = task.add_subparsers(dest="task_command", required=True)
@@ -392,6 +404,9 @@ def main() -> None:
             result = next_packets(root)
             _print_json(result)
             return
+        if args.command == "supplement":
+            _print_json(add_supplement(root, args.source_id, args.reason))
+            return
         if args.command == "status":
             _print_json(runtime_status(root) if (root / "tools/outputs/runtime.sqlite3").is_file() else status_summary(root))
             return
@@ -399,6 +414,10 @@ def main() -> None:
             if args.work_command == "recover":
                 with open_runtime(root) as store:
                     _print_json({"recovered": store.recover_expired(), "runtime": store.summary()})
+                return
+            if args.work_command == "restore":
+                with open_runtime(root) as store:
+                    _print_json(store.restore(args.task_id, args.reason))
                 return
             if args.work_command == "rerun":
                 with open_runtime(root) as store:

@@ -19,3 +19,10 @@ every fact already in `02-facts/`: a candidate with the same source ID and
 quote as a filed fact takes that fact's ID, and only new facts get new IDs.
 Verification verdicts and synthesis citations are keyed by fact ID, so an
 unchanged fact must not be renumbered.
+
+When `tools/lists/supplement-sources.json` exists, those sources were
+recaptured with more content and re-extracted as a supplement. Leave every
+fact row already in `02-facts/` unchanged. File only candidates that are not
+already filed: one with the same source ID and quote as a filed fact gets a
+`duplicate` disposition naming that fact; every other candidate is appended
+under a new fact ID.

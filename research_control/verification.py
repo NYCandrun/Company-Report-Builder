@@ -89,8 +89,13 @@ def prepare(root: Path) -> dict[str, Any]:
     }
 
 
+# What a verifier judges; bookkeeping columns (conflict groups, cross-links,
+# filing verdict notes) can change without invalidating a verdict.
+JUDGED_FIELDS = ("claim", "verbatim_quote", "source_id", "location", "source_date", "grade", "about", "said_by")
+
+
 def _fingerprint(packet: dict[str, Any]) -> str:
-    fact = {key: value for key, value in packet["fact"].items() if key not in {"verdict"}}
+    fact = {key: packet["fact"].get(key, "") for key in JUDGED_FIELDS}
     basis = {"fact": fact, "source": packet["source"]}
     return sha256(json.dumps(basis, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
