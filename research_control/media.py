@@ -191,6 +191,11 @@ def _download_audio(url: str, directory: Path, clients: tuple[str | None, ...] =
     """Download the best audio with yt-dlp, trying each player client in turn."""
     if shutil.which("yt-dlp") is None:
         raise RuntimeError("yt-dlp is unavailable for public audio download")
+    # yt-dlp names a file audio.<ext> only once the download completes, so a
+    # file left by an interrupted earlier attempt can be reused.
+    finished = [path for path in sorted(directory.glob("audio.*")) if not path.name.endswith((".part", ".ytdl"))]
+    if finished:
+        return finished[0], "reused download"
     failures: list[str] = []
     for client in clients:
         if youtube_id(url):
@@ -217,11 +222,10 @@ def _download_audio(url: str, directory: Path, clients: tuple[str | None, ...] =
 
 def _transcribe_audio(audio: Path) -> tuple[list[tuple[float, str]], str, str]:
     digest = hashlib.sha256(audio.read_bytes()).hexdigest()
-    try:
-        lines, speaker_note = _whisper(audio)
-        return lines, digest, speaker_note
-    finally:
-        audio.unlink(missing_ok=True)
+    lines, speaker_note = _whisper(audio)
+    # Keep the download when transcription fails so a retry can reuse it.
+    audio.unlink(missing_ok=True)
+    return lines, digest, speaker_note
 
 
 def _decode(audio: Path) -> Any:
@@ -391,6 +395,32 @@ def _label_speakers(
 
 
 def _whisper(audio: Path) -> tuple[list[tuple[float, str]], str]:
+    """Transcribe in a child process, at most ``whisper_jobs`` at once.
+
+    The child holds the Whisper and diarization models and the decoded audio,
+    so its memory is returned when it exits, and a job that runs out of memory
+    fails alone instead of taking the whole runtime with it.
+    """
+    import sys
+    import tempfile
+
+    package_parent = str(Path(__file__).resolve().parents[1])
+    environment = {**os.environ, "PYTHONPATH": os.pathsep.join(filter(None, [package_parent, os.environ.get("PYTHONPATH")]))}
+    with _whisper_slots, tempfile.TemporaryDirectory() as scratch:
+        output = Path(scratch) / "transcript.json"
+        result = subprocess.run(
+            [sys.executable, "-m", "research_control.media_worker", str(audio), str(output)],
+            capture_output=True, text=True, timeout=4 * 3600, env=environment,
+        )
+        if result.returncode != 0 or not output.is_file():
+            cause = "ran out of memory" if result.returncode in {-9, 137} else f"exit {result.returncode}"
+            tail = (result.stderr or "").strip().splitlines()[-1:] or [""]
+            raise RuntimeError(f"transcription process failed ({cause}): {tail[0][:200]}")
+        value = json.loads(output.read_text(encoding="utf-8"))
+    return [(float(start), str(text)) for start, text in value["lines"]], str(value["note"])
+
+
+def transcribe_in_process(audio: Path) -> tuple[list[tuple[float, str]], str]:
     """Transcribe with Whisper and label speakers when diarization is available.
 
     Returns the timestamped lines and a note on speaker labeling.
@@ -398,15 +428,15 @@ def _whisper(audio: Path) -> tuple[list[tuple[float, str]], str]:
     from faster_whisper import WhisperModel
 
     samples = _decode(audio)
-    with _whisper_slots:
-        model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8", cpu_threads=runtime_limits()["whisper_threads"])
-        raw, _info = model.transcribe(samples, vad_filter=True, beam_size=5, word_timestamps=True)
-        segments = [item for item in raw if item.text.strip()]
-        try:
-            turns, diarizer = _diarize(samples)
-        except Exception as error:  # speaker labels are an enhancement; the transcript stands without them
-            plain = [(float(item.start), item.text.strip()) for item in segments]
-            return plain, f"no speaker labels ({type(error).__name__}: {str(error)[:120]})"
+    model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8", cpu_threads=runtime_limits()["whisper_threads"])
+    raw, _info = model.transcribe(samples, vad_filter=True, beam_size=5, word_timestamps=True)
+    segments = [item for item in raw if item.text.strip()]
+    del model
+    try:
+        turns, diarizer = _diarize(samples)
+    except Exception as error:  # speaker labels are an enhancement; the transcript stands without them
+        plain = [(float(item.start), item.text.strip()) for item in segments]
+        return plain, f"no speaker labels ({type(error).__name__}: {str(error)[:120]})"
     words = [(float(word.start), float(word.end), word.word) for item in segments for word in (item.words or [])]
     speakers = len({speaker for _start, _end, speaker in turns})
     note = (

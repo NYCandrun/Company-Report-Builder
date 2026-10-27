@@ -11,7 +11,9 @@ The defaults reflect measurements on a 4-core, 16 GB cloud container:
   4-thread job. A job on an hour-long recording, with its diarization model,
   used about 3 GB (four used 11.6 GB), and the whole session shares one memory
   limit: four jobs plus side work once exceeded it, so job count is bounded by
-  memory too, with 2 GB kept free.
+  memory too, with 2 GB kept free. Each job now runs in its own process
+  (Whisper plus Sortformer peaked at 1.74 GB on ten minutes of audio), so its
+  memory is returned when it ends and an out-of-memory job fails alone.
 - Headless browser renders: about 0.25 GB each; held to half the cores so they
   do not starve concurrent transcription.
 
