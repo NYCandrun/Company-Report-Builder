@@ -339,3 +339,16 @@ class HeldSourceTests(unittest.TestCase):
             self.assertEqual("completed", rows["SRC-A"]["disposition"])
             self.assertEqual("deferred", rows["SRC-B"]["disposition"])
             self.assertIn("held for a later pass", rows["SRC-B"]["reason"])
+
+
+class SharedRecordFileTests(unittest.TestCase):
+    def test_only_the_lines_a_worker_added_to_a_shared_record_file_are_checked(self) -> None:
+        import tempfile
+
+        from research_control.validators import american
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "decisions.jsonl"
+            path.write_text('{"reason": "labelled by an earlier pass"}\n{"reason": "a new programme page"}\n', encoding="utf-8")
+            self.assertEqual(2, len(american.check_file(path)))
+            self.assertEqual(['line 2: "programme" (use program)'], american.check_file(path, from_line=2))

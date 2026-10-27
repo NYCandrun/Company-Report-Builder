@@ -11,7 +11,7 @@ from research_control import PASS
 from research_control.checks import check_phase, run_validator
 from research_control.dispatch import emit_ready_packets
 from research_control.discovery import ALTERNATES_PART, BLOCKED_SOURCES_LIST
-from research_control.io import load_json, load_jsonl, resolve_pattern, workflow
+from research_control.io import atomic_write_json, load_json, load_jsonl, resolve_pattern, workflow
 from research_control import citation_build
 from research_control.validators import american
 from research_control.orchestration import current_phase, initialize, load_state, phase_order, reopen_phase, set_phase_result
@@ -283,15 +283,31 @@ def check_work(root: Path, task_id: str) -> dict[str, Any]:
         return result
 
 
+STARTING_LINES = "tools/outputs/worker-parts/started"
+
+
+def record_starting_lines(root: Path, task: dict[str, Any]) -> None:
+    """How long each shared record file (JSON Lines) was when a worker started, so the checks
+    on what it wrote read only the lines it added, not lines earlier workers wrote."""
+    lengths = {
+        str(path.relative_to(root)): len(path.read_text(encoding="utf-8", errors="replace").splitlines())
+        for pattern in task["outputs"] for path in resolve_pattern(root, pattern)
+        if path.is_file() and path.suffix == ".jsonl"
+    }
+    atomic_write_json(root / STARTING_LINES / f"{task['task_id']}.json", lengths)
+
+
 def _british_english(root: Path, task: dict[str, Any]) -> list[str]:
     """British spellings and terms in the text a worker wrote for this task's outputs."""
-    written: list[str] = []
+    marker = root / STARTING_LINES / f"{task['task_id']}.json"
+    starting = load_json(marker) if marker.is_file() else {}
+    problems: list[str] = []
     for pattern in task["outputs"]:
-        for path in resolve_pattern(root, pattern):
+        for path in sorted(resolve_pattern(root, pattern)):
             relative = str(path.relative_to(root))
             if path.is_file() and not relative.startswith(("01-sources/", "tools/outputs/web-cache/")):
-                written.append(relative)
-    return american.check_paths(root, sorted(set(written)))
+                problems += [f"{relative} {item}" for item in american.check_file(path, from_line=int(starting.get(relative, 0)) + 1)]
+    return problems[:40]
 
 
 def _validate_semantic_receipt(root: Path, store: RuntimeStore, task: dict[str, Any]) -> None:

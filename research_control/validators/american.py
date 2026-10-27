@@ -171,8 +171,9 @@ def _authored_values(value: Any, key: str = "") -> Iterator[str]:
         yield value
 
 
-def check_file(path: Path) -> list[str]:
-    """Every British spelling or term in a file's authored text, as `line N: word (use ...)`."""
+def check_file(path: Path, from_line: int = 1) -> list[str]:
+    """Every British spelling or term in a file's authored text, as `line N: word (use ...)`;
+    from `from_line` on when only a file's newer lines are a worker's own."""
     if not path.is_file():
         return []
     text = path.read_text(encoding="utf-8", errors="replace")
@@ -199,6 +200,8 @@ def check_file(path: Path) -> list[str]:
     else:
         return []
     for number, line in lines:
+        if number and number < from_line:
+            continue
         for word, advice in findings(line):
             where = f"line {number}: " if number else ""
             problems.append(f'{where}"{word}" (use {advice})')

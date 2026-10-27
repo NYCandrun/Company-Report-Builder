@@ -631,6 +631,9 @@ def main() -> None:
                     from research_control.dispatch import brief_out_of_date, write_packet
 
                     started = store.start(args.task_id, args.worker_id)
+                    from research_control.adaptive import record_starting_lines
+
+                    record_starting_lines(root, store.task(args.task_id))
                     changed = brief_out_of_date(root, args.task_id)
                     if changed:
                         # A file changed after the brief was written: the worker reads a fresh copy.
