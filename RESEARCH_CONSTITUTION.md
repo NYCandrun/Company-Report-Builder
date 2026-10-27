@@ -349,10 +349,13 @@ rewriting unrelated copy.
 
 ## Model roles and independence
 
-Use the strongest available reasoning model at high effort for extraction,
-judgment, verification, synthesis, adversarial review, substantive fixes, and
-visual judgment. A faster capable model may perform mechanical editing and
-bounded transformations. Do not hard-code historical product names. Record
+Use the strongest available reasoning model at high effort for the hardest
+judgment: cited-fact verification, adversarial review, and architecture
+modeling. Use a flagship-class model at high effort for the rest of the
+extraction, synthesis, review, substantive fixes, and visual judgment. A
+balanced model may run discovery, triage, filing, and language review, and a
+faster capable model may perform mechanical editing and bounded
+transformations. `WORKFLOW.yaml` assigns each task type to a tier. Do not hard-code historical product names. Record
 model and effort when the runtime exposes them. Never invent missing metrics.
 
 Separate contexts are required for:

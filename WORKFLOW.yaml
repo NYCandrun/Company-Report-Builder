@@ -95,9 +95,14 @@
           "task_types": ["source_discovery", "triage", "filing", "language_review"]
         },
         "strong": {
-          "model_class": "strongest_available",
+          "model_class": "flagship_capable",
           "effort": "high",
           "task_types": []
+        },
+        "frontier": {
+          "model_class": "strongest_available",
+          "effort": "high",
+          "task_types": ["verification", "devils_advocate", "diagram_modeler"]
         }
       }
     },

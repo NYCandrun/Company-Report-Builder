@@ -73,7 +73,9 @@ python3 -m research_control work succeed TASK_ID --worker-id STABLE_WORKER_ID \
 ```
 
 Model routing is advisory and optional. Each packet names an economy, standard,
-or strong reasoning tier. Use it only when the current host/session exposes
+strong, or frontier reasoning tier; frontier is reserved for the hardest
+judgment work (cited-fact verification, the devil's-advocate review, and
+diagram modeling). Use it only when the current host/session exposes
 model or effort selection; otherwise omit `--model` and `--effort` and use the
 available model. Routing availability never blocks a task or relaxes its gates.
 

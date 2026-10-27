@@ -33,7 +33,9 @@ class AdaptivePlannerTests(unittest.TestCase):
         self.assertTrue(economy["optional"])
         self.assertEqual("advisory_only", economy["enforcement"])
         self.assertEqual("economy", economy["tier"])
-        self.assertEqual("strong", strong["tier"])
+        self.assertEqual("frontier", strong["tier"])
+        self.assertEqual("strongest_available", strong["model_class"])
+        self.assertEqual("strong", model_route(SOURCE_ROOT, "synthesis")["tier"])
         self.assertEqual("use_available_model", strong["fallback"])
 
     def test_brand_input_is_presentation_only_and_no_extra_phase_is_added(self) -> None:
