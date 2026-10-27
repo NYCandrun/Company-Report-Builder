@@ -340,12 +340,19 @@ class RuntimeStore:
                 "max_attempts": existing["max_attempts"],
                 "metadata": existing["metadata"],
             }
-            if comparison != immutable:
+            known = {
+                row["depends_on"] for row in self.connection.execute(
+                    "SELECT depends_on FROM dependencies WHERE task_id=?", (item.task_id,)
+                )
+            }
+            new_dependencies = bool(set(item.depends_on) - known)
+            if comparison != immutable or (new_dependencies and existing["state"] in SATISFIED_STATES):
                 if existing["state"] in SATISFIED_STATES:
                     # Finished work stays governed by the definition it ran under: an engine
-                    # change (filing becoming runtime work, say) never invalidates a result.
-                    # Redoing it is an explicit `work rerun`.
+                    # change (filing becoming runtime work, say, or a new check before the
+                    # reviews) never invalidates a result. Redoing it is an explicit `work rerun`.
                     changed = sorted(key for key in immutable if immutable[key] != comparison[key])
+                    changed += ["depends_on"] if new_dependencies else []
                     recorded = self.connection.execute(
                         "SELECT 1 FROM events WHERE event_type='definition_kept' AND subject_id=? LIMIT 1", (item.task_id,)
                     ).fetchone()
@@ -637,16 +644,21 @@ class RuntimeStore:
         self.start(task_id, worker_id)
         return self.complete(task_id, worker_id)
 
-    def rebaseline_inputs(self, paths: list[str], reason: str) -> list[str]:
+    def rebaseline_inputs(self, paths: list[str], reason: str, among: set[str] | None = None) -> list[str]:
         """Accept an edit of these inputs for finished tasks that track input
         staleness: their recorded input hashes are refreshed, so they are not
         rerun for it. For edits whose effect reaches downstream another way."""
         refreshed: list[str] = []
+        edited = set(paths)
         for task in self.tasks(states={"succeeded"}):
-            if not task["track_input_staleness"]:
+            if not task["track_input_staleness"] or (among is not None and task["task_id"] not in among):
                 continue
             patterns = [str(item["path"]) for item in task["inputs"] if item.get("path")]
-            if not any(path in patterns for path in paths):
+            if not any(
+                pattern in edited
+                or any(str(path.relative_to(self.root)) in edited for path in resolve_pattern(self.root, pattern))
+                for pattern in patterns
+            ):
                 continue
             current = hash_patterns(self.root, patterns)
             if current == task["input_hashes"]:
@@ -913,8 +925,33 @@ class RuntimeStore:
                 (now, now, _json(telemetry or {}), task_id, task["attempt_count"]),
             )
         self.event("task_succeeded", task_id, {"worker_id": worker_id, "attempt": task["attempt_count"]})
+        if task["output_mode"] == "revise":
+            # A later pass revising files that earlier work read (the review fixer editing the
+            # synthesis that verification read) is the workflow's intended next step, not a
+            # change under those results: they keep them rather than rerunning.
+            self.rebaseline_inputs(sorted(output_hashes), f"revised by {task_id}", among=self._earlier_work(task))
         self.refresh_ready()
         return terminal
+
+    def _earlier_work(self, task: dict[str, Any]) -> set[str]:
+        """Finished tasks that come before this one: those it depends on, directly or
+        through others, and those in phases the workflow runs before its own."""
+        earlier: set[str] = set()
+        frontier = [task["task_id"]]
+        while frontier:
+            for row in self.connection.execute("SELECT depends_on FROM dependencies WHERE task_id=?", (frontier.pop(),)):
+                if row["depends_on"] not in earlier:
+                    earlier.add(row["depends_on"])
+                    frontier.append(row["depends_on"])
+        try:
+            from research_control.orchestration import phase_order
+            order = phase_order(self.root)
+        except (OSError, KeyError, ValueError):
+            order = []
+        if task["phase"] in order:
+            before = set(order[: order.index(task["phase"])])
+            earlier.update(other["task_id"] for other in self.tasks(states={"succeeded"}) if other["phase"] in before)
+        return earlier
 
     def fail(
         self,

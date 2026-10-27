@@ -755,3 +755,35 @@ class AgentGroupTests(unittest.TestCase):
             self.assertEqual([["facts.extract.a", "facts.extract.b"], ["facts.extract.c"], ["review.editor"], ["review.technical"]], groups)
             shared_brief = next(agent["brief"] for agent in result["agents"] if len(agent["tasks"]) == 2)
             self.assertIn("read each shared file once", (root / shared_brief).read_text(encoding="utf-8"))
+
+
+class ProfileDependencyTests(unittest.TestCase):
+    def test_a_dependency_added_to_the_profile_after_a_task_finished_does_not_rerun_it(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            copy_template(root)
+            state = initialize(root, "https://example.com")
+            save_state(root, state)
+            with RuntimeStore(root) as store:
+                store.initialize(run_id=state["run_id"], company_url=state["company_url"])
+                planner = AdaptivePlanner(root, store)
+                for task_id in ("review.editor", "facts.reduce"):
+                    store.add_task(WorkItem(task_id=task_id, phase="review", task_type="editor_review", inputs=[],
+                                            outputs=[f"{task_id}.md"], prompt_files=["p.md"]))
+                    store.claim("w", task_id=task_id, bypass_limits=True)
+                    store.start(task_id, "w")
+                    (root / f"{task_id}.md").write_text("done\n", encoding="utf-8")
+                    store.complete(task_id, "w")
+                store.add_task(WorkItem(task_id="review.check", phase="review", task_type="consistency_check",
+                                        inputs=[], outputs=["check.md"], prompt_files=["p.md"]))
+
+                def gained(task_id: str) -> WorkItem:
+                    return WorkItem(task_id=task_id, phase="review", task_type="editor_review", inputs=[],
+                                    outputs=[f"{task_id}.md"], prompt_files=["p.md"], depends_on=["review.check"])
+
+                # The workflow profile gained a check before the reviews: finished reviews stand.
+                planner._add(gained("review.editor"), [], from_profile=True)
+                self.assertEqual("succeeded", store.task("review.editor")["state"])
+                # A reducer that gained a new part to merge reruns once the part is done.
+                planner._add(gained("facts.reduce"), [])
+                self.assertNotEqual("succeeded", store.task("facts.reduce")["state"])

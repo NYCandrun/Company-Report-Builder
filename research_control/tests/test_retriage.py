@@ -113,6 +113,37 @@ if __name__ == "__main__":
 
 
 class DefinitionSafeguardTests(unittest.TestCase):
+    def test_a_later_revision_of_files_earlier_work_read_does_not_rerun_it(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _fixture(root)
+            atomic_write_text(root / "WORKFLOW.yaml", '{"phases": [{"id": "verification"}, {"id": "review"}, {"id": "final"}]}')
+            atomic_write_text(root / "05-synthesis/offering.md", "first draft\n")
+
+            def finish(store: RuntimeStore, item: WorkItem, output: str, text: str) -> None:
+                store.add_task(item)
+                store.claim("w", task_id=item.task_id, bypass_limits=True)
+                store.start(item.task_id, "w")
+                atomic_write_text(root / output, text)
+                store.complete(item.task_id, "w")
+
+            reads = [{"id": "synthesis", "path": "05-synthesis/*.md"}]
+            with RuntimeStore(root) as store:
+                store.initialize(run_id="r", company_url="https://example.com")
+                finish(store, WorkItem(task_id="verification.prepare", phase="verification", task_type="verification",
+                                       inputs=reads, outputs=["checks.md"], prompt_files=["p.md"],
+                                       track_input_staleness=True), "checks.md", "checked\n")
+                # Finished earlier, but in a later phase: a revision under it means redoing it.
+                finish(store, WorkItem(task_id="final.write-brief", phase="final", task_type="brief_writer",
+                                       inputs=reads, outputs=["brief.md"], prompt_files=["p.md"],
+                                       track_input_staleness=True), "brief.md", "brief\n")
+                finish(store, WorkItem(task_id="review.apply-review", phase="review", task_type="fixer", inputs=reads,
+                                       outputs=["05-synthesis/offering.md"], prompt_files=["p.md"], output_mode="revise"),
+                       "05-synthesis/offering.md", "revised by the reviews\n")
+                self.assertEqual(["final.write-brief"], store.invalidate_stale())
+                self.assertEqual("succeeded", store.task("verification.prepare")["state"])
+                self.assertEqual("succeeded", store.task("review.apply-review")["state"])
+
     def test_finished_work_keeps_its_definition_and_unfinished_work_refuses_a_change(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -178,13 +178,13 @@ class AdaptivePlanner:
                 return phase
         raise KeyError(f"unknown phase: {phase_id}")
 
-    def _add(self, item: WorkItem, created: list[str]) -> None:
+    def _add(self, item: WorkItem, created: list[str], *, from_profile: bool = False) -> None:
         existing = self.store.task(item.task_id)
         if existing and existing["state"] in ACTIVE_STATES:
             # New upstream work for a task that is running now is added once it
             # finishes; the next reconcile then reruns it.
             return
-        if existing and existing["state"] in FINAL_STATES:
+        if existing and existing["state"] in FINAL_STATES and not from_profile:
             known = {
                 row["depends_on"] for row in self.store.connection.execute(
                     "SELECT depends_on FROM dependencies WHERE task_id=?", (item.task_id,)
@@ -217,7 +217,9 @@ class AdaptivePlanner:
             if task["state"] not in ACTIVE_STATES:
                 self.store.supersede(task["task_id"], "no longer defined by the workflow profile")
         for definition in definitions:
-            self._add(self._plan_profile_task(phase_id, definition["id"]), created)
+            # A profile task's dependencies come from the workflow definition, so a new one
+            # is a definition change: finished work keeps the definition it ran under.
+            self._add(self._plan_profile_task(phase_id, definition["id"]), created, from_profile=True)
         return created
 
     def _plan_supplement(self) -> list[str]:
