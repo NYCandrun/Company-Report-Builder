@@ -20,12 +20,16 @@ class SourceDatingTests(unittest.TestCase):
                 {"source_id": "SRC-LIVE", "status": "captured", "source": {"date captured": "2026-10-27"}},
                 {"source_id": "SRC-POD", "status": "captured", "source": {"date captured": "2026-10-27"}},
                 {"source_id": "SRC-FEED", "status": "captured", "source": {"date captured": "2026-10-27"}},
+                {"source_id": "SRC-YT", "status": "captured", "source": {"date captured": "2026-10-27"}},
             ]
             atomic_write_text(root / "01-sources/captures/SRC-VID/raw.html", '"publishDate":{"simpleText":"Jul 25, 2025"}')
             atomic_write_text(root / "01-sources/captures/SRC-VID/transcript.txt", "# Transcript\n")
             atomic_write_text(root / "01-sources/captures/SRC-LIVE/raw.html", "<html>Careers</html>")
             atomic_write_text(root / "01-sources/captures/SRC-POD/transcript.txt", "# Transcript\n")
             atomic_write_text(root / "01-sources/captures/SRC-FEED/raw.json", '{"jobs": []}')
+            # A video captured through yt-dlp keeps its metadata: the air date wins over the upload date.
+            atomic_write_text(root / "01-sources/captures/SRC-YT/transcript.txt", "# Transcript\n")
+            atomic_write_json(root / "01-sources/captures/SRC-YT/captions.info.json", {"release_date": "20220915", "upload_date": "20220916"})
             report = write_source_dates(root, receipts)
             rows = {row["source_id"]: row for row in load_jsonl(root / SOURCE_DATES)}
             self.assertEqual("current", rows["SRC-PUB"]["flag"])
@@ -34,6 +38,7 @@ class SourceDatingTests(unittest.TestCase):
             self.assertEqual("live page at capture", rows["SRC-LIVE"]["basis"])
             self.assertEqual(("live data at capture", "current"), (rows["SRC-FEED"]["basis"], rows["SRC-FEED"]["flag"]))
             self.assertEqual("undated", rows["SRC-POD"]["flag"])
+            self.assertEqual(("2022-09-15", "release date in captions.info.json"), (rows["SRC-YT"]["content_date"], rows["SRC-YT"]["basis"]))
             self.assertEqual(1, report["undated"])
             # A dating pass's override fills an undated source, keeping its evidence.
             atomic_write_jsonl(root / DATE_OVERRIDES, [

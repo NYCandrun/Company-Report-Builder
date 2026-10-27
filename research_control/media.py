@@ -143,7 +143,7 @@ def _ytdlp_captions(url: str, directory: Path) -> tuple[list[tuple[float, str]],
     for client in _client_order():
         _pace_youtube()
         command = [
-            "yt-dlp", "--no-progress", "--skip-download", "--write-subs", "--write-auto-subs",
+            "yt-dlp", "--no-progress", "--skip-download", "--write-subs", "--write-auto-subs", "--write-info-json",
             "--sub-langs", "en,en-orig,en-US,en-GB", "--sub-format", "vtt",
             "-o", str(directory / "captions"), "--", url,
         ]
@@ -175,6 +175,9 @@ def _invidious_audio(video_id: str, directory: Path) -> tuple[Path, str]:
             chosen = next((item for item in formats if str(item.get("itag")) == "140"), formats[0] if formats else None)
             if not chosen:
                 raise RuntimeError("no audio formats listed")
+            if data.get("published"):
+                # Keep the upload time, so the source is dated by its content.
+                (directory / "invidious.info.json").write_text(json.dumps({"timestamp": data["published"]}), encoding="utf-8")
             stream = chosen["url"] if chosen["url"].startswith("http") else f"{instance}{chosen['url']}"
             path = directory / "audio.m4a"
             with urlopen(Request(stream, headers={"User-Agent": "Mozilla/5.0"}), timeout=600) as response, path.open("wb") as handle:
@@ -201,7 +204,7 @@ def _download_audio(url: str, directory: Path, clients: tuple[str | None, ...] =
         if youtube_id(url):
             _pace_youtube()
         command = [
-            "yt-dlp", "--no-playlist", "--no-progress", "-f", "bestaudio/best",
+            "yt-dlp", "--no-playlist", "--no-progress", "--write-info-json", "-f", "bestaudio/best",
             "--max-filesize", "500M", "-o", str(directory / "audio.%(ext)s"), "--", url,
         ]
         if shutil.which("node"):

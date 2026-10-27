@@ -146,8 +146,13 @@ def _iso_date(value: str) -> str:
 # watch pages do in their player data.
 EMBEDDED_DATES = (
     re.compile(r'itemprop="(?:datePublished|uploadDate)"\s+content="([^"]+)"'),
-    re.compile(r'"(?:uploadDate|publishDate|datePublished)":"([^"]+)"'),
+    re.compile(r'"(?:uploadDate|publishDate|datePublished)"\s*:\s*"([^"]+)"'),
     re.compile(r'"publishDate":\{"simpleText":"([^"]+)"\}'),
+    re.compile(r'(?:property|name)="(?:article:published_time|og:published_time|pubdate|publish-date)"\s+content="([^"]+)"'),
+    re.compile(r'content="([^"]+)"\s+(?:property|name)="(?:article:published_time|og:published_time|pubdate|publish-date)"'),
+    # Last resort: the page's first <time datetime>, which on article and
+    # episode pages is the publication date.
+    re.compile(r'<time[^>]*\sdatetime="([^"]+)"'),
 )
 
 
@@ -819,28 +824,38 @@ def _git(args: list[str], cwd: Path | None = None, timeout: int = 60) -> str:
 
 
 def _github_checkout(root: Path, owner: str, repo: str) -> Path:
-    """Shallow-clone a public repository once per run and reuse it for every source in it."""
+    """Clone a public repository once per run, with its full history, every branch, and every
+    pull request head, and reuse it for every source in it."""
     key = f"{owner}/{repo}".casefold()
     with _repo_locks_guard:
         lock = _repo_locks.setdefault(key, threading.Lock())
     target = root / GIT_CACHE / owner.casefold() / repo.casefold()
+    environment = {**os.environ, "GIT_LFS_SKIP_SMUDGE": "1", "GIT_TERMINAL_PROMPT": "0"}
     with lock:
-        if (target / ".git").is_dir():
-            return target
-        target.parent.mkdir(parents=True, exist_ok=True)
-        command = ["clone", "--depth", "1", "--quiet", f"https://github.com/{owner}/{repo}", str(target)]
-        environment = {**os.environ, "GIT_LFS_SKIP_SMUDGE": "1", "GIT_TERMINAL_PROMPT": "0"}
-        for attempt in (1, 2):
-            result = subprocess.run(["git", *command], text=True, capture_output=True, timeout=900, env=environment)
-            if result.returncode == 0:
-                return target
-            shutil.rmtree(target, ignore_errors=True)
-            # One retry for the git proxy's per-repository concurrency limit.
-            if attempt == 1 and "429" in result.stderr:
-                time.sleep(5)
-                continue
-            raise RuntimeError(f"git clone of {owner}/{repo} failed: {result.stderr.strip()[:300]}")
-    raise RuntimeError(f"git clone of {owner}/{repo} failed")
+        if not (target / ".git").is_dir():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            command = ["clone", "--filter=blob:none", "--quiet", f"https://github.com/{owner}/{repo}", str(target)]
+            for attempt in (1, 2):
+                result = subprocess.run(["git", *command], text=True, capture_output=True, timeout=900, env=environment)
+                if result.returncode == 0:
+                    break
+                shutil.rmtree(target, ignore_errors=True)
+                # One retry for the git proxy's per-repository concurrency limit.
+                if attempt == 1 and "429" in result.stderr:
+                    time.sleep(5)
+                    continue
+                raise RuntimeError(f"git clone of {owner}/{repo} failed: {result.stderr.strip()[:300]}")
+        if not (target / ".git" / "refs" / "remotes" / "pull").exists() and not (target / ".git" / "work-refs").exists():
+            # Earlier runs cached shallow default-branch clones; deepen them and fetch
+            # every branch and pull request head, so unmerged work is visible too.
+            shallow = _git(["rev-parse", "--is-shallow-repository"], cwd=target).strip() == "true"
+            fetch = ["fetch", "--quiet", "--filter=blob:none", *(["--unshallow"] if shallow else []), "origin",
+                     "+refs/heads/*:refs/remotes/origin/*", "+refs/pull/*/head:refs/remotes/pull/*"]
+            result = subprocess.run(["git", *fetch], cwd=target, text=True, capture_output=True, timeout=900, env=environment)
+            if result.returncode != 0:
+                raise RuntimeError(f"git fetch of {owner}/{repo} branches failed: {result.stderr.strip()[:300]}")
+            (target / ".git" / "work-refs").write_text("fetched\n", encoding="utf-8")
+        return target
 
 
 # Repository text included in a capture, so extraction can read what the code
@@ -871,10 +886,16 @@ def _repository_rank(path: str) -> tuple[int, str]:
 
 
 def _repository_text(checkout: Path, listed: list[str]) -> list[str]:
-    """File contents in priority order within the budget, with every omission listed."""
+    """File contents in priority order within the budget, with every omission listed.
+
+    A file over the per-file limit waits for a second pass and is included if the
+    budget still has room, so one large data file never crowds out the code but is
+    not dropped when there is space for it.
+    """
     lines: list[str] = []
     used = 0
     omitted: list[str] = []
+    deferred: list[tuple[str, str]] = []
     for path in sorted(listed, key=_repository_rank):
         file_path = checkout / path
         if Path(path).name in SKIPPED_FILES or not file_path.is_file():
@@ -886,16 +907,92 @@ def _repository_text(checkout: Path, listed: list[str]) -> list[str]:
             continue
         text = data.decode("utf-8", errors="replace")
         if len(text) > REPOSITORY_FILE_LIMIT:
-            omitted.append(f"{path} ({len(text)} characters, over the per-file limit)")
+            deferred.append((path, text))
             continue
         if used + len(text) > REPOSITORY_TEXT_BUDGET:
             omitted.append(f"{path} (capture budget reached)")
             continue
         used += len(text)
         lines += ["", f"--- FILE: {path} ({text.count(chr(10)) + 1} lines) ---", text.rstrip("\n")]
+    for path, text in deferred:
+        if used + len(text) > REPOSITORY_TEXT_BUDGET:
+            omitted.append(f"{path} ({len(text)} characters, over the remaining capture budget)")
+            continue
+        used += len(text)
+        lines += ["", f"--- FILE: {path} ({text.count(chr(10)) + 1} lines) ---", text.rstrip("\n")]
     if omitted:
         lines += ["", f"--- FILES NOT INCLUDED ({len(omitted)}) ---", *omitted]
     return lines
+
+
+# History and work that is not on the default branch: the commit log, then each
+# branch or pull request whose commits the default branch does not contain.
+HISTORY_LIMIT = 400
+UNMERGED_TEXT_BUDGET = 250_000
+UNMERGED_REF_LIMIT = 80_000
+BOT_MARKERS = ("[bot]", "dependabot", "renovate")
+
+
+def _commit_history(checkout: Path) -> list[str]:
+    log = _git(["log", "--format=%cs %h %s"], cwd=checkout).splitlines()
+    if not log:
+        return []
+    lines = ["", f"--- COMMIT HISTORY OF THE DEFAULT BRANCH ({len(log)} commits, {log[-1][:10]} to {log[0][:10]}) ---"]
+    lines += log[:HISTORY_LIMIT]
+    if len(log) > HISTORY_LIMIT:
+        lines.append(f"... {len(log) - HISTORY_LIMIT} earlier commits")
+    return lines
+
+
+def _unmerged_work(checkout: Path) -> tuple[list[str], str]:
+    """Branches and pull request heads with commits the default branch lacks.
+
+    Refs whose commits are all by bots (dependency bumps) are skipped; refs with the
+    same human commits are reported once, under every name. Returns the text and
+    the latest unmerged commit date.
+    """
+    refs = _git(["for-each-ref", "--format=%(refname)", "refs/remotes/origin", "refs/remotes/pull"], cwd=checkout).split()
+    groups: dict[frozenset[str], list[str]] = {}
+    for ref in refs:
+        if ref.endswith("/HEAD"):
+            continue
+        commits = _git(["log", "--format=%H\t%an\t%ae", ref, "^HEAD"], cwd=checkout).splitlines()
+        human = frozenset(
+            row.split("\t")[0] for row in commits
+            if not any(marker in row.casefold() for marker in BOT_MARKERS)
+        )
+        if human:
+            groups.setdefault(human, []).append(ref)
+    # A ref whose human commits another ref already carries is that ref's earlier state.
+    kept = [key for key in groups if not any(key < other for other in groups)]
+    if not kept:
+        return [], ""
+    lines = ["", f"--- WORK NOT ON THE DEFAULT BRANCH ({len(kept)} branches or pull requests, unmerged) ---",
+             "Unmerged work is proposed or in progress, not shipped. Each block is dated by its own commits."]
+    used = 0
+    latest = ""
+    for key in sorted(kept, key=lambda item: -len(item)):
+        names = sorted(ref.removeprefix("refs/remotes/").removeprefix("origin/") for ref in groups[key])
+        names = [name if not name.startswith("pull/") else f"pull request #{name.split('/')[1]}" for name in names]
+        ref = groups[key][0]
+        log = [row for row in _git(["log", "--format=%cs %h %s", ref, "^HEAD"], cwd=checkout).splitlines()]
+        first, last = log[-1][:10], log[0][:10]
+        latest = max(latest, last)
+        diff = _git(["diff", "--stat=200", "HEAD..." + ref], cwd=checkout).rstrip()
+        lines += ["", f"=== UNMERGED: {', '.join(names)} ({len(log)} commits, {first} to {last}) ===", *log, "", diff]
+        changed = _git(["diff", "--name-only", "--diff-filter=AM", "HEAD..." + ref], cwd=checkout).splitlines()
+        patch_paths = [path for path in changed if Path(path).name not in SKIPPED_FILES]
+        if not patch_paths:
+            continue
+        patch = _git(["diff", "--no-color", "HEAD..." + ref, "--", *patch_paths], cwd=checkout, timeout=120)
+        if "\0" in patch:
+            patch = patch.replace("\0", "")
+        if len(patch) > UNMERGED_REF_LIMIT or used + len(patch) > UNMERGED_TEXT_BUDGET:
+            lines.append(f"(diff of {len(patch)} characters not included: over the unmerged-work budget)")
+            continue
+        used += len(patch)
+        lines += ["", patch.rstrip("\n")]
+    return lines, latest
 
 
 def _github_capture(root: Path, *, url: str, source_id: str, grade: str) -> dict[str, Any]:
@@ -914,13 +1011,14 @@ def _github_capture(root: Path, *, url: str, source_id: str, grade: str) -> dict
             "it is not repository content a clone can capture"
         )
     checkout = _github_checkout(root, owner, repo)
+    unmerged_latest = ""
     relative = "/".join(parts[4:]) if len(parts) > 4 and parts[2] in {"tree", "blob"} else ""
     commit, committed = _git(["log", "-1", "--format=%H %cI"], cwd=checkout).split()
     lines = [
         f"Repository: {owner}/{repo}",
         f"Source URL: {url}",
         f"Captured commit: {commit} (committed {committed})",
-        "Method: shallow git clone of the public repository",
+        "Method: git clone of the public repository with its history, branches, and pull request heads",
         "",
     ]
     target = checkout / relative if relative else checkout
@@ -932,6 +1030,10 @@ def _github_capture(root: Path, *, url: str, source_id: str, grade: str) -> dict
         if len(listed) > 500:
             lines.append(f"... {len(listed) - 500} more files")
         lines += _repository_text(checkout, listed)
+        if not relative:
+            lines += _commit_history(checkout)
+            unmerged, unmerged_latest = _unmerged_work(checkout)
+            lines += unmerged
     else:
         raise RuntimeError(f"{relative} is not in {owner}/{repo} at its default branch head")
     directory = root / "01-sources/captures" / source_id
@@ -944,10 +1046,14 @@ def _github_capture(root: Path, *, url: str, source_id: str, grade: str) -> dict
         "id": source_id, "grade": grade,
         "title": f"{owner}/{repo}" + (f": {relative}" if relative else ""),
         "publisher": f"GitHub ({owner})", "url": url,
-        "date published": "", "date last modified": committed[:10],
+        "date published": "", "date last modified": max(committed[:10], unmerged_latest),
         "date captured": datetime.now(timezone.utc).date().isoformat(),
-        "local file": relative_text, "method": "shallow git clone of public repository",
-        "notes": f"Content at commit {commit[:12]}; last-modified is that commit's date, not a publication date",
+        "local file": relative_text, "method": "git clone of public repository",
+        "notes": (
+            f"Default branch at commit {commit[:12]} ({committed[:10]})"
+            + (f"; unmerged branch or pull request work to {unmerged_latest}" if unmerged_latest else "")
+            + "; last-modified is the latest commit's date, not a publication date"
+        ),
     }
     receipt = {
         "schema_version": "1.0.0", "task_type": "capture", "source_id": source_id, "status": "captured",

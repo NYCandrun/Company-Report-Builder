@@ -8,7 +8,8 @@ research date, so stale evidence is flagged wherever it is used.
 
 from __future__ import annotations
 
-from datetime import date
+import json
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +37,23 @@ def _as_date(value: str) -> date | None:
         return None
 
 
+def _media_info_date(directory: Path) -> tuple[date | None, str]:
+    """The release or upload date that yt-dlp or Invidious recorded beside a media capture."""
+    for path in sorted(directory.glob("*.info.json")):
+        try:
+            info = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        for key in ("release_date", "upload_date"):
+            value = str(info.get(key) or "")
+            if len(value) == 8 and value.isdigit():
+                return date(int(value[:4]), int(value[4:6]), int(value[6:])), f"{key.replace('_', ' ')} in {path.name}"
+        for key in ("release_timestamp", "timestamp"):
+            if isinstance(info.get(key), (int, float)):
+                return datetime.fromtimestamp(info[key], timezone.utc).date(), f"{key.replace('_', ' ')} in {path.name}"
+    return None, ""
+
+
 def date_source(
     root: Path, receipt: dict[str, Any], as_of: date, override: dict[str, Any] | None = None
 ) -> dict[str, Any]:
@@ -51,6 +69,9 @@ def date_source(
     published = _as_date(str(source.get("date published", "")))
     if content is None and published:
         content, basis = published, "published"
+    if content is None:
+        # A video's air or upload date, recorded by the route that fetched it.
+        content, basis = _media_info_date(root / "01-sources/captures" / source_id)
     if content is None:
         directory = root / "01-sources/captures" / source_id
         for name in PAGE_FILES:

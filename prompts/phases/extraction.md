@@ -28,6 +28,13 @@ brand, systems, or deliverables). Say which in the fact's notes
 named only by a repository's or file's subject as a relationship with its
 mark.
 
+A repository capture also holds the default branch's commit history and a
+"work not on the default branch" section: branches and pull requests whose
+commits are unmerged. Unmerged work is proposed or in progress, not shipped:
+say `Unmerged: <branch or pull request>` in the fact's notes, never describe
+it as something the code does, and date it by that block's own commits. Use
+the commit history to date when a feature or file appeared.
+
 Set each candidate's `source_date` from the source's row in
 `tools/outputs/source-dates.jsonl` (content date and basis), or from a date
 the source states for that specific fact when it is more precise. Never
