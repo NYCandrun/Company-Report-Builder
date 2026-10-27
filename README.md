@@ -124,6 +124,21 @@ packets. In Claude Code, use isolated subagents. If no subagent facility exists,
 execute the same packets in separate contexts sequentially. Never improvise a
 different task graph because a host lacks a dispatch API.
 
+## Keeping the evidence
+
+A run folder is ignored by the template's git. `python3 -m research_control
+--root runs/<slug> archive` commits the run to its own branch on the
+template's remote, `run-data/<slug>`, through a separate git directory
+(`tools/archive.git`), so the template branch is untouched. It keeps every
+capture (page text, HTML, transcripts and captions, receipts), the fact store,
+synthesis, checks, the final report, a snapshot of the scheduler database, and
+a git bundle of each cloned repository with all history, branches, and pull
+request heads (`01-sources/repositories/`, with a manifest; a bundle over the
+remote's file limit is listed and its captured text kept). It leaves out
+downloaded audio, whose transcript is kept, the HTTP transport cache, and
+worker scratch space. Archive after every `run` that captures sources and
+after each wave of workers.
+
 ## Question-bounded discovery
 
 Discovery has no source-count target in either direction. Scope numbers the

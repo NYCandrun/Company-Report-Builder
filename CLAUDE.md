@@ -30,6 +30,13 @@ every ready packet until exact-artifact release passes.
   you hit). The configured numbers are defaults; see README for the overrides.
 - Preserve single-writer reducer ownership, record concrete access blockers,
   and never edit scheduler state directly.
+- Keep the evidence. A run folder is ignored by the template's git, so after
+  every `run` that captured or recaptured sources, and after each wave of
+  workers, run `python3 -m research_control --root runs/<slug> archive`. It
+  commits the run (captures, HTML, transcripts, facts, drafts, and a git
+  bundle of every cloned repository) to the remote's `run-data/<slug>` branch.
+  Never delete captures or transcripts after extraction; reuse them instead of
+  capturing again.
 - When the framework changes mid-run, change the template, commit, and run
   `python3 -m research_control --root runs/<slug> sync-engine` from the template
   checkout so the change is recorded in the run history.

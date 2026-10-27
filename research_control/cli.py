@@ -269,6 +269,12 @@ def _parser() -> argparse.ArgumentParser:
     )
     work_restore.add_argument("task_id")
     work_restore.add_argument("--reason", required=True)
+    archive_parser = subparsers.add_parser(
+        "archive", help="orchestrator: commit the run's sources and outputs to its run-data branch on the remote"
+    )
+    archive_parser.add_argument("--remote", help="remote URL (default: the template checkout's origin)")
+    archive_parser.add_argument("--branch", help="branch (default: run-data/<slug>)")
+    archive_parser.add_argument("--no-push", action="store_true")
     supplement = subparsers.add_parser(
         "supplement", help="orchestrator: extract a recaptured source's new text as a supplement to its filed facts"
     )
@@ -411,6 +417,11 @@ def main() -> None:
             return
         if args.command == "supplement":
             _print_json(add_supplement(root, args.source_id, args.reason))
+            return
+        if args.command == "archive":
+            from research_control.archive import archive
+
+            _print_json(archive(root, remote=args.remote, branch=args.branch, push=not args.no_push))
             return
         if args.command == "status":
             _print_json(runtime_status(root) if (root / "tools/outputs/runtime.sqlite3").is_file() else status_summary(root))

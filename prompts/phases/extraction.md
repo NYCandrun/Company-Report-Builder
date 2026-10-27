@@ -5,6 +5,9 @@ explicit source slice in full. Sampling, `head`, `sed`, or `grep` is not a
 substitute. Write only the packet's private candidate and disposition JSONL
 parts so work is resumable; the reducer owns the canonical stores.
 
+There is no fact count in either direction: extract everything the assigned
+text supports that bears on the research questions, and nothing outside them.
+
 Each candidate ID must use the packet metadata's `candidate_id_prefix` followed
 by a zero-padded worker-local sequence. Each candidate contains `topic`,
 `claim`, `quote`, `source_id`, `location`,
