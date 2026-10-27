@@ -8,7 +8,7 @@ import json
 
 from research_control.capture import _reusable_transcript
 from research_control.discovery import admissible_media, discoverable_link
-from research_control.media import is_media_url, youtube_id
+from research_control.media import _label_speakers, is_media_url, youtube_id
 from research_control.validators import quotes
 
 
@@ -55,6 +55,15 @@ class MediaTests(unittest.TestCase):
             receipt.write_text(json.dumps({"transcript": {"status": "transcribed", "method": "whisper", "segments": 1}}))
             self.assertEqual(transcript, _reusable_transcript(root, "S1", url)["path"])
             self.assertIsNone(_reusable_transcript(root, "S1", "https://cdn.example.com/other.mp3"))
+
+    def test_words_take_the_speaker_of_their_turn_and_lines_break_on_changes(self) -> None:
+        words = [(0.0, 0.4, " Thanks"), (0.4, 0.8, " for"), (0.8, 1.2, " joining."),
+                 (1.6, 2.0, " Happy"), (2.0, 2.4, " to"), (2.4, 2.8, " be"), (2.8, 3.0, " here.")]
+        turns = [(0.0, 1.3, 7), (1.5, 3.1, 3)]
+        self.assertEqual(
+            [(0.0, "Speaker 1: Thanks for joining."), (1.6, "Speaker 2: Happy to be here.")],
+            _label_speakers(words, turns),
+        )
 
 
 if __name__ == "__main__":

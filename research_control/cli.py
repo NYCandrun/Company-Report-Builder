@@ -176,6 +176,10 @@ def preflight(root: Path) -> int:
         import faster_whisper  # noqa: F401
     except ImportError:
         warnings.append("faster-whisper not found; downloaded audio cannot be transcribed locally")
+    try:
+        import sherpa_onnx  # noqa: F401
+    except ImportError:
+        warnings.append("sherpa-onnx not found; Whisper transcripts will not label speakers")
     if shutil.which("pdftoppm") is None:
         warnings.append("pdftoppm not found; renderer will produce SVG page previews for visual review")
     if not any((

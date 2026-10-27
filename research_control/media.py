@@ -200,10 +200,11 @@ def _download_audio(url: str, directory: Path, clients: tuple[str | None, ...] =
     raise RuntimeError("public audio download failed: " + "; ".join(failures))
 
 
-def _transcribe_audio(audio: Path) -> tuple[list[tuple[float, str]], str]:
+def _transcribe_audio(audio: Path) -> tuple[list[tuple[float, str]], str, str]:
     digest = hashlib.sha256(audio.read_bytes()).hexdigest()
     try:
-        return _whisper(audio), digest
+        lines, speaker_note = _whisper(audio)
+        return lines, digest, speaker_note
     finally:
         audio.unlink(missing_ok=True)
 
@@ -223,14 +224,133 @@ def _decode(audio: Path) -> Any:
     return numpy.frombuffer(result.stdout, numpy.int16).astype(numpy.float32) / 32768.0
 
 
-def _whisper(audio: Path) -> list[tuple[float, str]]:
+DIARIZATION_RELEASE = "https://github.com/k2-fsa/sherpa-onnx/releases/download"
+DIARIZATION_MODELS = {
+    "segmentation.onnx": f"{DIARIZATION_RELEASE}/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2",
+    "embedding.onnx": f"{DIARIZATION_RELEASE}/speaker-recongition-models/nemo_en_titanet_large.onnx",
+}
+DIARIZATION_CACHE = Path(os.environ.get("RESEARCH_CONTROL_MODEL_CACHE", Path.home() / ".cache/research_control")) / "diarization"
+# Distance threshold for joining voices. Lower splits one voice into several
+# speakers; higher merges different voices. With TitaNet-Large embeddings, 0.7
+# separated two hosts and a guest with similar voices on a podcast and placed
+# every turn change correctly; very short utterances can still get a label of
+# their own. (A smaller WeSpeaker model merged all three voices.)
+DIARIZATION_THRESHOLD = float(os.environ.get("RESEARCH_CONTROL_DIARIZATION_THRESHOLD", "0.7"))
+_diarization_lock = threading.Lock()
+
+
+def _diarization_models() -> tuple[Path, Path]:
+    """Fetch the public pyannote segmentation and TitaNet-Large embedding ONNX models once."""
+    import tarfile
+
+    segmentation = DIARIZATION_CACHE / "segmentation.onnx"
+    embedding = DIARIZATION_CACHE / "embedding.onnx"
+    with _diarization_lock:
+        DIARIZATION_CACHE.mkdir(parents=True, exist_ok=True)
+        if not segmentation.is_file():
+            archive = DIARIZATION_CACHE / "segmentation.tar.bz2"
+            with urlopen(DIARIZATION_MODELS["segmentation.onnx"], timeout=300) as response, archive.open("wb") as handle:
+                shutil.copyfileobj(response, handle)
+            with tarfile.open(archive) as bundle:
+                member = next(item for item in bundle.getmembers() if item.name.endswith("/model.int8.onnx"))
+                extracted = bundle.extractfile(member)
+                assert extracted is not None
+                segmentation.write_bytes(extracted.read())
+            archive.unlink(missing_ok=True)
+        if not embedding.is_file():
+            with urlopen(DIARIZATION_MODELS["embedding.onnx"], timeout=300) as response, embedding.open("wb") as handle:
+                shutil.copyfileobj(response, handle)
+    return segmentation, embedding
+
+
+def _diarize(samples: Any) -> list[tuple[float, float, int]]:
+    """Return (start, end, speaker) turns; speaker numbers group similar voices."""
+    import sherpa_onnx
+
+    segmentation, embedding = _diarization_models()
+    threads = runtime_limits()["whisper_threads"]
+    config = sherpa_onnx.OfflineSpeakerDiarizationConfig(
+        segmentation=sherpa_onnx.OfflineSpeakerSegmentationModelConfig(
+            pyannote=sherpa_onnx.OfflineSpeakerSegmentationPyannoteModelConfig(model=str(segmentation)),
+            num_threads=threads,
+        ),
+        embedding=sherpa_onnx.SpeakerEmbeddingExtractorConfig(model=str(embedding), num_threads=threads),
+        clustering=sherpa_onnx.FastClusteringConfig(num_clusters=-1, threshold=DIARIZATION_THRESHOLD),
+        min_duration_on=0.3,
+        min_duration_off=0.5,
+    )
+    result = sherpa_onnx.OfflineSpeakerDiarization(config).process(samples).sort_by_start_time()
+    return [(float(turn.start), float(turn.end), int(turn.speaker)) for turn in result]
+
+
+def _speaker_at(moment: float, turns: list[tuple[float, float, int]]) -> int | None:
+    best: tuple[float, int] | None = None
+    for turn_start, turn_end, speaker in turns:
+        if turn_start <= moment <= turn_end:
+            return speaker
+        distance = min(abs(moment - turn_start), abs(moment - turn_end))
+        if best is None or distance < best[0]:
+            best = (distance, speaker)
+    # A word in a short gap between turns belongs to the nearest turn.
+    return best[1] if best and best[0] <= 1.0 else None
+
+
+def _label_speakers(
+    words: list[tuple[float, float, str]], turns: list[tuple[float, float, int]]
+) -> list[tuple[float, str]]:
+    """Label each word by the speaker turn at its midpoint and break lines at speaker changes.
+
+    Speakers are renumbered in order of first appearance (Speaker 1, 2, ...).
+    Lines also break at sentence ends after about 25 words so they stay citable.
+    """
+    order: dict[int, int] = {}
+    lines: list[tuple[float, str]] = []
+    current: int | None | str = "unset"
+    line_start = 0.0
+    buffer: list[str] = []
+
+    def flush() -> None:
+        if buffer:
+            label = "?" if current is None else str(order.setdefault(current, len(order) + 1))
+            lines.append((line_start, f"Speaker {label}: " + "".join(buffer).strip()))
+
+    for start, end, word in words:
+        speaker = _speaker_at((start + end) / 2, turns)
+        sentence_end = bool(buffer) and buffer[-1].rstrip().endswith((".", "?", "!")) and len(buffer) >= 25
+        if speaker != current or sentence_end:
+            flush()
+            buffer = []
+            current = speaker
+            line_start = start
+        buffer.append(word)
+    flush()
+    return lines
+
+
+def _whisper(audio: Path) -> tuple[list[tuple[float, str]], str]:
+    """Transcribe with Whisper and label speakers when diarization is available.
+
+    Returns the timestamped lines and a note on speaker labeling.
+    """
     from faster_whisper import WhisperModel
 
     samples = _decode(audio)
     with _whisper_slots:
         model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8", cpu_threads=runtime_limits()["whisper_threads"])
-        segments, _info = model.transcribe(samples, vad_filter=True, beam_size=5)
-        return [(float(segment.start), segment.text.strip()) for segment in segments if segment.text.strip()]
+        raw, _info = model.transcribe(samples, vad_filter=True, beam_size=5, word_timestamps=True)
+        segments = [item for item in raw if item.text.strip()]
+        try:
+            turns = _diarize(samples)
+        except Exception as error:  # speaker labels are an enhancement; the transcript stands without them
+            plain = [(float(item.start), item.text.strip()) for item in segments]
+            return plain, f"no speaker labels ({type(error).__name__}: {str(error)[:120]})"
+    words = [(float(word.start), float(word.end), word.word) for item in segments for word in (item.words or [])]
+    speakers = len({speaker for _start, _end, speaker in turns})
+    note = (
+        f"speaker labels by automatic diarization per word ({speakers} voice groups, threshold "
+        f"{DIARIZATION_THRESHOLD}); labels mark turns and group similar voices, they do not identify anyone"
+    )
+    return _label_speakers(words, turns), note
 
 
 def transcribe(url: str, directory: Path) -> dict[str, Any]:
@@ -240,6 +360,7 @@ def transcribe(url: str, directory: Path) -> dict[str, Any]:
     lines: list[tuple[float, str]] = []
     method = ""
     audio_sha256 = ""
+    speaker_note = "no speaker labels (published captions carry no speaker information)"
     video_id = youtube_id(url)
     if video_id:
         try:
@@ -256,21 +377,21 @@ def transcribe(url: str, directory: Path) -> dict[str, Any]:
             # No captions: transcribe the audio, trying each player client, then Invidious.
             try:
                 audio, client = _download_audio(url, directory, YT_CAPTION_CLIENTS)
-                lines, audio_sha256 = _transcribe_audio(audio)
+                lines, audio_sha256, speaker_note = _transcribe_audio(audio)
                 method = f"YouTube audio via yt-dlp ({client} client) + local Whisper ({WHISPER_MODEL}) machine transcript"
             except Exception as error:
                 attempts.append(f"yt-dlp audio: {str(error)[:400]}")
         if not lines:
             try:
                 audio, instance = _invidious_audio(video_id, directory)
-                lines, audio_sha256 = _transcribe_audio(audio)
+                lines, audio_sha256, speaker_note = _transcribe_audio(audio)
                 method = f"audio via Invidious ({instance}) + local Whisper ({WHISPER_MODEL}) machine transcript"
             except Exception as error:
                 attempts.append(f"invidious audio: {str(error)[:300]}")
     else:
         try:
             audio, _client = _download_audio(url, directory)
-            lines, audio_sha256 = _transcribe_audio(audio)
+            lines, audio_sha256, speaker_note = _transcribe_audio(audio)
             method = f"public audio download + local Whisper ({WHISPER_MODEL}) machine transcript"
         except Exception as error:
             attempts.append(f"audio: {type(error).__name__}: {str(error)[:300]}")
@@ -279,6 +400,7 @@ def transcribe(url: str, directory: Path) -> dict[str, Any]:
     body = [
         f"# Transcript: {url}",
         f"# Method: {method}",
+        f"# Speakers: {speaker_note}",
         "# Speaker identity is not established by this transcript.",
         "",
         *(f"[{_stamp(start)}] {text}" for start, text in lines),
@@ -290,6 +412,7 @@ def transcribe(url: str, directory: Path) -> dict[str, Any]:
         "method": method,
         "path": path,
         "segments": len(lines),
+        "speakers": speaker_note,
         "audio_sha256": audio_sha256,
         "attempts": attempts,
     }

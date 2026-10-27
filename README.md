@@ -188,8 +188,13 @@ concrete reason.
   through a public Invidious instance, each transcribed locally with Whisper.
   Other media is downloaded and transcribed with Whisper. YouTube requests are
   spaced (`RESEARCH_CONTROL_YT_SPACING`, default 20 s); Invidious instances are
-  set with `RESEARCH_CONTROL_INVIDIOUS`. Machine transcripts never establish
-  who is speaking.
+  set with `RESEARCH_CONTROL_INVIDIOUS`. Whisper transcripts label speakers
+  per word by automatic diarization (`sherpa-onnx` with the pyannote
+  segmentation and NVIDIA TitaNet-Large models, fetched once into
+  `~/.cache/research_control`; threshold `RESEARCH_CONTROL_DIARIZATION_THRESHOLD`,
+  default 0.7). Labels such as `Speaker 2` mark turns and group voices; they are
+  reliable across long turns and less so in quick exchanges, and they never
+  establish who is speaking. Published captions carry no speaker labels.
 
 YouTube availability from cloud networks varies by the hour. Re-queue media
 whose transcript failed with:

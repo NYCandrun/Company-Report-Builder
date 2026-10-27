@@ -38,7 +38,9 @@ notes.
 - Scope every absence to the sources searched.
 
 Name a transcript speaker only when the record establishes identity. Otherwise
-use `a speaker in the <title> webinar`. Mark probable or unclear labels. A fact
+use `a speaker in the <title> webinar`. Diarization labels (`Speaker 1`, ...)
+group voices and mark turns but can split or merge people; tie a label to a
+name only where the transcript itself establishes it, and mark it `(probable)`. Mark probable or unclear labels. A fact
 depending on uncertain transcription remains inference or unresolved.
 
 `about` names the subject company, `Market`, or `X (per Y)`. `said_by` names the
