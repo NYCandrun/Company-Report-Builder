@@ -295,15 +295,20 @@ class OperationalRunTests(unittest.TestCase):
                 "messaging-timeline", "organization", "direction", "open-questions",
             )
 
-            def write_synthesis() -> None:
+            def write_groundwork() -> None:
                 text(root, "tools/digests/company.md", "# Digest\n\nACME-001\n")
                 text(root, "03-timelines/messaging.md", "# Timeline\n\n2026-01-01: Product evidence. ACME-001\n")
                 text(root, "tools/outputs/currency.csv", "fact_id,status\nACME-001,current\n")
-                for name in synthesis_names:
-                    text(root, f"05-synthesis/{name}.md", f"# {name.replace('-', ' ').title()}\n\nAcme provides workflow software. ACME-001\n")
-                text(root, "06-checks/currency-review.md", "# Currency review\n\nACME-001 is current as of 2026-01-01.\n")
 
-            complete_task(root, "initial_synthesis.synthesize", "synthesis-worker", write_synthesis)
+            complete_task(root, "initial_synthesis.groundwork", "synthesis-groundwork", write_groundwork)
+            complete_task(root, "initial_synthesis.currency-review", "currency-reviewer", lambda: text(
+                root, "06-checks/currency-review.md", "# Currency review\n\nACME-001 is current as of 2026-01-01.\n"
+            ))
+            # Each synthesis file has its own writer; open questions comes last.
+            for name in synthesis_names:
+                complete_task(root, f"initial_synthesis.write-{name}", f"writer-{name}", lambda name=name: text(
+                    root, f"05-synthesis/{name}.md", f"# {name.replace('-', ' ').title()}\n\nAcme provides workflow software. ACME-001\n"
+                ))
             report, _ = check_phase(root, "initial_synthesis")
             self.assertEqual(PASS, report["status"], report)
 

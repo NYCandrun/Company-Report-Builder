@@ -298,6 +298,17 @@ succeeded -> stale -> ready
 
 Task counts therefore vary with the company and evidence actually found.
 
+Phases fan out wherever parts do not depend on each other:
+
+- **Synthesis.** One groundwork task writes the digests, timelines, and
+  currency file. An independent worker reviews currency. Then each synthesis
+  file gets its own writer, all in parallel. Open questions is written last,
+  from the other eight.
+- **Verification.** The runtime lists every cited fact and writes one packet
+  per fact. It groups the facts into shards by source, so each capture is read
+  once. Each shard gets its own independent verifier, and the runtime merges
+  the verdicts in cited order.
+
 At the start of capture, the scheduler also dispatches the brand-guide packet
 (`final.brand-guide`, marked `dispatch: early`). It belongs to the final phase
 and gates only that phase: the brief writer and diagram builder depend on it,

@@ -1,9 +1,14 @@
 TASK TYPE: SYNTHESIS WORK, NOT VERIFICATION OR STATUS
 
-Read the evidence, writing, and runtime cores. Use only assigned fact digests,
-reviewed timelines, and exact synthesis output. Build every factual sentence,
-box, arrow, table cell, score input, and dated change from fact IDs in the
-store. Look up a full quote only when wording matters.
+Read the evidence, writing, and runtime cores. Use only the fact digests in
+`tools/digests/`, the timelines in `03-timelines/`, the currency file, and the
+currency review when it exists; write only your assigned synthesis file. The
+open-questions writer runs last and also reads the other synthesis files, so
+every unresolved conflict and gap they leave appears once as a question.
+
+Build every factual sentence, box, arrow, table cell, score input, and dated
+change from fact IDs in the store. Look up a full quote only when wording
+matters.
 
 Keep aims separate from shipped capabilities, product from staff-delivered
 work, fact from inference, and conflicts visible. Label every interpretation

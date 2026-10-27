@@ -119,6 +119,8 @@ def preflight(root: Path) -> int:
         "prompts/phases/extraction-reducer.md",
         "prompts/phases/triage.md",
         "prompts/phases/alternate-copies.md",
+        "prompts/phases/synthesis-groundwork.md",
+        "prompts/phases/currency-review.md",
         "prompts/phases/brand-guide.md",
         "prompts/phases/diagram-modeling.md",
         "prompts/phases/diagram-building.md",
