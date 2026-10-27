@@ -1021,7 +1021,9 @@ def _unmerged_work(checkout: Path, scope: str = "") -> tuple[list[str], str]:
     # A ref whose human commits another ref already carries is that ref's earlier state.
     kept = [key for key in groups if not any(key < other for other in groups)]
     if not kept:
-        return [], ""
+        checked = len([ref for ref in refs if not ref.endswith("/HEAD")])
+        return ["", f"--- WORK NOT ON THE DEFAULT BRANCH (none: {checked} branch and pull request refs checked, "
+                    "all contained in the default branch or bot-only) ---"], ""
     lines = ["", f"--- WORK NOT ON THE DEFAULT BRANCH ({len(kept)} branches or pull requests, unmerged) ---",
              "Unmerged work is built but not merged into the default branch, so not shipped. "
              "Each block is dated by its own commits."]
@@ -1124,7 +1126,9 @@ def _issue_numbers(owner: str, repo: str) -> list[int]:
     for page in range(1, 11):
         try:
             listing = _github_page(f"https://github.com/{owner}/{repo}/issues?q=is%3Aissue&page={page}")
-        except Exception:
+        except Exception as error:
+            if page == 1:
+                raise RuntimeError(f"the issue list could not be read: {str(error)[:120]}") from error
             break
         found = {int(match.group(1)) for link in listing.get("links", []) if (match := pattern.match(str(link or "")))}
         if not found - numbers:
@@ -1138,8 +1142,12 @@ def _github_conversations(checkout: Path, owner: str, repo: str, scope: str = ""
     if not browser_available():
         return ["", "--- PULL REQUESTS AND ISSUES NOT CAPTURED (no headless browser on this host) ---"]
     targets = [("pull", number) for number in _conversation_numbers(checkout, scope)]
+    unread = ""
     if not scope:
-        targets += [("issues", number) for number in _issue_numbers(owner, repo)]
+        try:
+            targets += [("issues", number) for number in _issue_numbers(owner, repo)]
+        except RuntimeError as error:
+            unread = str(error)
     lines: list[str] = []
     missed: list[str] = []
     used = 0
@@ -1158,11 +1166,14 @@ def _github_conversations(checkout: Path, owner: str, repo: str, scope: str = ""
         label = "PULL REQUEST" if kind == "pull" else "ISSUE"
         lines += ["", f"=== {label} #{number}: {rendered.get('title', '')} ({url}) ===", text]
     if not targets:
-        return []
+        issues = f"; {unread}" if unread else ("" if scope else ", and the issue list on github.com is empty")
+        return ["", f"--- PULL REQUESTS AND ISSUES (none: no pull request refs{issues}) ---"]
     header = [
         "", f"--- PULL REQUESTS AND ISSUES ({len(targets) - len(missed)} of {len(targets)}, rendered from github.com; "
         "dates are the pages' own timestamps) ---",
     ]
+    if unread:
+        missed.append(unread)
     if missed:
         lines += ["", f"--- CONVERSATIONS NOT CAPTURED ({len(missed)}) ---", *missed]
     return header + lines
