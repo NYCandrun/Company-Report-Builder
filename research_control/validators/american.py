@@ -94,7 +94,7 @@ QUOTED_COLUMNS = {
 AUTHORED_FIELDS = {
     "claim", "notes", "note", "reason", "summary", "finding", "description", "recommendation", "recommended_fix",
     "fix", "rationale", "issue", "explanation", "disposition_reason", "question", "answer", "label", "caption",
-    "subtitle", "change", "decision_reason", "detail", "why",
+    "subtitle", "change", "decision_reason", "detail", "why", "corrected_claim",
 }
 
 

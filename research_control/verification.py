@@ -25,6 +25,8 @@ PART_DIR = "tools/outputs/worker-parts/verification"
 REUSED = f"{PACKET_DIR}/reused-verdicts.jsonl"
 VERDICTS = "tools/outputs/verification-verdicts.jsonl"
 REPORT = "06-checks/verification-cited.md"
+# Verdicts for facts cited after verification finished, judged in a sandbox (`verify-new`).
+ADDED = "tools/outputs/verification-verdicts-added.jsonl"
 VERDICT_VALUES = ("confirmed", "corrected", "unsupported", "source unreachable")
 # Soft shard size: one worker's careful read of the captures behind it. A
 # source's facts stay together so its capture is read once.
@@ -58,22 +60,8 @@ def prepare(root: Path) -> dict[str, Any]:
     manifest = {row.get("id", ""): row for row in sources.load_manifest(manifest_path)} if manifest_path.is_file() else {}
     index: dict[str, dict[str, str]] = {}
     for fact_id in cited:
-        fact = {key: value for key, value in facts[fact_id].items() if not key.startswith("_")}
-        source_id = fact.get("source_id", "")
-        source = manifest.get(source_id, {})
-        packet = {
-            "fact_id": fact_id,
-            "fact": fact,
-            "fact_table": str(Path(facts[fact_id]["_path"]).relative_to(root)),
-            "fact_table_line": facts[fact_id]["_line"],
-            "source": {
-                "id": source_id, "url": source.get("url", ""), "grade": source.get("grade", ""),
-                "date published": source.get("date published", ""),
-                "local files": [item.strip() for item in source.get("local file", "").split(";") if item.strip()],
-            },
-        }
-        # The located quote with its context; the fingerprint below leaves it out.
-        packet["excerpt"] = source_excerpt(root, source_id, fact.get("verbatim_quote", ""))
+        packet = fact_packet(root, facts, manifest, fact_id)
+        source_id = packet["source"]["id"]
         relative = f"{PACKET_DIR}/{fact_id}.json"
         atomic_write_json(root / relative, packet)
         fingerprint = _fingerprint(packet)
@@ -89,6 +77,26 @@ def prepare(root: Path) -> dict[str, Any]:
     return {
         "status": "PASS", "cited_facts": len(cited), "reused_verdicts": len(reused_ids),
         "to_verify": len(cited) - len(reused_ids), "sources": len({row["source_id"] for row in index.values()}),
+    }
+
+
+def fact_packet(root: Path, facts: dict[str, dict[str, str]], manifest: dict[str, dict[str, str]], fact_id: str) -> dict[str, Any]:
+    """What a verifier judges one fact from: its row, its source, and the located quote in context."""
+    fact = {key: value for key, value in facts[fact_id].items() if not key.startswith("_")}
+    source_id = fact.get("source_id", "")
+    source = manifest.get(source_id, {})
+    return {
+        "fact_id": fact_id,
+        "fact": fact,
+        "fact_table": str(Path(facts[fact_id]["_path"]).relative_to(root)),
+        "fact_table_line": facts[fact_id]["_line"],
+        "source": {
+            "id": source_id, "url": source.get("url", ""), "grade": source.get("grade", ""),
+            "date published": source.get("date published", ""),
+            "local files": [item.strip() for item in source.get("local file", "").split(";") if item.strip()],
+        },
+        # The located quote with its context; the fingerprint leaves it out.
+        "excerpt": source_excerpt(root, source_id, fact.get("verbatim_quote", "")),
     }
 
 
@@ -110,7 +118,7 @@ def _prior_verdicts(root: Path) -> dict[str, tuple[str, dict[str, Any]]]:
         return {}
     facts = load_json(index_path).get("facts", {})
     rows: list[dict[str, Any]] = []
-    for path in [root / VERDICTS, root / REUSED, *sorted((root / PART_DIR).glob("*.jsonl"))]:
+    for path in [root / VERDICTS, root / REUSED, root / ADDED, *sorted((root / PART_DIR).glob("*.jsonl"))]:
         if path.is_file():
             rows.extend(load_jsonl(path))
     prior: dict[str, tuple[str, dict[str, Any]]] = {}
@@ -228,7 +236,7 @@ def reduce_verdicts(root: Path, parts: list[str]) -> dict[str, Any]:
 CITED_ROWS = "tools/outputs/cited-fact-rows.md"
 
 
-def write_cited_rows(root: Path, verdicts: list[dict[str, Any]]) -> None:
+def write_cited_rows(root: Path, verdicts: list[dict[str, Any]], output: str = "") -> None:
     """The cited facts as one compact table with their verdicts, dates, and deep links,
     so the brief and diagrams work from it instead of the whole fact store."""
     facts = _facts(root)
@@ -245,7 +253,7 @@ def write_cited_rows(root: Path, verdicts: list[dict[str, Any]]) -> None:
             str(row.get("corrected_claim") or ""), links.get(str(row["fact_id"]), {}).get("deep_link", ""),
         ]
         rows.append("| " + " | ".join(re.sub(r"\s+", " ", str(cell)).replace("|", "/") for cell in cells) + " |")
-    atomic_write_text(root / CITED_ROWS, "\n".join([
+    atomic_write_text(root / (output or CITED_ROWS), "\n".join([
         "# Cited facts", "",
         f"Every fact the synthesis cites ({len(rows)}), with its verification verdict. Full rows are in 02-facts/.", "",
         "| Fact ID | Verdict | Claim | Verbatim quote | Source ID | Source date | Grade | Correction | Deep link |",

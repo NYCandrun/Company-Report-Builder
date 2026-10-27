@@ -318,6 +318,15 @@ def _parser() -> argparse.ArgumentParser:
         help="write the control agent's whole conversation as one checked file now (done automatically once released)",
     )
     archive_parser.add_argument("--no-push", action="store_true")
+    verify_new = subparsers.add_parser(
+        "verify-new",
+        help="orchestrator: verify, in a sandbox, only facts cited after verification finished (no rerun of it)",
+    )
+    verify_new.add_argument("--label", default="", help="the sandbox's name (default: a timestamp)")
+    verify_new.add_argument("--fact-id", action="append", default=[], help="verify these facts (default: every unverified cited fact)")
+    verify_new.add_argument("--check", metavar="LABEL", help="check a sandbox's verdicts")
+    verify_new.add_argument("--merge", metavar="LABEL", help="add a clean sandbox's verdicts and settle verification")
+
     supplement = subparsers.add_parser(
         "supplement", help="orchestrator: extract a recaptured source's new text as a supplement to its filed facts"
     )
@@ -478,6 +487,17 @@ def main() -> None:
         if args.command == "next":
             result = next_packets(root)
             _print_json(result)
+            return
+        if args.command == "verify-new":
+            from research_control import verification_sandbox
+
+            if args.check:
+                problems = verification_sandbox.check(root, args.check)
+                _print_json({"label": args.check, "problems": problems, "status": "clean" if not problems else "problems"})
+            elif args.merge:
+                _print_json(verification_sandbox.merge(root, args.merge))
+            else:
+                _print_json(verification_sandbox.prepare(root, args.label, list(args.fact_id) or None))
             return
         if args.command == "supplement":
             from research_control.routing import source_kind

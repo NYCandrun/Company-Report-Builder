@@ -226,8 +226,10 @@ def _validate_synthesis_ids(root: Path, checker: str) -> dict[str, Any]:
 
 
 def _verification_records(root: Path) -> list[dict[str, Any]]:
-    path = root / "tools/outputs/verification-verdicts.jsonl"
-    return load_jsonl(path) if path.is_file() and path.stat().st_size else []
+    # The verification phase's verdicts and those added in a sandbox for facts cited later.
+    from research_control.verification_sandbox import verdict_rows
+
+    return verdict_rows(root)
 
 
 def _validate_verdicts(root: Path, checker: str) -> dict[str, Any]:

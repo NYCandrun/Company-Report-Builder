@@ -216,6 +216,21 @@ without a title (a video page that refused the capture, a podcast audio file)
 take their title from the feed item their date came from or from the video's
 own listing, kept in `tools/outputs/source-titles.json`.
 
+## Verifying facts added after verification
+
+When a run adds facts after its verification phase (a later search, such as a
+market and competitor pass), only the facts newly cited need a verdict.
+`python3 -m research_control verify-new` lists the cited facts that have no
+verdict yet, writes their packets and one self-contained brief under
+`tools/outputs/verification-sandbox/<label>/`, and one verifier judges them by
+the verification rules. `verify-new --check LABEL` checks the verdicts, and
+`verify-new --merge LABEL` adds them to
+`tools/outputs/verification-verdicts-added.jsonl` (with their rows in
+`tools/outputs/cited-fact-rows-added.md`), which every verdict check reads
+alongside the phase's own verdicts. The verification phase's finished work is
+left as it is: if the new facts marked it for rerun, the merge restores it.
+Run it after the new facts are cited and before `run` reaches verification.
+
 ## American English
 
 Everything a worker writes is in American English, in spelling and in

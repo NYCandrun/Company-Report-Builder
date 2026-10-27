@@ -106,3 +106,39 @@ class WithdrawnFactTests(unittest.TestCase):
             atomic_write_json(root / "tools/lists/withdrawn-facts.json", {"facts": {"PRD-003": "capture omission since fixed"}})
             failures = checks._validate_synthesis_ids(root, "synthesis_fact_ids")["failures"]
             self.assertIn("cites withdrawn fact PRD-003", failures[0])
+
+
+class SandboxVerificationTests(unittest.TestCase):
+    def test_only_facts_cited_after_verification_are_judged_and_added(self) -> None:
+        import tempfile
+
+        from research_control import checks, verification_sandbox
+        from research_control.io import atomic_write_jsonl, atomic_write_text, load_jsonl
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            import shutil
+
+            shutil.copytree(Path(__file__).resolve().parents[2] / "prompts", root / "prompts")
+            atomic_write_text(root / "01-sources/MANIFEST.csv", "id,grade,title,publisher,url,date published,local file\n"
+                              "SRC-A,S,Rival page,rival.example,https://rival.example/,,01-sources/captures/SRC-A/content.txt\n")
+            atomic_write_text(root / "01-sources/captures/SRC-A/content.txt", "Rival builds agents for banks.\n")
+            atomic_write_text(root / "02-facts/facts.md", "| Fact ID | Claim | Verbatim quote | Source ID | Grade |\n|---|---|---|---|---|\n"
+                              "| CMP-001 | Rival builds agents | Rival builds agents | SRC-A | S |\n"
+                              "| CMP-002 | Rival serves banks | agents for banks | SRC-A | S |\n")
+            atomic_write_jsonl(root / verification.VERDICTS, [
+                {"fact_id": "CMP-001", "verdict": "confirmed", "reason": "quoted", "evidence_paths": ["x"]}])
+            atomic_write_text(root / "05-synthesis/competitors.md", "Rival builds agents [CMP-001] for banks [CMP-002].\n")
+            prepared = verification_sandbox.prepare(root, "market")
+            self.assertEqual(1, prepared["facts"])
+            self.assertIn("CMP-002", (root / prepared["brief"]).read_text(encoding="utf-8"))
+            self.assertIn("verdicts.jsonl is missing", " ".join(verification_sandbox.check(root, "market")))
+            atomic_write_jsonl(root / verification_sandbox.SANDBOX / "market/verdicts.jsonl", [
+                {"fact_id": "CMP-002", "verdict": "confirmed", "reason": "the quote names banks", "evidence_paths": ["y"]}])
+            self.assertEqual([], verification_sandbox.check(root, "market"))
+            verification_sandbox.merge(root, "market")
+            # The phase's verdict file is untouched; every check now sees both.
+            self.assertEqual(["CMP-001"], [row["fact_id"] for row in load_jsonl(root / verification.VERDICTS)])
+            self.assertEqual({"CMP-001", "CMP-002"}, {row["fact_id"] for row in checks._verification_records(root)})
+            self.assertEqual([], verification_sandbox.unverified(root))
+            self.assertIn("CMP-002", (root / verification_sandbox.ADDED_ROWS).read_text(encoding="utf-8"))
