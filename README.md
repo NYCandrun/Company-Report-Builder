@@ -401,8 +401,13 @@ as possible, treating public sources as intentionally public:
 3. Find the repositories: one query of the affiliated handles' activity, then
    the browser's repository lists; only the firm's work is admitted, never
    personal projects.
-4. Deleted repositories, when easy: what the public event record kept about
-   them, never duplicating live repositories.
+4. Deleted and abandoned repositories: from what the public event record kept
+   (names, activity dates, pull request and issue titles, branch and release
+   names), decide which point at a customer project, an abandoned product, or
+   business and operations records. For a deleted one worth it, read its
+   archived copy in Software Heritage (the public archive of source code):
+   the Markdown and CSV files at the last archived commit, within the
+   archive's request limit. Never duplicate live repositories.
 
 The runtime reads each admitted repository at its latest commit: the
 description and topics, the file list, and the Markdown and CSV files (README

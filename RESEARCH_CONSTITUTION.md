@@ -153,8 +153,10 @@ affiliated with the firm (from public event records of who commits to and
 stars its repositories and its people's work repositories, confirmed by
 profile, membership, or repeated commits), then the firm's and its people's
 work repositories, read only for their description, file list, and Markdown
-and CSV files at the latest commit. Deleted repositories may be read from the
-public event record, never duplicating live ones.
+and CSV files at the latest commit. Deleted and abandoned repositories are
+judged from the public event record; those that point at customer projects,
+abandoned products, or business and operations records are read from their
+archived copies (Software Heritage) the same way, never duplicating live ones.
 
 ## Evidence
 

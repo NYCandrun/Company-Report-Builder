@@ -146,6 +146,18 @@ def _repository_link(lines: list[str], index: int, quote_text: str) -> tuple[str
     repo = header.removeprefix("Repository: ").strip()
     commit = commit_line.removeprefix("Captured commit: ").split()[0] if commit_line else "HEAD"
     base = f"https://github.com/{repo}"
+    archived = next((line for line in lines[:8] if line.startswith("Archived copy: ")), "")
+    if archived:
+        # A repository GitHub no longer serves: link into Software Heritage's archived copy.
+        origin = re.search(r"origin (\S+),", archived)
+        for back in range(index, -1, -1):
+            match = FILE_HEADER.match(lines[back])
+            if match:
+                path, number = match.group(1), index - back
+                return (f"https://archive.softwareheritage.org/browse/origin/content/?origin_url="
+                        f"{quote(origin.group(1) if origin else base, safe='')}&path={quote(path)}#L{number}",
+                        f"{path} line {number} (archived copy)")
+        return lines[1].removeprefix("Source URL: ").strip(), "archived copy"
     line = lines[index]
     history = HISTORY_LINE.match(line)
     for back in range(index, -1, -1):

@@ -20,7 +20,7 @@ from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, quote, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from research_control.io import atomic_write_json, atomic_write_text, utc_now
@@ -643,6 +643,12 @@ def auto_capture_source(
     """
     from research_control.media import AUDIO_SUFFIXES
 
+    if (urlparse(url).hostname or "").casefold() == "archive.softwareheritage.org":
+        # An archived copy of a repository GitHub no longer serves (deleted or made private).
+        try:
+            return _clear_stale_block(root, source_id, _software_heritage_capture(root, url=url, source_id=source_id, grade=grade))
+        except Exception as error:
+            return _blocked_receipt(root, source_id, url, f"{type(error).__name__}: {error}")
     if (urlparse(url).hostname or "").casefold().removeprefix("www.") == "github.com":
         try:
             capture = _github_shallow_capture if shallow_repositories else _github_capture
@@ -1550,6 +1556,130 @@ def _repository_about(owner: str, repo: str) -> tuple[str, list[str]]:
     start = text.find("\nAbout\n")
     block = text[start + 1:].split("Report repository")[0] if start >= 0 else ""
     return (title.group(1).strip() if title else ""), [line.strip() for line in block.splitlines() if line.strip()][:40]
+
+
+SOFTWARE_HERITAGE_API = "https://archive.softwareheritage.org/api/1"
+# Software Heritage allows anonymous readers about 120 requests an hour, so one archived
+# repository gets a bounded look: its tree one level down (folders whose names suggest
+# documents or data first) and its Markdown and CSV files.
+SOFTWARE_HERITAGE_REQUESTS = 30
+SOFTWARE_HERITAGE_FOLDERS = 8
+DOCUMENT_FOLDER_HINTS = ("doc", "data", "note", "client", "customer", "project", "report", "ops", "team", "plan",
+                         "account", "sales", "case", "proposal", "content", "research")
+
+
+class _SoftwareHeritage:
+    """A rate-aware reader for Software Heritage's public API."""
+
+    def __init__(self, budget: int = SOFTWARE_HERITAGE_REQUESTS) -> None:
+        self.left = budget
+        self.remaining = 120
+        self.opener = build_opener()
+
+    def get(self, path: str, raw: bool = False) -> Any:
+        if self.left <= 0 or self.remaining <= 2:
+            raise RuntimeError("the Software Heritage request limit for this look was reached")
+        self.left -= 1
+        request = Request(f"{SOFTWARE_HERITAGE_API}{path}", headers={"User-Agent": USER_AGENT})
+        with self.opener.open(request, timeout=60) as response:
+            self.remaining = int(response.headers.get("X-RateLimit-Remaining") or self.remaining)
+            body = response.read()
+        return body if raw else json.loads(body.decode("utf-8"))
+
+
+def _software_heritage_capture(root: Path, *, url: str, source_id: str, grade: str) -> dict[str, Any]:
+    """Read an archived copy of a repository from Software Heritage: the last archived commit,
+    its tree one level down, and its Markdown and CSV files (README first, within a size limit)."""
+    origin = (parse_qs(urlparse(url).query).get("origin_url") or [""])[0].rstrip("/")
+    parts = [part for part in urlparse(origin).path.split("/") if part]
+    if not origin or len(parts) < 2:
+        raise RuntimeError("an archived copy is named by its origin_url (https://github.com/OWNER/REPO)")
+    owner, repo = parts[0], parts[1].removesuffix(".git")
+    archive = _SoftwareHeritage()
+    try:
+        visit = archive.get(f"/origin/{quote(origin, safe=':/')}/visit/latest/?require_snapshot=true")
+    except Exception as error:
+        raise RuntimeError(f"Software Heritage holds no archived copy of {origin}: {error}") from error
+    snapshot = archive.get(f"/snapshot/{visit['snapshot']}/?branches_count=1000")
+    branches = snapshot.get("branches", {})
+    head = branches.get("HEAD") or {}
+    branch = branches.get(head.get("target", "")) if head.get("target_type") == "alias" else head
+    if not branch or branch.get("target_type") != "revision":
+        branch = next((value for name, value in branches.items()
+                       if name in {"refs/heads/main", "refs/heads/master"} and value.get("target_type") == "revision"), None)
+    if not branch:
+        raise RuntimeError(f"the archived copy of {origin} has no default branch")
+    revision = archive.get(f"/revision/{branch['target']}/")
+    entries = {item["name"]: item for item in archive.get(f"/directory/{revision['directory']}/")}
+    listed = [name for name, item in entries.items() if item["type"] == "file"]
+    targets = {name: item["target"] for name, item in entries.items() if item["type"] == "file"}
+    folders = sorted((name for name, item in entries.items() if item["type"] == "dir"),
+                     key=lambda name: (not any(hint in name.casefold() for hint in DOCUMENT_FOLDER_HINTS), name.casefold()))
+    unread_folders: list[str] = []
+    for name in folders:
+        if len(listed) and archive.left <= 12 or folders.index(name) >= SOFTWARE_HERITAGE_FOLDERS:
+            unread_folders.append(name)
+            continue
+        for item in archive.get(f"/directory/{entries[name]['target']}/"):
+            path = f"{name}/{item['name']}"
+            if item["type"] == "file":
+                listed.append(path)
+                targets[path] = item["target"]
+            else:
+                unread_folders.append(path)
+    message = str(revision.get("message") or "").strip().splitlines()
+    committed = str(revision.get("committer_date") or revision.get("date") or "")
+    lines = [
+        f"Repository: {owner}/{repo}",
+        f"Source URL: {url}",
+        f"Archived copy: Software Heritage, origin {origin}, archived {str(visit.get('date', ''))[:10]}",
+        f"Captured commit: {revision['id']} (committed {committed})",
+        f"Last archived commit message: {message[0][:200] if message else '(none)'}",
+        "Method: Software Heritage's archived copy, read at the last archived commit (file list one folder down, "
+        "Markdown, and CSV files; no history)", "",
+        f"--- FILE TREE ({len(listed)} files, one folder down) ---", *sorted(listed)[:300],
+        *([f"--- FOLDERS NOT LISTED ({len(unread_folders)}) ---", *unread_folders[:50]] if unread_folders else []),
+    ]
+    room = SHALLOW_TEXT_CHARACTERS
+    left_out: list[str] = []
+    for path in shallow_files(listed):
+        if archive.left <= 0 or archive.remaining <= 2:
+            left_out.append(path)
+            continue
+        text = archive.get(f"/content/sha1_git:{targets[path]}/raw/", raw=True).decode("utf-8", errors="replace")
+        text = _drop_blobs(text[:SHALLOW_FILE_CHARACTERS])
+        if len(text) > room:
+            left_out.append(path)
+            continue
+        room -= len(text)
+        lines += ["", f"--- FILE: {path} ---", text]
+    if left_out:
+        lines += ["", f"--- MARKDOWN AND CSV NOT READ ({len(left_out)} files over this look's limits) ---", *left_out[:100]]
+    directory = root / "01-sources/captures" / source_id
+    directory.mkdir(parents=True, exist_ok=True)
+    text_path = directory / "content.txt"
+    atomic_write_text(text_path, "\n".join(lines).rstrip() + "\n")
+    content = text_path.read_text(encoding="utf-8")
+    relative_text = str(text_path.relative_to(root))
+    source = {
+        "id": source_id, "grade": grade, "title": f"{owner}/{repo} (no longer on GitHub; archived copy)",
+        "publisher": f"Software Heritage archive of GitHub ({owner})", "url": url, "date published": "",
+        "date last modified": committed[:10], "date captured": datetime.now(timezone.utc).date().isoformat(),
+        "local file": relative_text, "method": "Software Heritage archived copy (last archived commit)",
+        "notes": f"Archived {str(visit.get('date', ''))[:10]}; last archived commit {revision['id'][:12]} ({committed[:10]})",
+    }
+    receipt = {
+        "schema_version": "1.0.0", "task_type": "capture", "source_id": source_id, "status": "captured",
+        "source": source, "local_paths": [relative_text], "content_bytes": len(content.encode("utf-8")),
+        "estimated_tokens": max(1, len(content) // 4), "canonical_text_ready": True, "captured_at": utc_now(),
+        "disposition": {
+            "input_id": source_id, "disposition": "completed", "reason": "archived copy of a repository read",
+            "evidence_paths": [relative_text], "output_ids": [source_id],
+        },
+    }
+    receipt_path = root / "tools/outputs/worker-parts/capture" / f"{source_id}.json"
+    atomic_write_json(receipt_path, receipt)
+    return {**receipt, "receipt": str(receipt_path.relative_to(root))}
 
 
 def shallow_files(listed: list[str]) -> list[str]:

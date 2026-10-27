@@ -250,3 +250,39 @@ class ShallowLookTests(unittest.TestCase):
                   "node_modules/pkg/README.md", "package.json", "team/org-chart.tsv"]
         self.assertEqual(["README.md", "notes.md", "data/accounts.csv", "docs/clients.md", "team/org-chart.tsv"],
                          shallow_files(listed))
+
+
+class ArchivedCopyTests(unittest.TestCase):
+    def test_an_archived_copy_reads_markdown_and_csv_one_folder_down_and_links_into_the_archive(self) -> None:
+        import tempfile
+        from unittest import mock
+
+        from research_control import capture
+        from research_control.deeplinks import _repository_link
+
+        responses = {
+            "/origin/https://github.com/rival/pilots/visit/latest/?require_snapshot=true": {"snapshot": "s1", "date": "2025-04-02T00:00:00"},
+            "/snapshot/s1/?branches_count=1000": {"branches": {"HEAD": {"target_type": "alias", "target": "refs/heads/main"},
+                                                               "refs/heads/main": {"target_type": "revision", "target": "r1"}}},
+            "/revision/r1/": {"id": "r1" * 20, "directory": "d1", "committer_date": "2025-03-30T10:00:00", "message": "Close the bank pilot"},
+            "/directory/d1/": [{"name": "README.md", "type": "file", "target": "c1"}, {"name": "app.py", "type": "file", "target": "c2"},
+                               {"name": "clients", "type": "dir", "target": "d2"}],
+            "/directory/d2/": [{"name": "accounts.csv", "type": "file", "target": "c3"}],
+            "/content/sha1_git:c1/raw/": b"# Bank pilot\nAgents for a regional bank\n",
+            "/content/sha1_git:c3/raw/": b"account,stage\nRegional bank,pilot\n",
+        }
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.object(capture._SoftwareHeritage, "get", lambda self, path, raw=False: responses[path]):
+            root = Path(directory)
+            url = "https://archive.softwareheritage.org/browse/origin/directory/?origin_url=https://github.com/rival/pilots"
+            receipt = capture.auto_capture_source(root, url=url, source_id="SRC-OLD", grade="S")
+            self.assertEqual("captured", receipt["status"])
+            text = (root / "01-sources/captures/SRC-OLD/content.txt").read_text(encoding="utf-8")
+            self.assertIn("--- FILE: README.md ---", text)
+            self.assertIn("--- FILE: clients/accounts.csv ---", text)
+            self.assertNotIn("--- FILE: app.py ---", text)
+            lines = text.splitlines()
+            index = lines.index("Regional bank,pilot")
+            link, label = _repository_link(lines, index, "Regional bank,pilot")
+            self.assertEqual("clients/accounts.csv line 2 (archived copy)", label)
+            self.assertIn("browse/origin/content/?origin_url=https%3A%2F%2Fgithub.com%2Frival%2Fpilots&path=clients/accounts.csv#L2", link)

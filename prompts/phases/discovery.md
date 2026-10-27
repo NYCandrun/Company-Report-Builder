@@ -100,12 +100,29 @@ Admit what answers a question, not everything that exists:
      URL when it is the firm's work: its offering (a product, a public tool,
      an accelerator), a business record (an org chart, an account list, a
      plan), or client work. Never admit a personal project.
-  4. Deleted repositories, when it is easy: the archive also lists
-     repositories under the organization or the affiliated handles that no
-     longer exist. For those only, admit one query URL that returns what the
-     archive recorded (pull request and issue titles and bodies, branch names,
-     release names), and state the archive's date range. Never admit archive
-     results for a repository that is still live.
+  4. Deleted and abandoned repositories. The archive also lists repositories
+     under the organization or the affiliated handles that no longer exist,
+     and live ones that went quiet. Decide which are worth a deeper look from
+     what the archive kept, in one query per firm (names, first and last
+     activity, pull request and issue titles, branch names, release names).
+     Look deeper only where they point at a project for a named customer or
+     sector, a product or service the firm tried and abandoned, or records of
+     its business or operations (accounts, staffing, plans, pricing). For a
+     deleted repository worth it:
+     - check for an archived copy with one request to
+       `https://archive.softwareheritage.org/api/1/origin/https://github.com/OWNER/REPO/visit/latest/`
+       (Software Heritage, the public archive of source code); when one
+       exists, admit
+       `https://archive.softwareheritage.org/browse/origin/directory/?origin_url=https://github.com/OWNER/REPO`,
+       and the runtime reads its Markdown and CSV files at the last archived
+       commit, within a request limit;
+     - admit one archive query URL that returns what GH Archive recorded
+       about it (pull request and issue titles and bodies, branch and release
+       names), as the record of what the project was and when.
+     A live repository that went quiet is read like any live one; say in the
+     evidence when its activity stopped, so the report can show it was
+     abandoned. Never admit archive results or an archived copy for a
+     repository that is still live, and state the archive's date range.
   The runtime reads each admitted repository at its latest commit: the
   repository page's description and topics, the file list, and its Markdown
   and CSV files (README first, within a size limit). When the file list shows
