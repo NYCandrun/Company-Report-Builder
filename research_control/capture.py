@@ -895,7 +895,10 @@ def _github_checkout(root: Path, owner: str, repo: str) -> Path:
                     break
                 shutil.rmtree(target, ignore_errors=True)
                 missing = "not found" in result.stderr.casefold() or "could not read username" in result.stderr.casefold()
-                if delay is None or missing:
+                if missing:
+                    raise RuntimeError(f"{owner}/{repo} is no longer public on GitHub (deleted or made private); "
+                                       "look for its Software Heritage copy or its GH Archive record")
+                if delay is None:
                     raise RuntimeError(f"git clone of {owner}/{repo} failed: {result.stderr.strip()[:300]}")
                 # The git proxy's concurrency limit, a dropped connection, or a timeout.
                 time.sleep(delay)
@@ -1710,7 +1713,10 @@ def _github_shallow_capture(root: Path, *, url: str, source_id: str, grade: str)
             if result.returncode == 0:
                 break
             shutil.rmtree(target, ignore_errors=True)
-            if delay is None or "not found" in result.stderr.casefold():
+            if "could not read username" in result.stderr.casefold() or "not found" in result.stderr.casefold():
+                raise RuntimeError(f"{owner}/{repo} is no longer public on GitHub (deleted or made private); "
+                                   "look for its Software Heritage copy or its GH Archive record")
+            if delay is None:
                 raise RuntimeError(f"git clone of {owner}/{repo} failed: {result.stderr.strip()[:300]}")
             time.sleep(delay)
     commit, committed = _git(["log", "-1", "--format=%H %cI"], cwd=target).split()

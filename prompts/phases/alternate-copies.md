@@ -19,7 +19,14 @@ Good alternate copies:
   direct audio enclosure from its RSS feed;
 - the other party's own announcement of the same event, when it states the
   same facts;
-- an archived copy, if an archive is reachable from this environment.
+- an archived copy, if an archive is reachable from this environment;
+- for a GitHub repository that is gone (deleted or made private: git asks for a
+  login), its Software Heritage copy when one exists (one request to
+  `https://archive.softwareheritage.org/api/1/origin/https://github.com/OWNER/REPO/visit/latest/`;
+  record `https://archive.softwareheritage.org/browse/origin/directory/?origin_url=https://github.com/OWNER/REPO`),
+  or else one GH Archive query URL that returns what the public record of
+  GitHub events kept about it (see the discovery instructions on public
+  archives).
 
 Not alternates: pages that only summarize, quote from, or comment on the
 original; search-result pages; cache mirrors; paywall-removal services.
