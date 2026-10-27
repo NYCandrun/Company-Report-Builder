@@ -105,16 +105,21 @@ def synthesis_target(fact_file: str) -> str:
     return next((target for words, target in SYNTHESIS_TARGETS if any(word in name for word in words)), "open-questions")
 
 
-def write_supplement_digests(root: Path, fact_ids: list[str]) -> dict[str, int]:
-    from research_control.validators.facts import load_fact_tables
+CLAIM_DIGESTS = "tools/digests"
 
-    from research_control.validators.facts import withdrawn_facts
 
-    wanted = set(fact_ids) - set(withdrawn_facts(root))
+def write_claim_digests(root: Path, directory: str, fact_ids: list[str] | None = None, by_target: bool = False) -> dict[str, int]:
+    """One line per fact (ID, date, grade, source, claim, marks), one file per fact table,
+    or per synthesis file with `by_target`; withdrawn facts are left out."""
+    from research_control.validators.facts import load_fact_tables, withdrawn_facts
+
+    wanted = None if fact_ids is None else set(fact_ids)
+    withdrawn = set(withdrawn_facts(root))
     lines: dict[str, list[str]] = {}
     for path in sorted((root / "02-facts").glob("*.md")):
         for row in load_fact_tables([path]):
-            if row.get("fact_id") not in wanted:
+            fact_id = row.get("fact_id", "")
+            if not fact_id or fact_id in withdrawn or (wanted is not None and fact_id not in wanted):
                 continue
             # Notes are not a named column of the fact table; marks are read from the whole row.
             notes = " ".join(value for key, value in row.items() if not key.startswith("_") and key != "claim")
@@ -122,21 +127,27 @@ def write_supplement_digests(root: Path, fact_ids: list[str]) -> dict[str, int]:
             marks += [f"relationship {match.group(1).strip()}" for match in (RELATIONSHIP_BASIS.search(notes),) if match]
             if "My inference" in row.get("claim", ""):
                 marks.append("inference")
-            line = (f"- {row['fact_id']} · {row.get('source_date', '')[:10]} · {row.get('grade', '')} · "
-                    f"{row.get('source_id', '')} · {row.get('claim', '').strip()}")
-            lines.setdefault(synthesis_target(path.name), []).append(line + (f" [{'; '.join(marks)}]" if marks else ""))
-    directory = root / SUPPLEMENT_DIGESTS
-    if directory.is_dir():
-        for stale in directory.glob("*.md"):
+            line = (f"- {fact_id} · {row.get('source_date', '')[:10]} · {row.get('grade', '')} · "
+                    f"{row.get('source_id', '')} · {row.get('said_by', '')} · {row.get('claim', '').strip()}")
+            group = synthesis_target(path.name) if by_target else path.stem
+            lines.setdefault(group, []).append(line + (f" [{'; '.join(marks)}]" if marks else ""))
+    folder = root / directory
+    if folder.is_dir():
+        for stale in folder.glob("*.md"):
             stale.unlink()
-    for target, rows in lines.items():
-        atomic_write_text(directory / f"{target}.md", (
-            f"# New facts for 05-synthesis/{target}.md ({len(rows)})\n\n"
-            "One line per fact: ID · source date · grade · source ID · claim [delivery status; relationship basis].\n"
+    for group, rows in lines.items():
+        heading = f"New facts for 05-synthesis/{group}.md" if by_target else f"Facts in 02-facts/{group}.md"
+        atomic_write_text(folder / f"{group}.md", (
+            f"# {heading} ({len(rows)})\n\n"
+            "One line per fact: ID · source date · grade · source ID · said by · claim [delivery status; relationship basis].\n"
             "Open a fact's full row (quote, location, notes) by searching 02-facts/ for its ID.\n\n"
             + "\n".join(rows) + "\n"
         ))
-    return {target: len(rows) for target, rows in lines.items()}
+    return {group: len(rows) for group, rows in lines.items()}
+
+
+def write_supplement_digests(root: Path, fact_ids: list[str]) -> dict[str, int]:
+    return write_claim_digests(root, SUPPLEMENT_DIGESTS, fact_ids, by_target=True)
 
 
 def reduce_supplement(root: Path, identifier: str) -> dict[str, Any]:

@@ -747,10 +747,13 @@ class AdaptivePlanner:
                     validators=[value["id"] for value in phase.get("validators", [])],
                     exclusive_inputs=False,
                     priority=30,
-                    metadata={"single_writer": True},
+                    metadata=dict(definition.get("metadata", {"single_writer": True})),
                 ),
                 created,
             )
+            if any(item["id"] == "filing-spot-check" for item in self.document["execution_profiles"]["facts"]["tasks"]):
+                # Filing is bookkeeping the runtime does; a reviewer checks a sample of it.
+                self._add(self._plan_profile_task("facts", "filing-spot-check", metadata={}), created)
         return created
 
     def _plan_verification(self) -> list[str]:

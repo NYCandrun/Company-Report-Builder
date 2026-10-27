@@ -283,10 +283,14 @@ class OperationalRunTests(unittest.TestCase):
                     "output_ids": ["ACME-001"],
                 }])
                 text(root, "06-checks/script-audits.md", "# Script audit\n\nAll planted checks detected.\n")
+                text(root, "tools/outputs/filing-spot-sample.json", '{"merges": [], "filed": []}\n')
+
+            def write_spot_checks() -> None:
                 text(root, "06-checks/duplicate-spot-check.md", "# Duplicate spot check\n\nNo duplicates.\n")
                 text(root, "06-checks/filter-spot-check.md", "# Filter spot check\n\nNo misses.\n")
 
             complete_task(root, "facts.file-facts", "filing-worker", write_facts)
+            complete_task(root, "facts.filing-spot-check", "filing-reviewer", write_spot_checks)
             report, _ = check_phase(root, "facts")
             self.assertEqual(PASS, report["status"], report)
 
@@ -295,8 +299,11 @@ class OperationalRunTests(unittest.TestCase):
                 "messaging-timeline", "organization", "direction", "inference-catalogue", "open-questions",
             )
 
+            complete_task(root, "initial_synthesis.claim-digests", "runtime-executor", lambda: text(
+                root, "tools/digests/company.md", "# Digest\n\nACME-001\n"
+            ))
+
             def write_groundwork() -> None:
-                text(root, "tools/digests/company.md", "# Digest\n\nACME-001\n")
                 text(root, "03-timelines/messaging.md", "# Timeline\n\n2026-01-01: Product evidence. ACME-001\n")
                 text(root, "tools/outputs/currency.csv", "fact_id,status\nACME-001,current\n")
 

@@ -219,13 +219,17 @@ def _validate_synthesis_ids(root: Path, checker: str) -> dict[str, Any]:
     paths = _paths(root, ["05-synthesis/*.md"])
     known = {row.get("fact_id", "") for row in _fact_records(root)}
     withdrawn = facts.withdrawn_facts(root)
+    prefixes = {fact_id.rsplit("-", 1)[0] for fact_id in known if "-" in fact_id}
     failures: list[str] = []
     found: set[str] = set()
     for path in paths:
         for fact_id in FACT_ID.findall(path.read_text(encoding="utf-8", errors="replace")):
             found.add(fact_id)
             if fact_id not in known:
-                failures.append(f"{path.relative_to(root)}: unknown fact ID {fact_id}")
+                # A name shaped like an ID (a standard such as AIUC-1) is not a citation
+                # unless its prefix is one the fact store uses.
+                if fact_id.rsplit("-", 1)[0] in prefixes:
+                    failures.append(f"{path.relative_to(root)}: unknown fact ID {fact_id}")
             elif fact_id in withdrawn:
                 failures.append(f"{path.relative_to(root)}: cites withdrawn fact {fact_id} ({withdrawn[fact_id]})")
     unknowns = [] if found else ["no fact IDs found in synthesis Markdown"]

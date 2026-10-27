@@ -93,7 +93,7 @@
         "standard": {
           "model_class": "balanced_capable",
           "effort": "medium",
-          "task_types": ["source_discovery", "alternate_copies", "triage", "retriage", "filing", "language_review"]
+          "task_types": ["source_discovery", "alternate_copies", "triage", "retriage", "filing", "filing_review", "language_review"]
         },
         "strong": {
           "model_class": "flagship_capable",
@@ -171,8 +171,20 @@
           "prompt": "prompts/phases/filing.md",
           "depends_on": ["extract"],
           "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md"],
-          "outputs": ["02-facts/*.md", "tools/outputs/filing-dispositions.jsonl", "06-checks/script-audits.md", "06-checks/duplicate-spot-check.md", "06-checks/filter-spot-check.md"],
+          "outputs": ["02-facts/*.md", "tools/outputs/filing-dispositions.jsonl", "06-checks/script-audits.md", "tools/outputs/filing-spot-sample.json"],
           "independent": false,
+          "exclusive_inputs": false,
+          "metadata": {"single_writer": true, "executor": "runtime"}
+        },
+        {
+          "id": "filing-spot-check",
+          "task_type": "filing_review",
+          "prompt": "prompts/phases/filing-spot-check.md",
+          "depends_on": ["file-facts"],
+          "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md"],
+          "inputs": [{"id": "spot_sample", "path": "tools/outputs/filing-spot-sample.json", "required": true}],
+          "outputs": ["06-checks/duplicate-spot-check.md", "06-checks/filter-spot-check.md"],
+          "independent": true,
           "exclusive_inputs": false
         }
       ]
@@ -180,12 +192,23 @@
     "initial_synthesis": {
       "tasks": [
         {
+          "id": "claim-digests",
+          "task_type": "claim_digests",
+          "prompt": "prompts/core/runtime.md",
+          "inputs": [{"id": "fact_store", "path": "02-facts/*.md", "required": true}],
+          "outputs": ["tools/digests/*.md"],
+          "independent": false,
+          "exclusive_inputs": false,
+          "metadata": {"planner": "static-profile", "single_writer": true, "executor": "runtime"}
+        },
+        {
           "id": "groundwork",
           "task_type": "synthesis",
+          "depends_on": ["claim-digests"],
           "prompt": "prompts/phases/synthesis-groundwork.md",
           "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
-          "inputs": [{"id": "fact_store", "path": "02-facts/*.md", "required": true}, {"id": "scope_map", "path": "00-scope.md", "required": true}],
-          "outputs": ["tools/digests/*.md", "03-timelines/*.md", "tools/outputs/currency.csv"],
+          "inputs": [{"id": "claim_digests", "path": "tools/digests/*.md", "required": true}, {"id": "fact_store", "path": "02-facts/*.md", "required": true}, {"id": "scope_map", "path": "00-scope.md", "required": true}],
+          "outputs": ["03-timelines/*.md", "tools/outputs/currency.csv"],
           "independent": false,
           "exclusive_inputs": true,
           "track_input_staleness": true

@@ -506,7 +506,7 @@ class SupplementReconcileTests(unittest.TestCase):
                 self.assertIn(f"{base}.customers-proof", created)
                 self.assertIn(f"{base}.inference-catalogue", created)
                 digest = (root / "tools/digests/supplement/product-map.md").read_text(encoding="utf-8")
-                self.assertIn("PRD-002 · 2026-05-01 · P · SRC-1 · Scorer added. [Shipped]", digest)
+                self.assertIn("PRD-002 · 2026-05-01 · P · SRC-1 · Tribe · Scorer added. [Shipped]", digest)
                 self.assertNotIn("PRD-001", digest)
                 self.assertIn("[relationship Stated]", (root / "tools/digests/supplement/customers-proof.md").read_text(encoding="utf-8"))
                 # The report is written by the runtime: worker decisions, then the rest left uncited.

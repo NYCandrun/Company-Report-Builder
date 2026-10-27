@@ -136,9 +136,19 @@ packets. In Claude Code, use isolated subagents. If no subagent facility exists,
 execute the same packets in separate contexts sequentially. Never improvise a
 different task graph because a host lacks a dispatch API.
 
-## Keeping later steps bounded
+## Keeping steps bounded
 
-Steps after filing read only what they judge. Verification packets carry each
+Each step reads what it judges, not whole stores. Filing is runtime work: the
+runtime records duplicates, merges near-duplicates (same source and claim, or
+one quote containing the other), rejects quotes not in their captured source,
+and appends the rest under stable IDs; a reviewer then spot-checks a sample
+(`facts.filing-spot-check`). Before groundwork the runtime writes
+`tools/digests/`, one line per fact per fact table (ID, date, grade, source,
+who said it, claim, delivery status, relationship basis), and groundwork and
+the synthesis writers work from those, opening full rows by ID. Extraction
+notes hold the marks and at most one sentence of qualifier.
+
+Steps after synthesis read only what they judge. Verification packets carry each
 quote as the runtime located it, with its context, the capture's first lines,
 and its section, so verifiers open a full capture only when that is not
 enough. Verification also writes `tools/outputs/cited-fact-rows.md`, one table

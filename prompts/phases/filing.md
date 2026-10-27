@@ -1,5 +1,9 @@
 TASK TYPE: FACT FILING AND LAYER-1 CHECKING
 
+The runtime performs filing (`research_control/filing.py`) by these rules, and
+a reviewer spot-checks a sample (`filing-spot-check.md`). This file is the
+specification; an agent follows it only when filing is assigned to one.
+
 Read the runtime and evidence cores. Process every candidate in
 `tools/candidates/all.jsonl`. Give every candidate one terminal disposition in
 `tools/outputs/filing-dispositions.jsonl`.

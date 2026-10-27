@@ -56,6 +56,12 @@ each repository cover, with one fact per distinct claim:
   its first records. State totals from the header, never by counting the
   sample. A file headed `(HTML, as text)` is a page's text, not its markup.
 
+Keep notes short: the marks this prompt asks for (delivery status,
+relationship basis, scope, date basis, `Recorded:` date, sourcing) and at most
+one sentence of qualifier. Do not restate the claim or the quote, explain where
+you looked, or argue an inference in notes: an inference is its own fact,
+starting `My inference:`.
+
 Mark each fact's delivery status in notes:
 - `Shipped`: on the default branch and implemented in its code.
 - `Built, unmerged: <branch or pull request>`: implemented on a branch or pull

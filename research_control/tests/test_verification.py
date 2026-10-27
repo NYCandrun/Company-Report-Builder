@@ -97,8 +97,12 @@ class WithdrawnFactTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             atomic_write_text(root / "02-facts/q01.md", FACTS)
-            atomic_write_text(root / "05-synthesis/offering.md", "Network [PRD-003].\n")
+            # A standard's name shaped like an ID (AIUC-1) is not a citation; an unknown PRD ID is.
+            atomic_write_text(root / "05-synthesis/offering.md", "Network [PRD-003] under AIUC-1.\n")
             self.assertEqual([], checks._validate_synthesis_ids(root, "synthesis_fact_ids").get("failures", []))
+            atomic_write_text(root / "05-synthesis/direction.md", "Plan [PRD-099].\n")
+            self.assertIn("unknown fact ID PRD-099", checks._validate_synthesis_ids(root, "synthesis_fact_ids")["failures"][0])
+            (root / "05-synthesis/direction.md").unlink()
             atomic_write_json(root / "tools/lists/withdrawn-facts.json", {"facts": {"PRD-003": "capture omission since fixed"}})
             failures = checks._validate_synthesis_ids(root, "synthesis_fact_ids")["failures"]
             self.assertIn("cites withdrawn fact PRD-003", failures[0])

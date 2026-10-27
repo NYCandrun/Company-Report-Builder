@@ -22,7 +22,7 @@ every ready packet until exact-artifact release passes.
   as `sufficient` against the numbered research questions or as `saturated`;
   triage then bounds extraction by those questions.
 - Runtime-owned work (crawl, sitemap audit, capture and transcription,
-  reducers) runs inside `run`; never hand it to an agent. Use `run --plan-only`
+  reducers, filing, digests) runs inside `run`; never hand it to an agent. Use `run --plan-only`
   while another `run` process is executing.
 - Concurrency is your call. Dispatch as many ready agent packets at once, and
   set runtime and scheduler limits to whatever finishes fastest without
@@ -50,7 +50,7 @@ select a model and effort per subagent, so apply the route on every dispatch:
 |---|---|---|---|---|
 | `frontier` | `strongest_available` | `fable` (Claude Fable 5.1) | `high` | cited-fact verification, devil's-advocate review, diagram modeling |
 | `strong` | `flagship_capable` | `opus` (Claude Opus 5.5) | `high` | every task type not listed in another tier |
-| `standard` | `balanced_capable` | `sonnet` (Claude Sonnet 5.5) | `medium` | discovery, triage, filing, language review |
+| `standard` | `balanced_capable` | `sonnet` (Claude Sonnet 5.5) | `medium` | discovery, triage, re-triage, filing spot check, language review |
 | `economy` | `faster_capable` | `haiku` (Claude Haiku 5.5) | `low` | assembler |
 
 Pass the tier's model and effort when launching the worker, and have the worker
