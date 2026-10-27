@@ -538,7 +538,13 @@ def auto_capture_source(
     timestamped transcript when captions or a public audio download allow it.
     Access restrictions are recorded, never bypassed.
     """
-    receipt = _capture_page(root, url=url, source_id=source_id, grade=grade, store=store, use_browser=use_browser)
+    from research_control.media import AUDIO_SUFFIXES
+
+    if media and urlparse(url).path.casefold().endswith(AUDIO_SUFFIXES):
+        # A direct audio or video file has no page text; its transcript is the derivative.
+        receipt = _blocked_receipt(root, source_id, url, "direct media file; no page text to capture")
+    else:
+        receipt = _capture_page(root, url=url, source_id=source_id, grade=grade, store=store, use_browser=use_browser)
     if not media or "robots.txt disallows" in str(receipt.get("reason", "")):
         return receipt
     from research_control.media import transcribe

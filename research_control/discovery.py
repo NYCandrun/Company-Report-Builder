@@ -177,9 +177,20 @@ def source_kind(url: str) -> str:
     path = urlparse(url).path.casefold()
     if path.endswith(".pdf"):
         return "pdf"
+    if path.endswith(AUDIO_VIDEO_SUFFIXES):
+        return "media"
     if path.endswith((".xml", ".rss", ".atom")) or "feed" in path:
         return "feed"
     return "web_page"
+
+
+AUDIO_VIDEO_SUFFIXES = (".mp3", ".m4a", ".mp4", ".wav", ".webm", ".ogg", ".aac")
+MEDIA_CHANNELS = {"video", "podcasts"}
+
+
+def admissible_media(url: str, channel: str) -> bool:
+    """Media files are evidence when a media channel admits them for transcription."""
+    return channel in MEDIA_CHANNELS and urlparse(url).path.casefold().endswith(AUDIO_VIDEO_SUFFIXES)
 
 
 def discoverable_link(url: str) -> bool:
@@ -310,7 +321,7 @@ class DiscoveryEngine:
         for value in urls:
             try:
                 canonical = canonicalize_url(value, self.company_url)
-                if not discoverable_link(canonical):
+                if not discoverable_link(canonical) and not admissible_media(canonical, channel):
                     raise ValueError("non-research media or asset URL")
                 actual_channel = classify_channel(canonical, self.company_host)
                 selected_channel = channel if channel != "company_site" else actual_channel
