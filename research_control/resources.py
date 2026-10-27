@@ -8,7 +8,10 @@ The defaults reflect measurements on a 4-core, 16 GB cloud container:
   per-request latency without throughput.
 - Whisper (small.en, int8): one single-threaded job per core transcribed 10.5x
   real time in total, versus 7.4x for two 2-thread jobs and 4.8x for one
-  4-thread job, at under 0.5 GB per job.
+  4-thread job. A job on an hour-long recording, with its diarization model,
+  used about 3 GB (four used 11.6 GB), and the whole session shares one memory
+  limit: four jobs plus side work once exceeded it, so job count is bounded by
+  memory too, with 2 GB kept free.
 - Headless browser renders: about 0.25 GB each; held to half the cores so they
   do not starve concurrent transcription.
 
@@ -42,7 +45,8 @@ def _override(name: str, default: float) -> float:
 def runtime_limits() -> dict[str, Any]:
     cpus = os.cpu_count() or 2
     memory = _available_memory_gb()
-    whisper_jobs = int(_override("RESEARCH_CONTROL_WHISPER_JOBS", max(1, min(cpus, int(memory // 1.0)))))
+    # About 3.5 GB per long job (four used 11.6 GB), keeping 2 GB for everything else.
+    whisper_jobs = int(_override("RESEARCH_CONTROL_WHISPER_JOBS", max(1, min(cpus, int((memory - 2.0) // 3.5)))))
     browser_jobs = int(_override("RESEARCH_CONTROL_BROWSER_JOBS", max(1, min(cpus // 2, int(memory // 0.5)))))
     return {
         "cpus": cpus,

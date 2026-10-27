@@ -122,11 +122,25 @@ def _vtt_lines(text: str) -> list[tuple[float, str]]:
     return lines
 
 
+_preferred_client: list[str | None] = []
+
+
+def _client_order() -> tuple[str | None, ...]:
+    """Try the player client that last worked first; YouTube's blocking varies by hour."""
+    preferred = _preferred_client[-1:] if _preferred_client else []
+    return tuple(dict.fromkeys([*preferred, *YT_CAPTION_CLIENTS]))
+
+
+def _remember_client(client: str | None) -> None:
+    _preferred_client.append(client)
+    del _preferred_client[:-1]
+
+
 def _ytdlp_captions(url: str, directory: Path) -> tuple[list[tuple[float, str]], str]:
     if shutil.which("yt-dlp") is None:
         raise RuntimeError("yt-dlp is unavailable for caption download")
     failures: list[str] = []
-    for client in YT_CAPTION_CLIENTS:
+    for client in _client_order():
         _pace_youtube()
         command = [
             "yt-dlp", "--no-progress", "--skip-download", "--write-subs", "--write-auto-subs",
@@ -142,6 +156,7 @@ def _ytdlp_captions(url: str, directory: Path) -> tuple[list[tuple[float, str]],
         for path in files:
             lines = _vtt_lines(path.read_text(encoding="utf-8", errors="replace"))
             if lines:
+                _remember_client(client)
                 return lines, f"YouTube captions via yt-dlp ({client or 'default'} client; may be machine generated)"
         detail = (result.stderr or result.stdout).strip().splitlines()
         failures.append(f"{client or 'default'}: {next((line for line in reversed(detail) if 'ERROR' in line), 'no captions')[:160]}")
@@ -424,7 +439,8 @@ def transcribe(url: str, directory: Path) -> dict[str, Any]:
         if not lines:
             # No captions: transcribe the audio, trying each player client, then Invidious.
             try:
-                audio, client = _download_audio(url, directory, YT_CAPTION_CLIENTS)
+                audio, client = _download_audio(url, directory, _client_order())
+                _remember_client(None if client == "default" else client)
                 lines, audio_sha256, speaker_note = _transcribe_audio(audio)
                 method = f"YouTube audio via yt-dlp ({client} client) + local Whisper ({WHISPER_MODEL}) machine transcript"
             except Exception as error:
