@@ -110,6 +110,13 @@ def validate_ledger(root: Path, records: list[dict[str, Any]], task_types: set[s
     retired = superseded_tasks(root)
     # A supplemented source is read again by a supplement batch on purpose.
     supplemented = set(supplement_sources(root))
+    # Work whose results were carried forward (verdicts reused after the synthesis
+    # changed, so its tasks were retired with nothing left to redo) still shows its
+    # kind of work was done.
+    carried = {
+        str(row.get("task_type")) for row in records
+        if str(row.get("task_id", "")) in retired and row.get("exit_status") == 0
+    }
     records = [row for row in records if str(row.get("task_id", "")) not in retired]
     selected = [row for row in records if task_types is None or row.get("task_type") in task_types]
     final_output_owner: dict[str, tuple[str, str]] = {}
@@ -125,7 +132,7 @@ def validate_ledger(root: Path, records: list[dict[str, Any]], task_types: set[s
     output_owner: dict[str, tuple[str, str]] = {}
     by_task: dict[str, list[dict[str, Any]]] = defaultdict(list)
     if task_types:
-        represented = {str(row.get("task_type")) for row in selected}
+        represented = {str(row.get("task_type")) for row in selected} | carried
         for missing_type in sorted(task_types - represented):
             unknowns.append(f"no ledger attempts registered for required task type {missing_type}")
 

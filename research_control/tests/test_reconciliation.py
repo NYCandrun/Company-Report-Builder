@@ -78,3 +78,18 @@ class ReconciliationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CarriedWorkTests(unittest.TestCase):
+    def test_retired_successful_work_still_shows_its_kind_was_done(self) -> None:
+        from unittest import mock
+
+        from research_control.reconciliation import assignments
+
+        row = {"task_id": "verification.verify.a", "task_type": "verification", "exit_status": 0, "attempt": 1}
+        with mock.patch.object(assignments, "superseded_tasks", return_value={"verification.verify.a"}):
+            report = assignments.validate_ledger(Path("."), [row], {"verification"})
+        self.assertNotIn("no ledger attempts registered for required task type verification", report.get("unknowns", []))
+        with mock.patch.object(assignments, "superseded_tasks", return_value={"verification.verify.a"}):
+            report = assignments.validate_ledger(Path("."), [{**row, "exit_status": 1}], {"verification"})
+        self.assertIn("no ledger attempts registered for required task type verification", report.get("unknowns", []))
