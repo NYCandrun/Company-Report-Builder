@@ -19,7 +19,8 @@ For each listed fact decide where it belongs:
 Revise only the files and passages the listed facts affect; do not rewrite
 others or restyle untouched text. Keep the synthesis rules: every factual
 sentence cites fact IDs, aims stay apart from shipped capabilities, and
-interpretations are labeled `My inference:`. Write
-`06-checks/supplement-reconciliation.md` with one row per listed fact: the
+interpretations are labeled `My inference:`. Add to
+`06-checks/supplement-reconciliation.md`, keeping earlier passes' sections,
+a section for this pass with one row per listed fact: the
 decision, the file and passage changed, and why. Run the fact-ID and writing
 checks before return.

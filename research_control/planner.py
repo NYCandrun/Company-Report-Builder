@@ -164,9 +164,13 @@ class AdaptivePlanner:
             for path in sorted((self.root / "05-synthesis").glob("*.md")):
                 cited.update(verification.FACT_ID.findall(path.read_text(encoding="utf-8", errors="replace")))
             fact_rows = load_fact_tables(sorted((self.root / "02-facts").glob("*.md")))
+            # Facts an earlier supplement pass already decided (cited or left out) are not reconsidered.
+            report = self.root / SUPPLEMENT_REPORT
+            decided = set(verification.FACT_ID.findall(report.read_text(encoding="utf-8"))) if report.is_file() else set()
             new_facts = [
                 row["fact_id"] for row in fact_rows
-                if row.get("source_id") in sources and row.get("fact_id") and row["fact_id"] not in cited
+                if row.get("source_id") in sources and row.get("fact_id")
+                and row["fact_id"] not in cited and row["fact_id"] not in decided
             ]
             atomic_write_text(self.root / SUPPLEMENT_FACTS, "".join(f"{fact_id}\n" for fact_id in new_facts))
         self._add(
