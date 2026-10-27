@@ -16,3 +16,10 @@ capture date standing in for a publication date takes the content date and
 basis from `tools/outputs/source-dates.jsonl` when that table has one, and a
 claim about the present that rests only on `dated` or `undated` evidence is
 reworded with its date or narrowed.
+
+A finding that only suggests capturing a new source is applied only when the
+source would change a conclusion materially, and then in the lightest way (one
+page, not a new research pass). Otherwise reject it with that reason; a
+skipped suggestion is not reported as an open gap. A finding that two files
+disagree is settled by the evidence: the stronger, more direct, or later-dated
+source decides, and the change over time is shown where values differ by date.

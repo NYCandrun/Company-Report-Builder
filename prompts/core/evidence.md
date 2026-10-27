@@ -45,7 +45,9 @@ notes.
 - Mark every customer, client, or partner relationship with its basis,
   wherever it appears: a sentence, a list, a table, a diagram label, a
   caption, or a fact row.
-  - `Stated` means a source names the relationship.
+  - `Stated` means a source names the relationship. A company's own working
+    record counts: a client named in an employee's repository, plugin,
+    configuration, or document is stated, whatever other files say.
   - `Inferred` means the evidence supports it but no source names it. The
     mark goes on the relationship itself (for example "Microsoft (inferred
     client: …)"), followed by the evidence and fact IDs.
@@ -63,7 +65,9 @@ notes.
   In an exhibit of customers, clients, or partners (a list, table, logo
   wall, or count), order the entries stated first, then inferred, each
   marked. Put leads last, below a dividing rule, under a label such as
-  "Leads (thin evidence, not established)". Counts and totals include only
+  "Leads (thin evidence, not established)". In prose, say plainly how strong
+  the evidence is ("one commit suggests", "two sources state") rather than
+  relying on the label. Counts and totals include only
   stated relationships unless the count says otherwise. Never let an
   inferred client or a lead become a stated one through summary, emphasis,
   position, or a logo, name, or count.
@@ -102,7 +106,12 @@ snapshot is more than two quarters older than the research date, say so
 wherever it is used, for example "as of December 2025, about three quarters
 before this research", and never let it stand for the present. Plans,
 forecasts, and targets are stated as plans with their date, not as results. Flagged rows use `last confirmed
-<date>` or `possibly retired`. A redirect is not retirement proof. A one-off
+<date>` or `possibly retired`. A redirect is not retirement proof. When sources from different dates give different values for the
+same thing (a deal's stage, a headcount, a title), show the change over time
+with each date; it is a contradiction only when sources of the same time
+disagree. A job listing that has been taken down is dated evidence of what the
+company was hiring for then, not a current role. When a title fits more than
+one person (two co-founders), name the person. A one-off
 title is not automatically a title change. Simultaneous plans are not a price
 change. Never state a company dollar price as current unless the company
 publishes it.
