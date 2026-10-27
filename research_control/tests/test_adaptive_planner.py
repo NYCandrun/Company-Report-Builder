@@ -670,8 +670,11 @@ class GateRefreshTests(unittest.TestCase):
 
         stale = {"failures": [], "unknowns": ["dependency gate capture: stale input WORKFLOW.yaml"]}
         mixed = {"failures": ["fact_quotes: PRD-1 quote not found"], "unknowns": stale["unknowns"]}
-        with mock.patch.object(adaptive, "check_phase", return_value=({"status": PASS}, Path("g.json"))) as check:
+        with mock.patch.object(adaptive, "check_phase", return_value=({"status": PASS}, Path("g.json"))) as check, \
+                mock.patch.object(adaptive, "set_phase_result") as record, \
+                mock.patch.object(adaptive, "phase_order", return_value=["capture", "facts"]):
             self.assertTrue(adaptive._refresh_dependency_gates(Path("."), stale))
-            check.assert_called_once_with(Path("."), "capture", update_state=True)
+            check.assert_called_once_with(Path("."), "capture", update_state=False)
+            record.assert_called_once_with(Path("."), "capture", PASS, "g.json")
             self.assertFalse(adaptive._refresh_dependency_gates(Path("."), mixed))
             self.assertEqual(1, check.call_count)

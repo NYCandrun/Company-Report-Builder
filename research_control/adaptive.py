@@ -12,7 +12,7 @@ from research_control.checks import check_phase, run_validator
 from research_control.dispatch import emit_ready_packets
 from research_control.discovery import ALTERNATES_PART, BLOCKED_SOURCES_LIST
 from research_control.io import load_json, load_jsonl, workflow
-from research_control.orchestration import current_phase, initialize, load_state, phase_order, reopen_phase
+from research_control.orchestration import current_phase, initialize, load_state, phase_order, reopen_phase, set_phase_result
 from research_control import verification
 from research_control.validators.extraction import validate_part as validate_extraction_part
 from research_control.automatic import RUNTIME_WORKER, run_automatic
@@ -135,7 +135,7 @@ def advance(root: Path, company_url: str | None = None, *, automatic: bool = Tru
     raise RuntimeError("adaptive advance exceeded the phase-transition safety bound")
 
 
-STALE_DEPENDENCY = re.compile(r"^dependency gate (\w+): stale input ")
+STALE_DEPENDENCY = re.compile(r"^dependency gate (\w+): (?:stale input |report status )")
 
 
 def _refresh_dependency_gates(root: Path, report: dict[str, Any]) -> bool:
@@ -146,8 +146,15 @@ def _refresh_dependency_gates(root: Path, report: dict[str, Any]) -> bool:
     matches = [STALE_DEPENDENCY.match(item) for item in problems]
     if not problems or not all(matches):
         return False
-    gates = sorted({match.group(1) for match in matches if match})
-    return all(check_phase(root, gate, update_state=True)[0]["status"] == PASS for gate in gates)
+    order = phase_order(root)
+    gates = sorted({match.group(1) for match in matches if match}, key=lambda gate: order.index(gate) if gate in order else len(order))
+    for gate in gates:
+        # A completed phase is re-checked as completed work, then its result recorded.
+        report, path = check_phase(root, gate, update_state=False)
+        if report["status"] != PASS:
+            return False
+        set_phase_result(root, gate, PASS, str(path.relative_to(root)))
+    return True
 
 
 def _reopen_unsatisfied_phases(root: Path, store: RuntimeStore) -> None:
