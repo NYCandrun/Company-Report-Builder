@@ -18,6 +18,7 @@ class MediaTests(unittest.TestCase):
         self.assertTrue(is_media_url("https://feeds.example.com/episode.mp3"))
         self.assertTrue(is_media_url("https://podcasts.apple.com/us/podcast/x/id1"))
         self.assertFalse(is_media_url("https://www.tribe.ai/about"))
+        self.assertTrue(is_media_url("https://www.bloomberg.com/news/videos/2025-01-30/tribe-ai-ceo"))
 
     def test_media_channels_admit_audio_but_crawl_skips_it(self) -> None:
         url = "https://traffic.example.com/episode-541.mp3"

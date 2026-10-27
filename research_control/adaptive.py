@@ -11,6 +11,7 @@ from research_control.dispatch import emit_ready_packets
 from research_control.io import load_json, workflow
 from research_control.orchestration import current_phase, initialize, load_state, phase_order
 from research_control.automatic import RUNTIME_WORKER, run_automatic
+from research_control.media import is_media_url
 from research_control.planner import AdaptivePlanner
 from research_control.triage import validate_triage
 from research_control.runtime import ACTIVE_STATES, DISCOVERY_TERMINAL, RuntimeStore
@@ -227,7 +228,10 @@ def retry_media(root: Path, source_ids: list[str] | None = None) -> dict[str, An
                 continue
             receipt_path = root / task["metadata"]["receipt"]
             receipt = load_json(receipt_path) if receipt_path.is_file() else {}
-            if (receipt.get("transcript") or {}).get("status") == "unavailable" or source_id in selected:
+            source = store.source(source_id) or {}
+            is_media = source.get("channel") in {"video", "podcasts"} or is_media_url(source.get("canonical_url", ""))
+            transcribed = (receipt.get("transcript") or {}).get("status") == "transcribed"
+            if source_id in selected or (is_media and not transcribed):
                 store.mark_stale(task["task_id"], "media transcript retry requested")
                 requeued.append(source_id)
     return {"requeued": requeued, "next": "python3 -m research_control run"}

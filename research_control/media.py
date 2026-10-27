@@ -36,10 +36,19 @@ MEDIA_HOSTS = ("youtube.com", "youtu.be", "vimeo.com", "wistia.com", "loom.com",
 AUDIO_SUFFIXES = (".mp3", ".m4a", ".wav", ".ogg", ".aac", ".mp4", ".webm")
 
 
+MEDIA_PATH_SEGMENTS = {"video", "videos", "watch", "episode", "episodes", "podcast", "podcasts", "webinar", "webinars"}
+
+
 def is_media_url(url: str) -> bool:
     parsed = urlparse(url)
     host = (parsed.hostname or "").casefold()
-    return any(host == name or host.endswith(f".{name}") for name in MEDIA_HOSTS) or parsed.path.casefold().endswith(AUDIO_SUFFIXES)
+    path = parsed.path.casefold()
+    segments = {segment for segment in path.split("/") if segment}
+    return (
+        any(host == name or host.endswith(f".{name}") for name in MEDIA_HOSTS)
+        or path.endswith(AUDIO_SUFFIXES)
+        or bool(segments & MEDIA_PATH_SEGMENTS)
+    )
 
 
 def youtube_id(url: str) -> str | None:
@@ -156,23 +165,40 @@ def _invidious_audio(video_id: str, directory: Path) -> tuple[Path, str]:
     raise RuntimeError("; ".join(failures) or "no Invidious instance configured")
 
 
-def _download_audio(url: str, directory: Path) -> Path:
+def _download_audio(url: str, directory: Path, clients: tuple[str | None, ...] = (None,)) -> tuple[Path, str]:
+    """Download the best audio with yt-dlp, trying each player client in turn."""
     if shutil.which("yt-dlp") is None:
         raise RuntimeError("yt-dlp is unavailable for public audio download")
-    command = [
-        "yt-dlp", "--no-playlist", "--no-cookies", "--no-progress", "-f", "bestaudio/best",
-        "--max-filesize", "500M", "-o", str(directory / "audio.%(ext)s"), url,
-    ]
-    if shutil.which("node"):
-        command[1:1] = ["--js-runtimes", "node"]
-    result = subprocess.run(command, text=True, capture_output=True, timeout=1800)
-    files = sorted(directory.glob("audio.*"))
-    if result.returncode != 0 or not files:
+    failures: list[str] = []
+    for client in clients:
+        if youtube_id(url):
+            _pace_youtube()
+        command = [
+            "yt-dlp", "--no-playlist", "--no-progress", "-f", "bestaudio/best",
+            "--max-filesize", "500M", "-o", str(directory / "audio.%(ext)s"), "--", url,
+        ]
+        if shutil.which("node"):
+            command[1:1] = ["--js-runtimes", "node", "--remote-components", "ejs:github"]
+        if client:
+            command[1:1] = ["--extractor-args", f"youtube:player_client={client}"]
+        result = subprocess.run(command, text=True, capture_output=True, timeout=1800)
+        files = [path for path in sorted(directory.glob("audio.*")) if not path.name.endswith((".part", ".ytdl"))]
+        if result.returncode == 0 and files:
+            return files[0], client or "default"
+        for leftover in directory.glob("audio.*"):
+            leftover.unlink(missing_ok=True)
         detail = (result.stderr or result.stdout).strip().splitlines()
         reason = next((line for line in reversed(detail) if "ERROR" in line), detail[-1] if detail else "unknown error")
-        reason = reason.split(" Use --cookies", 1)[0]
-        raise RuntimeError(f"public audio download failed: {reason[:300]}")
-    return files[0]
+        failures.append(f"{client or 'default'}: {reason.split(' Use --cookies', 1)[0][:200]}")
+    raise RuntimeError("public audio download failed: " + "; ".join(failures))
+
+
+def _transcribe_audio(audio: Path) -> tuple[list[tuple[float, str]], str]:
+    digest = hashlib.sha256(audio.read_bytes()).hexdigest()
+    try:
+        return _whisper(audio), digest
+    finally:
+        audio.unlink(missing_ok=True)
 
 
 def _decode(audio: Path) -> Any:
@@ -218,24 +244,24 @@ def transcribe(url: str, directory: Path) -> dict[str, Any]:
             except Exception as error:
                 attempts.append(f"yt-dlp captions: {str(error)[:400]}")
         if not lines:
+            # No captions: transcribe the audio, trying each player client, then Invidious.
+            try:
+                audio, client = _download_audio(url, directory, YT_CAPTION_CLIENTS)
+                lines, audio_sha256 = _transcribe_audio(audio)
+                method = f"YouTube audio via yt-dlp ({client} client) + local Whisper ({WHISPER_MODEL}) machine transcript"
+            except Exception as error:
+                attempts.append(f"yt-dlp audio: {str(error)[:400]}")
+        if not lines:
             try:
                 audio, instance = _invidious_audio(video_id, directory)
-                audio_sha256 = hashlib.sha256(audio.read_bytes()).hexdigest()
-                try:
-                    lines = _whisper(audio)
-                finally:
-                    audio.unlink(missing_ok=True)
+                lines, audio_sha256 = _transcribe_audio(audio)
                 method = f"audio via Invidious ({instance}) + local Whisper ({WHISPER_MODEL}) machine transcript"
             except Exception as error:
                 attempts.append(f"invidious audio: {str(error)[:300]}")
-    if not lines:
+    else:
         try:
-            audio = _download_audio(url, directory)
-            audio_sha256 = hashlib.sha256(audio.read_bytes()).hexdigest()
-            try:
-                lines = _whisper(audio)
-            finally:
-                audio.unlink(missing_ok=True)
+            audio, _client = _download_audio(url, directory)
+            lines, audio_sha256 = _transcribe_audio(audio)
             method = f"public audio download + local Whisper ({WHISPER_MODEL}) machine transcript"
         except Exception as error:
             attempts.append(f"audio: {type(error).__name__}: {str(error)[:300]}")
