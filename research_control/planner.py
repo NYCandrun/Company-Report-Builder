@@ -407,6 +407,8 @@ class AdaptivePlanner:
             task and (task["state"] == "succeeded" or _is_media_capture(task)) for task in capture_tasks
         )
         passes = self._alternate_passes()
+        for task in passes:
+            self.store.remove_dependency(task["task_id"], barrier_id)
         passes_done = all(task["state"] in SATISFIED_STATES for task in passes)
         if snapshot_done and passes_done and (text_done or captures_done):
             uncovered = self._uncovered_blocked()
@@ -426,7 +428,9 @@ class AdaptivePlanner:
                         ],
                         outputs=[ALTERNATES_PART],
                         prompt_files=["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/phases/alternate-copies.md"],
-                        depends_on=[barrier_id, *(task["task_id"] for task in passes)],
+                        # The snapshot is a planning condition, not an input: a later
+                        # discovery pass must not make recorded alternates stale.
+                        depends_on=[task["task_id"] for task in passes],
                         schema_files=[],
                         validators=["alternate_accounting"],
                         priority=45,
