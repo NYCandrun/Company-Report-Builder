@@ -216,6 +216,35 @@ without a title (a video page that refused the capture, a podcast audio file)
 take their title from the feed item their date came from or from the video's
 own listing, kept in `tools/outputs/source-titles.json`.
 
+## Side runs: a bounded add-on away from the scheduler
+
+When new sources arrive after a run has moved past fact drafting (a market and
+competitor search once the report is written), a side run takes just those
+sources through the steps they need, in its own folder under
+`tools/outputs/side/<label>/`, as a stand-alone mini deliverable. The main
+scheduler never sees it: nothing in it is a task, and the merge records what
+it changes so no finished work reruns.
+
+```text
+side new --label market --question Q7 --section "## Market, positioning, and competitors"
+    lays out the folder (scope, source list, links to the sources' captures, a copy of
+    the fact store so filing continues its numbering, the earlier verdicts) and one
+    extraction brief per batch of source text; sources default to the held ones
+side check --label market --step extract      a worker's check for its extraction parts
+side file --label market                      merges the parts, files the facts by script, computes
+                                              their deep links and digests, writes the writing brief
+side check --label market --step write        the writer's check: fact IDs, American English, citations
+side verify --label market                    a sandbox verification of only the facts newly cited;
+                                              --step verify checks it; `side verify --merge` records it
+side render --label market                    the section on its own, with linked citations and sources
+side merge --label market                     brings the facts, links, verdicts, synthesis file, and
+                                              section into the main run as recorded edits
+```
+
+After the merge, `render` rebuilds the report and the publication reviews
+re-review only the pages whose hashes changed. The main planner never drafts
+facts from text a side run extracted (`tools/lists/side-extracted.json`).
+
 ## Holding new sources for a later update
 
 To finish a report now and add newly found sources later, set

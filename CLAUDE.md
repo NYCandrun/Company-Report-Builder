@@ -70,6 +70,14 @@ every ready packet until exact-artifact release passes.
   `python3 -m research_control --root runs/<slug> sync-engine` from the template
   checkout so the change is recorded in the run history.
 
+## Side runs
+
+New sources that arrive after fact drafting (a later search) do not go back
+through the main run. Hold them (`limits --extraction-budget 1`), finish the
+run, then take them through a side run (`side new`, `side file`,
+`side verify`, `side render`, `side merge`; see README) with one worker per
+brief it prints. Its merge records every change, so nothing finished reruns.
+
 ## American English
 
 Everything written into a run is in American English, in spelling and in

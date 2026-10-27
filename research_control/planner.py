@@ -1119,7 +1119,11 @@ class AdaptivePlanner:
                     match(item)["id"] for item in inputs
                     if same(item) and str(task["created_at"]) >= listed_at.get(base_source(item.get("id", "")), "")
                 )
-        return kept, [item for item in slices if item["id"] not in covered]
+        # Text a side run extracted is covered too (`side merge`).
+        from research_control.side import extracted_text
+
+        done = extracted_text(self.root)
+        return kept, [item for item in slices if item["id"] not in covered and item["sha256"] not in done]
 
     def _focus(self, uncovered: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Slices of sources listed again for some questions carry those questions; a

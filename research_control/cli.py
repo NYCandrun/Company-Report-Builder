@@ -327,6 +327,24 @@ def _parser() -> argparse.ArgumentParser:
     verify_new.add_argument("--check", metavar="LABEL", help="check a sandbox's verdicts")
     verify_new.add_argument("--merge", metavar="LABEL", help="add a clean sandbox's verdicts and settle verification")
 
+    side = subparsers.add_parser("side", help="orchestrator: a bounded side run over new sources, away from the scheduler")
+    side_sub = side.add_subparsers(dest="side_command", required=True)
+    side_new = side_sub.add_parser("new", help="lay out a side run and its extraction briefs")
+    side_new.add_argument("--label", required=True)
+    side_new.add_argument("--question", action="append", required=True, help="a numbered question it serves (Q7)")
+    side_new.add_argument("--source-id", action="append", default=[], help="sources to read (default: the held ones)")
+    side_new.add_argument("--section", default="", help="the report heading the side run updates (## Market, ...)")
+    for name, text in (("check", "check a step's outputs"), ("file", "merge parts, file facts, link, digest, write the writing brief"),
+                       ("verify", "prepare (or --merge) the sandbox verification of newly cited facts"),
+                       ("render", "build the section on its own"), ("merge", "bring the side run into the main run"),
+                       ("status", "where the side run stands")):
+        command = side_sub.add_parser(name, help=text)
+        command.add_argument("--label", required=True)
+        if name == "check":
+            command.add_argument("--step", required=True, choices=["extract", "write", "verify"])
+        if name == "verify":
+            command.add_argument("--merge", action="store_true")
+
     supplement = subparsers.add_parser(
         "supplement", help="orchestrator: extract a recaptured source's new text as a supplement to its filed facts"
     )
@@ -493,6 +511,26 @@ def main() -> None:
         if args.command == "next":
             result = next_packets(root)
             _print_json(result)
+            return
+        if args.command == "side":
+            from research_control import side as side_run
+
+            if args.side_command == "new":
+                _print_json(side_run.new(root, args.label, list(args.question), list(args.source_id) or None, args.section))
+            elif args.side_command == "check":
+                _print_json(side_run.check(root, args.label, args.step))
+            elif args.side_command == "file":
+                _print_json(side_run.file(root, args.label))
+            elif args.side_command == "verify":
+                _print_json(side_run.verify(root, args.label, merge=args.merge))
+            elif args.side_command == "render":
+                _print_json(side_run.render(root, args.label))
+            elif args.side_command == "merge":
+                from research_control.automatic import RUNTIME_WORKER
+
+                _print_json(side_run.merge(root, args.label, RUNTIME_WORKER))
+            else:
+                _print_json(side_run.status(root, args.label))
             return
         if args.command == "verify-new":
             from research_control import verification_sandbox

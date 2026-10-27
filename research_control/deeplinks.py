@@ -265,12 +265,15 @@ def deep_link(root: Path, source: dict[str, str], quote_text: str) -> dict[str, 
     return {"deep_link": url, "anchor": "source", "kind": "page", "located": located}
 
 
-def write_fact_links(root: Path) -> dict[str, Any]:
-    """Deep links for every filed fact, and a coverage report."""
+def write_fact_links(root: Path, fact_ids: list[str] | None = None) -> dict[str, Any]:
+    """Deep links for every filed fact (or only `fact_ids`), and a coverage report."""
     manifest = _manifest(root)
     paths = sorted((root / "02-facts").glob("*.md")) + sorted(root.glob("04-competitors/*/02-facts/*.md"))
+    wanted = None if fact_ids is None else set(fact_ids)
     rows: list[dict[str, Any]] = []
     for fact in fact_tables.load_fact_tables(paths):
+        if wanted is not None and fact.get("fact_id") not in wanted:
+            continue
         source_id = str(fact.get("source_id", "")).strip()
         source = manifest.get(source_id, {"id": source_id, "url": ""})
         link = deep_link(root, source, str(fact.get("verbatim_quote", "")))
