@@ -343,6 +343,8 @@ def render_pdf(html_path: Path, markdown: str, pdf_path: Path) -> tuple[str, int
         commands.append(("chromium", [
             chrome,
             "--headless",
+            # Chromium refuses to run as root (a container) with its sandbox on.
+            *(["--no-sandbox"] if hasattr(os, "geteuid") and os.geteuid() == 0 else []),
             "--disable-gpu",
             "--no-pdf-header-footer",
             f"--print-to-pdf={pdf_path}",
