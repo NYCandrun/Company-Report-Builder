@@ -10,6 +10,7 @@ from research_control.capture import (
     REPOSITORY_FILE_LIMIT,
     TextExtractor,
     _blocked_receipt,
+    _change_history,
     _clear_stale_block,
     _commit_history,
     _embedded_publish_date,
@@ -82,6 +83,27 @@ def _git(cwd: Path, *args: str, date: str = "2026-05-01T12:00:00Z", author: str 
 
 
 class RepositoryCaptureTests(unittest.TestCase):
+    def test_change_history_keeps_overwritten_versions_oldest_first(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            _git(repo, "init", "-q", "-b", "main")
+            (repo / "accounts.md").write_text("| Acme | Proposal |\n", encoding="utf-8")
+            _git(repo, "add", ".")
+            _git(repo, "commit", "-q", "-m", "Add account book", date="2026-03-01T12:00:00Z")
+            (repo / "accounts.md").write_text("| Acme | Signed |\n", encoding="utf-8")
+            (repo / "uv.lock").write_text("pinned\n", encoding="utf-8")
+            _git(repo, "add", ".")
+            _git(repo, "commit", "-q", "-m", "Acme signed", date="2026-05-01T12:00:00Z")
+            (repo / "accounts.md").write_text("| Acme | Signed |\n| Beta | Lead |\n", encoding="utf-8")
+            _git(repo, "add", ".")
+            _git(repo, "commit", "-q", "-m", "chore: bump", author="dependabot[bot]")
+            text = "\n".join(_change_history(repo))
+            self.assertLess(text.index("Add account book"), text.index("Acme signed"))
+            self.assertIn("-| Acme | Proposal |", text)
+            self.assertIn("+| Acme | Signed |", text)
+            self.assertNotIn("pinned", text)
+            self.assertNotIn("Beta", text)
+
     def test_large_file_is_included_when_the_budget_has_room(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             checkout = Path(directory)

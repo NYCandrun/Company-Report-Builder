@@ -861,8 +861,8 @@ def _github_checkout(root: Path, owner: str, repo: str) -> Path:
 # Repository text included in a capture, so extraction can read what the code
 # does rather than only what its README says. Docs and manifests come first,
 # then source code, then other text such as datasets, until the budget is used.
-REPOSITORY_TEXT_BUDGET = 400_000
-REPOSITORY_FILE_LIMIT = 60_000
+REPOSITORY_TEXT_BUDGET = 1_000_000
+REPOSITORY_FILE_LIMIT = 250_000
 SKIPPED_FILES = {"package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "uv.lock", "Cargo.lock", "go.sum"}
 MANIFEST_NAMES = {
     "pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "package.json", "Dockerfile",
@@ -925,11 +925,14 @@ def _repository_text(checkout: Path, listed: list[str]) -> list[str]:
     return lines
 
 
-# History and work that is not on the default branch: the commit log, then each
-# branch or pull request whose commits the default branch does not contain.
-HISTORY_LIMIT = 400
-UNMERGED_TEXT_BUDGET = 250_000
-UNMERGED_REF_LIMIT = 80_000
+# History and work that is not on the default branch: the commit log, every
+# commit's changes (earlier versions of files show how deals, projects, and the
+# company moved), then each branch or pull request the default branch lacks.
+HISTORY_LIMIT = 2_000
+CHANGE_HISTORY_BUDGET = 1_500_000
+CHANGE_COMMIT_LIMIT = 200_000
+UNMERGED_TEXT_BUDGET = 600_000
+UNMERGED_REF_LIMIT = 300_000
 BOT_MARKERS = ("[bot]", "dependabot", "renovate")
 
 
@@ -941,6 +944,45 @@ def _commit_history(checkout: Path) -> list[str]:
     lines += log[:HISTORY_LIMIT]
     if len(log) > HISTORY_LIMIT:
         lines.append(f"... {len(log) - HISTORY_LIMIT} earlier commits")
+    return lines
+
+
+def _change_history(checkout: Path) -> list[str]:
+    """Every human commit's changes on the default branch, oldest first.
+
+    Earlier versions of files are evidence too: an account book's stages over
+    time, a plan's revisions, a product's growth. Within the budget the newest
+    commits are kept (a fork's upstream history is oldest); commits by bots and
+    lockfile changes are left out, and every omission is listed.
+    """
+    rows = _git(["log", "--no-merges", "--format=%H%x09%cs%x09%an%x09%ae%x09%s"], cwd=checkout).splitlines()
+    kept: list[list[str]] = []
+    omitted: list[str] = []
+    used = 0
+    excludes = [f":(exclude,glob)**/{name}" for name in sorted(SKIPPED_FILES)]
+    for row in rows:
+        sha, day, author, email, subject = (row.split("\t") + [""] * 5)[:5]
+        if any(marker in f"{author} {email}".casefold() for marker in BOT_MARKERS):
+            continue
+        if used >= CHANGE_HISTORY_BUDGET:
+            omitted.append(f"{day} {sha[:7]} {subject} (history budget reached)")
+            continue
+        patch = _git(["show", "--no-color", "--format=", sha, "--", ".", *excludes], cwd=checkout, timeout=300)
+        if len(patch) > CHANGE_COMMIT_LIMIT or used + len(patch) > CHANGE_HISTORY_BUDGET:
+            stat = _git(["show", "--format=", "--stat=200", sha, "--", ".", *excludes], cwd=checkout).rstrip()
+            kept.append([f"=== COMMIT {sha[:7]} {day} {subject} (diff of {len(patch)} characters not included; files changed below) ===", stat])
+            used += len(stat)
+            continue
+        used += len(patch)
+        kept.append([f"=== COMMIT {sha[:7]} {day} {subject} ===", patch.replace("\0", "").rstrip("\n")])
+    if not kept:
+        return []
+    lines = ["", f"--- CHANGE HISTORY OF THE DEFAULT BRANCH ({len(kept)} commits with their changes, oldest first) ---",
+             "Each commit shows what changed that day: removed lines (-) are earlier versions that were overwritten."]
+    for block in reversed(kept):
+        lines += ["", *block]
+    if omitted:
+        lines += ["", f"--- EARLIER COMMITS NOT SHOWN ({len(omitted)}) ---", *omitted]
     return lines
 
 
@@ -968,7 +1010,8 @@ def _unmerged_work(checkout: Path) -> tuple[list[str], str]:
     if not kept:
         return [], ""
     lines = ["", f"--- WORK NOT ON THE DEFAULT BRANCH ({len(kept)} branches or pull requests, unmerged) ---",
-             "Unmerged work is proposed or in progress, not shipped. Each block is dated by its own commits."]
+             "Unmerged work is built but not merged into the default branch, so not shipped. "
+             "Each block is dated by its own commits."]
     used = 0
     latest = ""
     for key in sorted(kept, key=lambda item: -len(item)):
@@ -1032,6 +1075,7 @@ def _github_capture(root: Path, *, url: str, source_id: str, grade: str) -> dict
         lines += _repository_text(checkout, listed)
         if not relative:
             lines += _commit_history(checkout)
+            lines += _change_history(checkout)
             unmerged, unmerged_latest = _unmerged_work(checkout)
             lines += unmerged
     else:

@@ -17,12 +17,15 @@ notes. Include one opening portfolio exhibit, one section-1 product map, and
 one section-3 messaging timeline without duplication.
 
 Before evidence limits, include a catalogue exhibit drawn from
-`05-synthesis/inference-catalogue.md` in three parts:
+`05-synthesis/inference-catalogue.md` in four parts:
 - "What the company sells", each offering marked `Stated`, `Inferred`, or
   `Lead` with its evidence, stated first and leads last below a dividing rule;
 - "How the company works" and "What the work is", each listing inferences in
   order of strength with their supporting evidence, thin ones last below a
   dividing rule. Label these two parts as inference.
+- "How it has changed", the dated timelines, each step with its date and
+  delivery status (shipped, built but unmerged, or promised), labelled as
+  inference where the sequence is read from change history.
 Never present an inferred offering or an inference as an established fact
 elsewhere in the brief.
 

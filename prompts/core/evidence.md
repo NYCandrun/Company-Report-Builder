@@ -32,7 +32,9 @@ notes.
 - Aims are not achievements.
 - `can` is not `does`. `some` is not `all`. `up to` is not typical.
 - Beta is not general availability. A job posting is not a hire.
-- An unmerged branch or pull request is proposed work, not shipped code.
+- Unmerged branch or pull-request work is built but not shipped. A capability
+  a README or doc describes but the code does not implement is promised, not
+  built.
 - Employee-delivered work is not product capability without product evidence.
 - Keep contradictions visible with both sources and dates.
 - Start inference with `My inference:` and name its supporting fact IDs.

@@ -2,7 +2,7 @@ TASK TYPE: COMPANY CATALOGUE, BUILT FROM THE SYNTHESIS AND THE FACT STORE
 
 Read the evidence, writing, and runtime cores, the other synthesis files, and
 the fact store. Write `05-synthesis/inference-catalogue.md`, a catalogue in
-three parts that lays out the evidence so a reader can judge each entry.
+four parts that lays out the evidence so a reader can judge each entry.
 
 1. What the company sells: each offering (services, engagement types,
    products, workshops, licensed or marketplace software), with its basis:
@@ -26,8 +26,15 @@ three parts that lays out the evidence so a reader can judge each entry.
 3. What the work is: the kinds of engagements and deliverables, the
    technologies and platforms the work runs on, the problems it addresses,
    and who it is for.
+4. How it has changed: dated timelines from change histories and dated
+   sources, each step with its date and fact ID: deals and accounts moving
+   through stages (and the sales cycle, expansion, or apparent churn those
+   steps suggest), projects and products from first commit through built,
+   unmerged, and shipped work, and the company's offerings, structure, and
+   plans over time. Mark each item's delivery status (shipped, built but
+   unmerged, or promised in docs only) and keep plans as plans.
 
-Parts 2 and 3 hold inferences. For each inference write:
+Parts 2, 3, and 4 hold inferences. For each inference write:
 
 - the inference, one sentence, starting `My inference:`;
 - strength: `strong` (several independent sources agree, including
@@ -38,7 +45,7 @@ Parts 2 and 3 hold inferences. For each inference write:
 - counter-evidence or limits, with fact IDs, or "none found";
 - what would confirm or overturn it.
 
-Order parts 2 and 3 by strength. Put `thin` inferences last, below a dividing rule
+Order parts 2 and 3 by strength, and part 4 by date within each timeline. Put `thin` inferences last, below a dividing rule
 labelled "Thin evidence". Personal or side projects of employees are evidence
 about what the company's people build, not about what the company sells; say
 so where an inference rests on them. Customer, client, and partner
