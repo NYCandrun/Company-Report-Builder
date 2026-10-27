@@ -108,6 +108,13 @@ channel needs more work, the orchestrator reopens it with
 `python3 -m research_control discovery reopen --channel CHANNEL --evidence WHY`
 and reruns `run`, which re-queues the channel's task for a worker to claim.
 
+When a source already used downstream is recaptured with more content (for
+example a repository's branches and pull requests), list it with
+`python3 -m research_control supplement --source-id SRC-… --reason WHY`, rerun
+its capture alone with `work rerun capture.source.src-… --only --reason WHY`,
+then rerun `capture.reduce-captures` the same way. Facts already filed stand;
+the new text is extracted, appended at filing, and reconciled into synthesis.
+
 Runtime-owned tasks (marked `executor: runtime`) never become packets and
 cannot be completed by a worker; `run` executes them under the reserved worker
 identity `runtime-executor`.

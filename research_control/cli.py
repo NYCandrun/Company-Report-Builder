@@ -260,6 +260,10 @@ def _parser() -> argparse.ArgumentParser:
     )
     work_rerun.add_argument("task_id")
     work_rerun.add_argument("--reason", required=True)
+    work_rerun.add_argument(
+        "--only", action="store_true",
+        help="rerun this task alone; its consumers stand and are replanned from what changes (supplements)",
+    )
     work_restore = work_sub.add_parser(
         "restore", help="orchestrator: restore a superseded or rerun-marked task whose last attempt succeeded"
     )
@@ -424,7 +428,7 @@ def main() -> None:
                 with open_runtime(root) as store:
                     if not store.task(args.task_id):
                         raise KeyError(f"unknown task: {args.task_id}")
-                    _print_json(store.mark_stale(args.task_id, f"rerun requested: {args.reason}"))
+                    _print_json(store.mark_stale(args.task_id, f"rerun requested: {args.reason}", propagate=not args.only))
                 return
             if args.work_command == "succeed":
                 telemetry = {
