@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from research_control.discovery import ALTERNATES_PART, BLOCKED_SOURCES_LIST, DISCOVERY_CHANNELS, MEDIA_CHANNELS, DiscoveryEngine
+from research_control import verification
 from research_control.media import is_media_url
 from research_control.io import atomic_write_jsonl, atomic_write_text, load_json, load_jsonl, workflow
 from research_control.triage import TRIAGE_DECISIONS, TRIAGE_EXCERPT_CHARACTERS, TRIAGE_INDEX, triage_included
@@ -81,6 +82,8 @@ class AdaptivePlanner:
             created.extend(self._plan_capture())
         elif phase == "facts":
             created.extend(self._plan_facts())
+        elif phase == "verification":
+            created.extend(self._plan_verification())
         elif phase not in {"bootstrap", "release_acceptance"}:
             created.extend(self._plan_static(phase))
         self.store.refresh_ready()
@@ -495,6 +498,94 @@ class AdaptivePlanner:
                     exclusive_inputs=False,
                     priority=30,
                     metadata={"single_writer": True},
+                ),
+                created,
+            )
+        return created
+
+    def _plan_verification(self) -> list[str]:
+        """Verify cited facts in parallel: runtime prepare, one verifier per shard, runtime merge."""
+        created: list[str] = []
+        prepare_id = "verification.prepare"
+        self._add(
+            WorkItem(
+                task_id=prepare_id,
+                phase="verification",
+                task_type="verification_prepare",
+                inputs=[
+                    {"id": "synthesis", "path": "05-synthesis/*.md", "required": True},
+                    {"id": "fact_store", "path": "02-facts/*.md", "required": True},
+                ],
+                outputs=[verification.CITED_LIST, verification.PACKET_INDEX],
+                prompt_files=["prompts/core/runtime.md", "prompts/phases/verification.md"],
+                schema_files=[],
+                validators=[],
+                priority=5,
+                exclusive_inputs=True,
+                track_input_staleness=True,
+                metadata={"single_writer": True, "executor": "runtime"},
+            ),
+            created,
+        )
+        prepare = self.store.task(prepare_id)
+        if not prepare or prepare["state"] != "succeeded":
+            return created
+        definition = next(
+            item for item in self.document["execution_profiles"]["verification"]["tasks"]
+            if item["id"] == "verify-cited-facts"
+        )
+        index = load_json(self.root / verification.PACKET_INDEX)
+        shard_ids: list[str] = []
+        for fact_ids in verification.shards(self.root):
+            identifier = verification.shard_id(fact_ids)
+            task_id = f"verification.verify.{identifier}"
+            shard_ids.append(task_id)
+            part = f"{verification.PART_DIR}/{identifier}.jsonl"
+            self._add(
+                WorkItem(
+                    task_id=task_id,
+                    phase="verification",
+                    task_type="verification",
+                    inputs=[
+                        {"id": fact_id, "fact_id": fact_id, "path": index["facts"][fact_id]["packet"],
+                         "source_id": index["facts"][fact_id]["source_id"]}
+                        for fact_id in fact_ids
+                    ],
+                    outputs=[part],
+                    prompt_files=[*definition.get("cores", []), definition["prompt"]],
+                    depends_on=[prepare_id],
+                    schema_files=TASK_SCHEMAS.get("verification", []),
+                    validators=["verification_part"],
+                    priority=10,
+                    independent=True,
+                    exclusive_inputs=True,
+                    metadata={"part": part, "fact_ids": fact_ids},
+                ),
+                created,
+            )
+        current = set(shard_ids)
+        for task in self.store.tasks(phase="verification"):
+            if task["task_type"] == "verification" and task["task_id"] not in current and task["state"] not in ACTIVE_STATES:
+                self.store.supersede(task["task_id"], "replaced by a shard over the current cited facts")
+        shard_tasks = [self.store.task(task_id) for task_id in shard_ids]
+        if shard_ids and all(task and task["state"] == "succeeded" for task in shard_tasks):
+            self._add(
+                WorkItem(
+                    task_id="verification.reduce-verdicts",
+                    phase="verification",
+                    task_type="verification_reducer",
+                    inputs=[
+                        {"id": "verdict_parts", "path": f"{verification.PART_DIR}/*.jsonl"},
+                        {"id": "packet_index", "path": verification.PACKET_INDEX},
+                    ],
+                    outputs=[verification.VERDICTS, verification.REPORT],
+                    prompt_files=["prompts/core/runtime.md", "prompts/phases/verification.md"],
+                    depends_on=shard_ids,
+                    schema_files=[],
+                    validators=[],
+                    priority=20,
+                    exclusive_inputs=True,
+                    metadata={"single_writer": True, "executor": "runtime"},
                 ),
                 created,
             )

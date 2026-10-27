@@ -12,6 +12,7 @@ from research_control.dispatch import emit_ready_packets
 from research_control.discovery import ALTERNATES_PART, BLOCKED_SOURCES_LIST
 from research_control.io import load_json, load_jsonl, workflow
 from research_control.orchestration import current_phase, initialize, load_state, phase_order, reopen_phase
+from research_control import verification
 from research_control.automatic import RUNTIME_WORKER, run_automatic
 from research_control.media import is_media_url
 from research_control.planner import AdaptivePlanner
@@ -225,6 +226,10 @@ def _validate_semantic_receipt(root: Path, store: RuntimeStore, task: dict[str, 
             raise ValueError(
                 f"{task['task_id']}: no alternate or --none record for: {', '.join(missing[:15])}"
             )
+    if task["task_type"] == "verification" and task["metadata"].get("part"):
+        failures = verification.validate_part(root, task["metadata"]["part"], task["metadata"]["fact_ids"])
+        if failures:
+            raise ValueError(f"{task['task_id']}: verdict part is invalid: {'; '.join(failures[:10])}")
     if task["task_type"] == "triage":
         failures = validate_triage(root)
         if failures:

@@ -21,6 +21,7 @@ from research_control.io import atomic_write_json, load_json, workflow
 from research_control.media import is_media_url
 from research_control.provision import engine_fingerprint
 from research_control.resources import runtime_limits
+from research_control import verification
 from research_control.reducers import reduce_capture_parts, reduce_discovery, reduce_extraction_parts
 from research_control.runtime import RuntimeStore
 
@@ -102,6 +103,11 @@ HANDLERS: dict[str, Callable[[Path, RuntimeStore, dict[str, Any]], Any]] = {
     "discovery_reducer": lambda root, store, _task: reduce_discovery(root, store),
     "capture": _capture,
     "capture_reducer": lambda root, store, _task: reduce_capture_parts(root, store),
+    "verification_prepare": lambda root, _store, _task: verification.prepare(root),
+    "verification_reducer": lambda root, store, _task: verification.reduce_verdicts(root, [
+        task["metadata"]["part"] for task in store.tasks(phase="verification", states={"succeeded"})
+        if task["task_type"] == "verification"
+    ]),
     "extraction_reducer": lambda root, store, _task: reduce_extraction_parts(root, [
         task for task in store.tasks(phase="facts", states={"succeeded"}) if task["task_type"] == "extraction"
     ]),

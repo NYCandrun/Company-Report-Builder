@@ -195,6 +195,7 @@
         {
           "id": "verify-cited-facts",
           "task_type": "verification",
+          "fan_out": "The runtime lists cited facts and writes one packet per fact (verification.prepare), groups them by source into shards that independent workers verify (verification.verify.SHARD, one part each), then merges the parts in cited order (verification.reduce-verdicts).",
           "prompt": "prompts/phases/verification.md",
           "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md"],
           "outputs": ["tools/lists/cited-facts.txt", "tools/outputs/cited-facts/index.json", "06-checks/verification-cited.md", "tools/outputs/verification-verdicts.jsonl"],
