@@ -21,6 +21,7 @@ CITED_LIST = "tools/lists/cited-facts.txt"
 PACKET_DIR = "tools/outputs/cited-facts"
 PACKET_INDEX = f"{PACKET_DIR}/index.json"
 PART_DIR = "tools/outputs/worker-parts/verification"
+REUSED = f"{PACKET_DIR}/reused-verdicts.jsonl"
 VERDICTS = "tools/outputs/verification-verdicts.jsonl"
 REPORT = "06-checks/verification-cited.md"
 VERDICT_VALUES = ("confirmed", "corrected", "unsupported", "source unreachable")
@@ -51,6 +52,7 @@ def prepare(root: Path) -> dict[str, Any]:
     cited = cited_fact_ids(root, set(facts))
     if not cited:
         raise ValueError("the synthesis cites no known fact IDs")
+    prior = _prior_verdicts(root)
     manifest_path = root / "01-sources/MANIFEST.csv"
     manifest = {row.get("id", ""): row for row in sources.load_manifest(manifest_path)} if manifest_path.is_file() else {}
     index: dict[str, dict[str, str]] = {}
@@ -71,10 +73,49 @@ def prepare(root: Path) -> dict[str, Any]:
         }
         relative = f"{PACKET_DIR}/{fact_id}.json"
         atomic_write_json(root / relative, packet)
-        index[fact_id] = {"packet": relative, "source_id": source_id}
+        fingerprint = _fingerprint(packet)
+        index[fact_id] = {"packet": relative, "source_id": source_id, "fingerprint": fingerprint}
+    # A verdict carries over only for a packet identical to the one verified.
+    reused = [prior[fact_id][1] for fact_id in cited if fact_id in prior and prior[fact_id][0] == index[fact_id]["fingerprint"]]
+    atomic_write_jsonl(root / REUSED, reused)
+    reused_ids = {row["fact_id"] for row in reused}
+    for fact_id in reused_ids:
+        index[fact_id]["reused"] = True
     atomic_write_text(root / CITED_LIST, "".join(f"{fact_id}\n" for fact_id in cited))
     atomic_write_json(root / PACKET_INDEX, {"cited": cited, "facts": index})
-    return {"status": "PASS", "cited_facts": len(cited), "sources": len({row["source_id"] for row in index.values()})}
+    return {
+        "status": "PASS", "cited_facts": len(cited), "reused_verdicts": len(reused_ids),
+        "to_verify": len(cited) - len(reused_ids), "sources": len({row["source_id"] for row in index.values()}),
+    }
+
+
+def _fingerprint(packet: dict[str, Any]) -> str:
+    fact = {key: value for key, value in packet["fact"].items() if key not in {"verdict"}}
+    basis = {"fact": fact, "source": packet["source"]}
+    return sha256(json.dumps(basis, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def _prior_verdicts(root: Path) -> dict[str, tuple[str, dict[str, Any]]]:
+    """Earlier verdicts with the fingerprint of the packet each one judged."""
+    index_path = root / PACKET_INDEX
+    if not index_path.is_file():
+        return {}
+    facts = load_json(index_path).get("facts", {})
+    rows: list[dict[str, Any]] = []
+    for path in [root / VERDICTS, root / REUSED, *sorted((root / PART_DIR).glob("*.jsonl"))]:
+        if path.is_file():
+            rows.extend(load_jsonl(path))
+    prior: dict[str, tuple[str, dict[str, Any]]] = {}
+    for row in rows:
+        fact_id = str(row.get("fact_id", ""))
+        fingerprint = facts.get(fact_id, {}).get("fingerprint")
+        if fingerprint is None and fact_id in facts:
+            # Index written before fingerprints existed: recompute from the packet it named.
+            packet_path = root / facts[fact_id]["packet"]
+            fingerprint = _fingerprint(load_json(packet_path)) if packet_path.is_file() else None
+        if fingerprint and row.get("verdict") in VERDICT_VALUES:
+            prior[fact_id] = (fingerprint, row)
+    return prior
 
 
 def shards(root: Path) -> list[list[str]]:
@@ -82,6 +123,8 @@ def shards(root: Path) -> list[list[str]]:
     index = load_json(root / PACKET_INDEX)
     by_source: dict[str, list[str]] = {}
     for fact_id in index["cited"]:
+        if index["facts"][fact_id].get("reused"):
+            continue
         by_source.setdefault(index["facts"][fact_id]["source_id"], []).append(fact_id)
     result: list[list[str]] = []
     current: list[str] = []
@@ -131,12 +174,14 @@ def validate_part(root: Path, part: str, fact_ids: list[str]) -> list[str]:
 def reduce_verdicts(root: Path, parts: list[str]) -> dict[str, Any]:
     """Merge shard verdicts in cited order and write the verification report."""
     cited = load_json(root / PACKET_INDEX)["cited"]
-    verdicts: dict[str, dict[str, Any]] = {}
+    verdicts: dict[str, dict[str, Any]] = {
+        str(row["fact_id"]): row for row in (load_jsonl(root / REUSED) if (root / REUSED).is_file() else [])
+    }
     for part in sorted(parts):
         for row in load_jsonl(root / part):
             fact_id = str(row.get("fact_id", ""))
             if fact_id in verdicts:
-                raise ValueError(f"{fact_id}: verdicts in more than one shard")
+                raise ValueError(f"{fact_id}: verdicts in more than one shard or also reused")
             verdicts[fact_id] = row
     missing = [fact_id for fact_id in cited if fact_id not in verdicts]
     if missing:

@@ -843,6 +843,61 @@ def _github_checkout(root: Path, owner: str, repo: str) -> Path:
     raise RuntimeError(f"git clone of {owner}/{repo} failed")
 
 
+# Repository text included in a capture, so extraction can read what the code
+# does rather than only what its README says. Docs and manifests come first,
+# then source code, then other text such as datasets, until the budget is used.
+REPOSITORY_TEXT_BUDGET = 400_000
+REPOSITORY_FILE_LIMIT = 60_000
+SKIPPED_FILES = {"package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "uv.lock", "Cargo.lock", "go.sum"}
+MANIFEST_NAMES = {
+    "pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "package.json", "Dockerfile",
+    "docker-compose.yml", "Makefile", "plugin.json", "marketplace.json", "manifest.json", "SKILL.md",
+}
+CODE_SUFFIXES = {
+    ".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".go", ".rs", ".java", ".kt", ".rb", ".sh",
+    ".sql", ".yaml", ".yml", ".toml", ".ini", ".cfg",
+}
+
+
+def _repository_rank(path: str) -> tuple[int, str]:
+    name = Path(path).name
+    if name.upper().startswith("README") or (path.endswith(".md") and "/" not in path):
+        return (0, path)
+    if name in MANIFEST_NAMES or path.startswith(".github/"):
+        return (1, path)
+    if Path(path).suffix in CODE_SUFFIXES or path.endswith(".md"):
+        return (2, path)
+    return (3, path)
+
+
+def _repository_text(checkout: Path, listed: list[str]) -> list[str]:
+    """File contents in priority order within the budget, with every omission listed."""
+    lines: list[str] = []
+    used = 0
+    omitted: list[str] = []
+    for path in sorted(listed, key=_repository_rank):
+        file_path = checkout / path
+        if Path(path).name in SKIPPED_FILES or not file_path.is_file():
+            omitted.append(f"{path} (lockfile or not a file)")
+            continue
+        data = file_path.read_bytes()
+        if b"\0" in data[:8192]:
+            omitted.append(f"{path} (binary)")
+            continue
+        text = data.decode("utf-8", errors="replace")
+        if len(text) > REPOSITORY_FILE_LIMIT:
+            omitted.append(f"{path} ({len(text)} characters, over the per-file limit)")
+            continue
+        if used + len(text) > REPOSITORY_TEXT_BUDGET:
+            omitted.append(f"{path} (capture budget reached)")
+            continue
+        used += len(text)
+        lines += ["", f"--- FILE: {path} ({text.count(chr(10)) + 1} lines) ---", text.rstrip("\n")]
+    if omitted:
+        lines += ["", f"--- FILES NOT INCLUDED ({len(omitted)}) ---", *omitted]
+    return lines
+
+
 def _github_capture(root: Path, *, url: str, source_id: str, grade: str) -> dict[str, Any]:
     """Capture a public GitHub repository, directory, or file through git rather than web pages."""
     parts = [part for part in urlparse(url).path.split("/") if part]
@@ -870,9 +925,7 @@ def _github_capture(root: Path, *, url: str, source_id: str, grade: str) -> dict
         lines += [f"--- FILE TREE ({len(listed)} files{', under ' + relative if relative else ''}) ---", *listed[:500]]
         if len(listed) > 500:
             lines.append(f"... {len(listed) - 500} more files")
-        for readme in sorted(target.glob("README*")):
-            if readme.is_file():
-                lines += ["", f"--- {readme.relative_to(checkout)} ---", readme.read_text(encoding="utf-8", errors="replace")[:100_000]]
+        lines += _repository_text(checkout, listed)
     else:
         raise RuntimeError(f"{relative} is not in {owner}/{repo} at its default branch head")
     directory = root / "01-sources/captures" / source_id

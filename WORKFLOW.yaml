@@ -187,7 +187,8 @@
           "inputs": [{"id": "fact_store", "path": "02-facts/*.md", "required": true}, {"id": "scope_map", "path": "00-scope.md", "required": true}],
           "outputs": ["tools/digests/*.md", "03-timelines/*.md", "tools/outputs/currency.csv"],
           "independent": false,
-          "exclusive_inputs": true
+          "exclusive_inputs": true,
+          "track_input_staleness": true
         },
         {"id": "write-product-map", "task_type": "synthesis", "depends_on": ["groundwork", "currency-review"], "prompt": "prompts/phases/synthesis.md", "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"], "outputs": ["05-synthesis/product-map.md"], "independent": true, "exclusive_inputs": false},
         {"id": "write-offering", "task_type": "synthesis", "depends_on": ["groundwork", "currency-review"], "prompt": "prompts/phases/synthesis.md", "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"], "outputs": ["05-synthesis/offering.md"], "independent": true, "exclusive_inputs": false},

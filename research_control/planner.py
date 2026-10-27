@@ -103,13 +103,34 @@ class AdaptivePlanner:
         raise KeyError(f"unknown phase: {phase_id}")
 
     def _add(self, item: WorkItem, created: list[str]) -> None:
+        existing = self.store.task(item.task_id)
+        if existing and existing["state"] in FINAL_STATES:
+            known = {
+                row["depends_on"] for row in self.store.connection.execute(
+                    "SELECT depends_on FROM dependencies WHERE task_id=?", (item.task_id,)
+                )
+            }
+            if set(item.depends_on) - known:
+                # A finished consumer (such as a reducer) gained new parts to
+                # merge: it reruns once they are done.
+                self.store.mark_stale(item.task_id, "new upstream work was planned")
         if self.store.add_task(item):
             created.append(item.task_id)
 
     def _plan_static(self, phase_id: str) -> list[str]:
         created: list[str] = []
         # Definitions are topologically ordered in WORKFLOW.yaml.
-        for definition in self.document.get("execution_profiles", {}).get(phase_id, {}).get("tasks", []):
+        definitions = self.document.get("execution_profiles", {}).get(phase_id, {}).get("tasks", [])
+        planned = {f"{phase_id}.{definition['id']}" for definition in definitions}
+        for task in self.store.tasks(phase=phase_id):
+            # A task the current profile no longer defines (the profile changed
+            # mid-run) is retired once it is not running; early-dispatch work stays.
+            if (
+                task["task_id"] not in planned and task["metadata"].get("planner") == "static-profile"
+                and task["state"] not in ACTIVE_STATES | {"superseded"}
+            ):
+                self.store.supersede(task["task_id"], "no longer defined by the workflow profile")
+        for definition in definitions:
             self._add(self._plan_profile_task(phase_id, definition["id"]), created)
         return created
 
@@ -418,8 +439,9 @@ class AdaptivePlanner:
         if not triage or triage["state"] != "succeeded":
             return created
         slices = self._source_slices(included=triage_included(self.root))
-        batches = self._pack_slices(slices)
-        extraction_ids: list[str] = []
+        kept, uncovered = self._unchanged_batches(slices)
+        batches = self._pack_slices(uncovered)
+        extraction_ids: list[str] = list(kept)
         for batch in batches:
             identifier = _batch_id(batch)
             task_id = f"facts.extract.{identifier}"
@@ -568,7 +590,8 @@ class AdaptivePlanner:
             if task["task_type"] == "verification" and task["task_id"] not in current and task["state"] not in ACTIVE_STATES:
                 self.store.supersede(task["task_id"], "replaced by a shard over the current cited facts")
         shard_tasks = [self.store.task(task_id) for task_id in shard_ids]
-        if shard_ids and all(task and task["state"] == "succeeded" for task in shard_tasks):
+        # With every verdict reused there are no shards; the merge still runs.
+        if all(task and task["state"] == "succeeded" for task in shard_tasks):
             self._add(
                 WorkItem(
                     task_id="verification.reduce-verdicts",
@@ -692,6 +715,7 @@ class AdaptivePlanner:
                     "id": source_id, "source_id": source_id, "path": canonical_relative,
                     "source_paths": paths,
                     "estimated_tokens": estimated, "token_start": 0, "token_end": estimated,
+                    "sha256": sha256(content.encode("utf-8")).hexdigest(),
                 })
                 continue
             char_start = 0
@@ -711,10 +735,35 @@ class AdaptivePlanner:
                     "id": f"{source_id}:part-{part:04d}", "source_id": source_id,
                     "path": str(slice_path.relative_to(self.root)), "source_paths": paths,
                     "estimated_tokens": end - start, "token_start": start, "token_end": end,
+                    "sha256": sha256(content[char_start:char_end].encode("utf-8")).hexdigest(),
                 })
                 char_start = char_end
                 part += 1
         return slices
+
+    def _unchanged_batches(self, slices: list[dict[str, Any]]) -> tuple[list[str], list[dict[str, Any]]]:
+        """Keep extraction batches whose every slice is unchanged; return them and the slices left to pack.
+
+        A recapture after extraction then re-extracts only the batches holding
+        a changed source, instead of repacking (and re-extracting) the corpus.
+        """
+        current = {item["id"]: item for item in slices}
+        kept: list[str] = []
+        covered: set[str] = set()
+        for task in self.store.tasks(phase="facts"):
+            if task["task_type"] != "extraction" or task["state"] == "superseded":
+                continue
+            inputs = task["inputs"]
+            unchanged = all(
+                item.get("id") in current and item["id"] not in covered
+                and all(item.get(key) == current[item["id"]].get(key) for key in ("path", "token_start", "token_end"))
+                and item.get("sha256", current[item["id"]]["sha256"]) == current[item["id"]]["sha256"]
+                for item in inputs
+            )
+            if inputs and unchanged:
+                kept.append(task["task_id"])
+                covered.update(item["id"] for item in inputs)
+        return kept, [item for item in slices if item["id"] not in covered]
 
     def _pack_slices(self, slices: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
         batches: list[list[dict[str, Any]]] = []

@@ -252,6 +252,11 @@ def _parser() -> argparse.ArgumentParser:
     work_fail.add_argument("--reason", required=True)
     work_fail.add_argument("--terminal", action="store_true", help="do not retry this failure")
     work_sub.add_parser("recover", help="recover expired leases")
+    work_rerun = work_sub.add_parser(
+        "rerun", help="orchestrator: rerun a finished task, and its finished consumers, after its inputs changed"
+    )
+    work_rerun.add_argument("task_id")
+    work_rerun.add_argument("--reason", required=True)
 
     task = subparsers.add_parser("task", help="record task attempt lifecycle")
     task_sub = task.add_subparsers(dest="task_command", required=True)
@@ -394,6 +399,12 @@ def main() -> None:
             if args.work_command == "recover":
                 with open_runtime(root) as store:
                     _print_json({"recovered": store.recover_expired(), "runtime": store.summary()})
+                return
+            if args.work_command == "rerun":
+                with open_runtime(root) as store:
+                    if not store.task(args.task_id):
+                        raise KeyError(f"unknown task: {args.task_id}")
+                    _print_json(store.mark_stale(args.task_id, f"rerun requested: {args.reason}"))
                 return
             if args.work_command == "succeed":
                 telemetry = {

@@ -57,6 +57,19 @@ class VerificationShardTests(unittest.TestCase):
             self.assertEqual(["PRD-003", "PRD-001", "PRD-002"], merged)
             self.assertIn("| confirmed | 3 |", (root / verification.REPORT).read_text(encoding="utf-8"))
 
+            # Re-preparing after a change re-verifies only the changed fact.
+            atomic_write_text(root / "02-facts/q01.md", FACTS.replace("Tribe has a network.", "Tribe has a talent network."))
+            report = verification.prepare(root)
+            self.assertEqual(2, report["reused_verdicts"])
+            self.assertEqual([["PRD-003"]], verification.shards(root))
+            part = f"{verification.PART_DIR}/{verification.shard_id(['PRD-003'])}.jsonl"
+            atomic_write_jsonl(root / part, [{
+                "fact_id": "PRD-003", "verdict": "corrected", "reason": "narrower",
+                "evidence_paths": ["x"], "corrected_claim": "Tribe has a network of engineers.",
+            }])
+            result = verification.reduce_verdicts(root, [part])
+            self.assertEqual({"confirmed": 2, "corrected": 1}, {key: result[key] for key in ("confirmed", "corrected")})
+
 
 if __name__ == "__main__":
     unittest.main()

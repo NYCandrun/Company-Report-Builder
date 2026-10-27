@@ -189,16 +189,26 @@ def current_phase(root: Path, state: dict[str, Any] | None = None) -> str | None
 
 
 def reopen_phase(root: Path, phase_id: str, reason: str) -> None:
-    """Return a completed phase to ready when its work is no longer current."""
+    """Return a completed phase to ready when its work is no longer current.
+
+    Completed later phases reopen too, so the run passes through each again:
+    the planner re-plans it against the changed upstream work, and a phase
+    whose work is still current simply passes its gate again.
+    """
     state = load_state(root)
     record = state["phases"][phase_id]
     if record["status"] != "complete":
         return
     record["status"] = "ready"
     record.pop("completed_at", None)
+    order = phase_order(root)
+    later = [item for item in order[order.index(phase_id) + 1:] if state["phases"][item]["status"] == "complete"]
+    for item in later:
+        state["phases"][item]["status"] = "pending"
+        state["phases"][item].pop("completed_at", None)
     state["status"] = "running"
     save_state(root, state)
-    append_history(root, "phase-reopened", f"{phase_id}: {reason}")
+    append_history(root, "phase-reopened", f"{phase_id}: {reason}" + (f"; later phases reopened: {', '.join(later)}" if later else ""))
 
 
 def set_phase_result(root: Path, phase_id: str, status: str, report: str) -> dict[str, Any]:

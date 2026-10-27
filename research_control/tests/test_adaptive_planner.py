@@ -9,7 +9,7 @@ from research_control.automatic import RUNTIME_WORKER
 from research_control.cli import _require_discovery_lease
 from research_control.dispatch import emit_ready_packets
 from research_control.io import atomic_write_json, atomic_write_jsonl, load_jsonl, workflow
-from research_control.orchestration import initialize, load_state, save_state
+from research_control.orchestration import current_phase, initialize, load_state, reopen_phase, save_state
 from research_control.planner import RUNTIME_DISCOVERY_CHANNELS, AdaptivePlanner, discovery_task_id
 from research_control.runtime import WorkItem
 from research_control.provision import provision_run
@@ -367,6 +367,24 @@ class AlternateCopiesTests(unittest.TestCase):
                 self.assertEqual([video["metadata"]["source_id"]], listed)
                 self.assertIsNone(store.task("capture.reduce-captures"))
 
+
+    def test_reopening_a_phase_reopens_the_completed_phases_after_it(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            copy_template(root)
+            state = initialize(root, "https://example.com")
+            for phase in ("bootstrap", "scope", "capture", "facts", "initial_synthesis"):
+                state["phases"][phase]["status"] = "complete"
+            state["phases"]["verification"]["status"] = "ready"
+            save_state(root, state)
+            reopen_phase(root, "capture", "a recapture was requested")
+            phases = load_state(root)["phases"]
+            self.assertEqual("ready", phases["capture"]["status"])
+            self.assertEqual("pending", phases["facts"]["status"])
+            self.assertEqual("pending", phases["initial_synthesis"]["status"])
+            self.assertEqual("complete", phases["scope"]["status"])
+            self.assertEqual("capture", current_phase(root))
+            self.assertIn("later phases reopened: facts, initial_synthesis", (root / "RUN_HISTORY.md").read_text(encoding="utf-8"))
 
 def _write_receipt(root: Path, store: RuntimeStore, channel: str) -> None:
     current = store.discovery_channel(channel)

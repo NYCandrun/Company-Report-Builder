@@ -13,3 +13,9 @@ Run duplicate, conflict, quote, location, date, source-ID, tag, and
 overstatement checks. Record the script audit and the required independent
 duplicate and filter spot checks in `06-checks/`. A zero-fact topic still needs
 an explicit disposition and audit record.
+
+When filing again after new or re-extracted candidates, keep the fact ID of
+every fact already in `02-facts/`: a candidate with the same source ID and
+quote as a filed fact takes that fact's ID, and only new facts get new IDs.
+Verification verdicts and synthesis citations are keyed by fact ID, so an
+unchanged fact must not be renumbered.
