@@ -1,14 +1,12 @@
 """Keep the control agent's conversation with the run, written by script and read by no one.
 
-The whole transcript, secrets removed, is copied into
-`08-control agent conversation history/` and pushed with the run: whenever the
-run is saved (`archive`), and at the start of every phase, where a script
-confirms the push reached the remote before the phase begins. Each copy is
-the full conversation so far; its line count and hash are recorded. When the
-run is released, the whole conversation is written as one final file, a
-script checks that every earlier copy is contained in it (the same lines, by
-hash), and the earlier copy is deleted. After that the folder is left alone:
-questions after the run are not added.
+Every time the run is saved (`archive`), including the push at the start of
+every phase that a script confirms reached the remote, the transcript lines
+written since the last save are added to `08-control agent conversation
+history/` as a new numbered part, with secrets removed. When the run is
+released, the whole conversation is written as one file, a script checks that
+every earlier part is contained in it, and the parts are deleted. After that
+the folder is left alone: questions after the run are not added.
 
 Secrets pasted into the conversation (access tokens, API keys, private keys)
 are replaced before anything is written. The orchestrator does not read or
@@ -99,7 +97,7 @@ def _write(folder: Path, stem: str, lines: list[str]) -> list[str]:
 
 
 def snapshot(root: Path, source: Path | None = None, label: str = "") -> dict[str, Any]:
-    """Copy the whole conversation so far, secrets removed, and record its size and hash."""
+    """Add what the transcript gained since the last save as a new part."""
     document = state(root)
     if document.get("finalized"):
         return {"status": "finalized"}
@@ -108,55 +106,67 @@ def snapshot(root: Path, source: Path | None = None, label: str = "") -> dict[st
         return {"status": "no transcript found"}
     folder = root / FOLDER
     folder.mkdir(parents=True, exist_ok=True)
+    series_list = document.setdefault("series", [])
+    series = next((item for item in series_list if item["source"] == str(source)), None)
+    if series is None:
+        series = {"source": str(source), "lines": 0, "parts": []}
+        series_list.append(series)
     lines = _redacted_lines(source)
-    files = _write(folder, SNAPSHOT_STEM, lines)
-    copies = document.setdefault("copies", [])
-    copies.append({"label": label, "at": utc_now(), "source": str(source), "lines": len(lines),
-                   "sha256": _digest(lines), "files": files})
+    new = lines[series["lines"]:]
+    if new:
+        number = sum(len(item["parts"]) for item in series_list) + 1
+        name = f"part-{number:04d}.jsonl"
+        (folder / name).write_text("".join(new), encoding="utf-8")
+        series["parts"].append(name)
+        series["lines"] = len(lines)
+        document.setdefault("saves", []).append({"label": label, "at": utc_now(), "part": name, "new_lines": len(new)})
     _save(root, document)
-    return {"status": "copied", "lines": len(lines), "files": files}
+    return {"status": "logged", "new_lines": len(new), "parts": sum(len(item["parts"]) for item in series_list)}
 
 
 def finalize(root: Path, source: Path | None = None) -> dict[str, Any]:
-    """Write the whole conversation once, check every earlier copy is contained in it, then
-    delete the earlier copies."""
+    """Write the whole conversation once, check every earlier part is contained in it, then
+    delete the parts."""
     document = state(root)
     if document.get("finalized"):
         return {"status": "finalized", "files": document.get("files", [])}
-    source = source or find_transcript()
-    copies = list(document.get("copies", []))
-    sources = list(dict.fromkeys([item["source"] for item in copies] + ([str(source)] if source else [])))
+    snapshot(root, source, "end of the run")
+    document = state(root)
+    folder = root / FOLDER
+    series_list = document.get("series", [])
+    copies = document.get("copies", [])
+    sources = list(dict.fromkeys([item["source"] for item in series_list] + [item["source"] for item in copies]))
     if not sources:
         return {"status": "no transcript found"}
-    folder = root / FOLDER
-    folder.mkdir(parents=True, exist_ok=True)
-    full = {name: _redacted_lines(Path(name)) for name in sources if Path(name).is_file()}
+    full = {name: _redacted_lines(Path(name)) if Path(name).is_file() else [] for name in sources}
     problems = []
+    for series in series_list:
+        # Cheap check: the parts, joined in order, are exactly the start of the full conversation.
+        parts = "".join((folder / name).read_text(encoding="utf-8") for name in series["parts"] if (folder / name).is_file())
+        whole = "".join(full[series["source"]])
+        if not whole.startswith(parts):
+            problems.append(f"the parts from {Path(series['source']).name} are not contained in the full conversation")
     for item in copies:
+        # Full copies an earlier version of this logger wrote, checked by line count and hash.
         lines = full.get(item["source"], [])
-        # Cheap check: the earlier copy is exactly the start of the full conversation.
         if len(lines) < item["lines"] or _digest(lines[: item["lines"]]) != item["sha256"]:
-            problems.append(f"the copy made at {item['at']} ({item.get('label') or 'save'}) is not contained in the full conversation")
-    for part in sorted(folder.glob("part-*.jsonl")):
-        # Parts written by the earlier logger: each must appear in the full conversation.
-        text = part.read_text(encoding="utf-8")
-        if not any(text in "".join(lines) for lines in full.values()):
-            problems.append(f"{part.name} is not contained in the full conversation")
+            problems.append(f"the copy made at {item['at']} is not contained in the full conversation")
     files: list[str] = []
     for index, name in enumerate(sources, 1):
         stem = FINAL_STEM if len(sources) == 1 else f"{FINAL_STEM}-session-{index}"
-        files += _write(folder, stem, full.get(name, []))
+        files += _write(folder, stem, full[name])
     if problems:
-        document["final_check"] = {"at": utc_now(), "status": "earlier copies kept", "problems": problems}
+        document["final_check"] = {"at": utc_now(), "status": "earlier parts kept", "problems": problems}
         _save(root, document)
-        return {"status": "earlier copies kept", "files": files, "problems": problems}
-    for old in [folder / f"{SNAPSHOT_STEM}.jsonl", *folder.glob(f"{SNAPSHOT_STEM}-[0-9][0-9].jsonl"), *folder.glob("part-*.jsonl")]:
+        return {"status": "earlier parts kept", "files": files, "problems": problems}
+    for old in [*folder.glob("part-*.jsonl"), folder / f"{SNAPSHOT_STEM}.jsonl", *folder.glob(f"{SNAPSHOT_STEM}-[0-9][0-9].jsonl")]:
         old.unlink(missing_ok=True)
     final = {
         "finalized": utc_now(), "files": files, "lines": sum(len(lines) for lines in full.values()),
-        "check": "every earlier copy matched, by line count and hash, the start of the full conversation; "
-                 "the earlier copies were then deleted",
-        "copies_checked": len(copies), "pushes": document.get("pushes", []),
+        "check": "every earlier part, joined in order, matched the start of the full conversation; "
+                 "the parts were then deleted",
+        "parts_checked": sum(len(item["parts"]) for item in series_list) + len(copies),
+        "saves": document.get("saves", []), "pushes": document.get("pushes", []),
     }
     _save(root, final)
     return {"status": "finalized", "files": files, "lines": final["lines"]}

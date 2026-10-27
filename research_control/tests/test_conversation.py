@@ -9,20 +9,19 @@ from research_control.io import load_json
 
 
 class ConversationLogTests(unittest.TestCase):
-    def test_full_copies_are_pushed_then_replaced_by_one_checked_file(self) -> None:
+    def test_new_parts_are_added_then_replaced_by_one_checked_file(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "run"
             transcript = Path(directory) / "session.jsonl"
             transcript.write_text('{"text": "start"}\n{"text": "token hf_ABCDEFGHIJKLMNOPQRSTUVWXYZ123456"}\n', encoding="utf-8")
-            self.assertEqual(2, conversation.snapshot(root, transcript, "start of capture")["lines"])
+            self.assertEqual(2, conversation.snapshot(root, transcript, "start of capture")["new_lines"])
             with transcript.open("a", encoding="utf-8") as handle:
                 handle.write('{"text": "steering from the user"}\n')
-            # Every copy is the whole conversation so far, not just what is new.
-            self.assertEqual(3, conversation.snapshot(root, transcript, "start of facts")["lines"])
+            self.assertEqual(1, conversation.snapshot(root, transcript, "start of facts")["new_lines"])
+            self.assertEqual(0, conversation.snapshot(root, transcript, "save")["new_lines"])
             folder = root / conversation.FOLDER
-            copy = (folder / "conversation-so-far.jsonl").read_text(encoding="utf-8")
-            self.assertIn('"start"', copy)
-            self.assertNotIn("hf_ABC", copy)
+            self.assertEqual(["part-0001.jsonl", "part-0002.jsonl"], sorted(path.name for path in folder.glob("part-*")))
+            self.assertNotIn("hf_ABC", (folder / "part-0001.jsonl").read_text(encoding="utf-8"))
             conversation.record_push(root, "start of facts", "abc123", True)
             self.assertEqual("start of facts", conversation.state(root)["last_verified"])
             result = conversation.finalize(root, transcript)
@@ -31,23 +30,23 @@ class ConversationLogTests(unittest.TestCase):
             text = (folder / "conversation.jsonl").read_text(encoding="utf-8")
             self.assertIn("steering from the user", text)
             self.assertIn("[removed Hugging Face token]", text)
-            self.assertEqual(2, load_json(root / conversation.STATE)["copies_checked"])
+            self.assertEqual(2, load_json(root / conversation.STATE)["parts_checked"])
             # Questions after the run are not added.
             with transcript.open("a", encoding="utf-8") as handle:
                 handle.write('{"text": "a follow-up question"}\n')
             self.assertEqual("finalized", conversation.snapshot(root, transcript)["status"])
             self.assertNotIn("follow-up", (folder / "conversation.jsonl").read_text(encoding="utf-8"))
 
-    def test_earlier_copies_are_kept_when_the_full_conversation_does_not_contain_them(self) -> None:
+    def test_earlier_parts_are_kept_when_the_full_conversation_does_not_contain_them(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "run"
             transcript = Path(directory) / "session.jsonl"
             transcript.write_text('{"text": "first"}\n', encoding="utf-8")
             conversation.snapshot(root, transcript, "start of capture")
-            transcript.write_text('{"text": "rewritten"}\n', encoding="utf-8")
+            transcript.write_text('{"text": "rewritten"}\n{"text": "more"}\n', encoding="utf-8")
             result = conversation.finalize(root, transcript)
-            self.assertEqual("earlier copies kept", result["status"])
-            self.assertTrue((root / conversation.FOLDER / "conversation-so-far.jsonl").is_file())
+            self.assertEqual("earlier parts kept", result["status"])
+            self.assertTrue((root / conversation.FOLDER / "part-0001.jsonl").is_file())
 
 
 class PhaseStartPushTests(unittest.TestCase):
