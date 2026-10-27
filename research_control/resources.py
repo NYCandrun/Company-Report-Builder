@@ -1,8 +1,8 @@
-"""Concurrency for runtime-executed work, derived from the host it runs on.
+"""Default concurrency for runtime-executed work, derived from the host.
 
-These limits govern the in-process runtime pool only; agent leasing keeps the
-scheduler's own limits. The rules come from measurements on a 4-core, 16 GB
-cloud container:
+These are starting points, not rules: the orchestrator should tune them (by
+environment variable) to whatever is most efficient where the run executes.
+The defaults reflect measurements on a 4-core, 16 GB cloud container:
 
 - Page fetches to one host: 4 in flight was 3.4x faster than serial; more added
   per-request latency without throughput.

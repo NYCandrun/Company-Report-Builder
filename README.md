@@ -162,16 +162,19 @@ python3 -m research_control discovery receipt --channel CHANNEL
 
 ## Capture and transcripts
 
-The runtime captures every admitted source itself, in parallel, with limits
-derived from the host it runs on (`research_control/resources.py`): a pool of
-four workers per core, up to 4 requests in flight per host spaced 0.25 s apart,
-one single-threaded Whisper job per core, and headless-browser renders on half
-the cores. On the 4-core, 16 GB cloud container these were measured on, that
-gave 3.4x faster page capture than serial and 10.5x real-time transcription.
-Long transcriptions never hold up page capture. Override any limit with
-`RESEARCH_CONTROL_RUNTIME_WORKERS`, `RESEARCH_CONTROL_PER_HOST`,
-`RESEARCH_CONTROL_HOST_INTERVAL`, `RESEARCH_CONTROL_WHISPER_JOBS`, or
-`RESEARCH_CONTROL_BROWSER_JOBS`. Agent leases keep the scheduler's own limits.
+The runtime captures every admitted source itself, in parallel.
+
+Concurrency is a soft rule: do whatever is most efficient in the environment
+the run is in. The runtime starts from defaults derived from the host's cores
+and memory (`research_control/resources.py`), and the agent scheduler starts
+from the `WORKFLOW.yaml` scheduler values. Neither is a target. Check the
+environment (cores, memory, network speed, the rate limits and errors hosts
+actually return) and raise or lower any limit when that would finish the work
+faster without failures. Override with `RESEARCH_CONTROL_RUNTIME_WORKERS`,
+`RESEARCH_CONTROL_PER_HOST`, `RESEARCH_CONTROL_HOST_INTERVAL`,
+`RESEARCH_CONTROL_WHISPER_JOBS`, `RESEARCH_CONTROL_BROWSER_JOBS`,
+`RESEARCH_CONTROL_AGENT_CONCURRENCY`, and `RESEARCH_CONTROL_AGENT_PER_HOST`.
+Long transcriptions should never hold up page capture.
 Each capture writes a terminal receipt:
 `captured` with a canonical UTF-8 text derivative, or `blocked` with the
 concrete reason.

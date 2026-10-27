@@ -15,6 +15,9 @@ only under a held lease; discovery commands refuse to change a channel whose
 task is not claimed. To add work to a closed channel, reopen it with
 `discovery reopen` and rerun `run`. Runtime-owned work (crawl, sitemap audit,
 capture and transcription, reducers) runs inside `run` and is never dispatched.
+Concurrency is the orchestrator's call: tune agent dispatch and runtime limits
+to whatever is most efficient in the current environment; the configured
+numbers are defaults.
 
 Do not ask the user for source, page, batch, or worker counts. Search channels
 close as `sufficient` against the numbered research questions in `00-scope.md`

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -21,10 +22,11 @@ def open_runtime(root: Path) -> RuntimeStore:
     state = load_state(root)
     configuration = workflow(root / "WORKFLOW.yaml").get("adaptive_runtime", {}).get("scheduler", {})
     store = RuntimeStore(root)
+    # WORKFLOW.yaml values are defaults; the orchestrator may tune them for the environment.
     store.initialize(
         run_id=state["run_id"], company_url=state["company_url"],
-        global_concurrency=int(configuration.get("global_concurrency", 12)),
-        host_concurrency=int(configuration.get("per_host_concurrency", 2)),
+        global_concurrency=int(os.environ.get("RESEARCH_CONTROL_AGENT_CONCURRENCY") or configuration.get("global_concurrency", 12)),
+        host_concurrency=int(os.environ.get("RESEARCH_CONTROL_AGENT_PER_HOST") or configuration.get("per_host_concurrency", 2)),
         lease_seconds=int(configuration.get("lease_seconds", 1_800)),
     )
     return store

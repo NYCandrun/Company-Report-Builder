@@ -53,6 +53,7 @@
     "planner": "corpus_driven",
     "completion_basis": "question_sufficiency_or_saturation_not_source_count",
     "scheduler": {
+      "concurrency_policy": "defaults only; the orchestrator tunes agent and runtime concurrency to whatever is most efficient in the current environment",
       "global_concurrency": 12,
       "per_host_concurrency": 2,
       "lease_seconds": 1800,

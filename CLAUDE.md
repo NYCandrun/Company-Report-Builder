@@ -20,6 +20,10 @@ every ready packet until exact-artifact release passes.
 - Runtime-owned work (crawl, sitemap audit, capture and transcription,
   reducers) runs inside `run`; never hand it to an agent. Use `run --plan-only`
   while another `run` process is executing.
+- Concurrency is your call. Dispatch as many ready agent packets at once, and
+  set runtime and scheduler limits to whatever finishes fastest without
+  failures in the environment you are in (cores, memory, network, rate limits
+  you hit). The configured numbers are defaults; see README for the overrides.
 - Preserve single-writer reducer ownership, record concrete access blockers,
   and never edit scheduler state directly.
 - When the framework changes mid-run, change the template, commit, and run
