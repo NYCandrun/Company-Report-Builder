@@ -78,8 +78,10 @@ Admit what answers a question, not everything that exists:
 
   Record such a relationship as an inference, naming the evidence and its
   strength, with the `Stated`, `Inferred`, or `Lead` mark the evidence core
-  requires. A single commit, a fork, a demo, or one person's activity alone
-  is a lead, not an inferred client. Do not use GitHub search or API tools
+  requires. A single commit, a repository name, a fork, a demo, or one
+  person's activity alone is a lead: admit its source and mark the
+  relationship as a lead with thin evidence, not as an inferred client. Do not
+  use GitHub search or API tools
   beyond the repositories the environment permits; use the routes above.
 - Video and podcasts, at every length (Shorts, clips, and social video drops
   included): enumerate every video on the company's own channels (YouTube,

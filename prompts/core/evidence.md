@@ -38,17 +38,29 @@ notes.
 - Scope every absence to the sources searched.
 - Mark every customer, client, or partner relationship with its basis,
   wherever it appears: a sentence, a list, a table, a diagram label, a
-  caption.
+  caption, or a fact row.
   - `Stated` means a source names the relationship.
   - `Inferred` means the evidence supports it but no source names it. The
     mark goes on the relationship itself (for example "Microsoft (inferred
     client: …)"), followed by the evidence and fact IDs.
-  - `Lead` means the evidence is too thin to infer, such as one commit, a
-    demo, or one person's activity; a lead appears only among open questions.
+  - `Lead` means an inference from thin evidence, such as one commit, a
+    repository name, a demo, or one person's activity. Write it as
+    "Chubb (lead, thin evidence: …)", naming the evidence. A lead may appear
+    wherever it is relevant, but it carries the least weight: never use it to
+    support a conclusion on its own, and never count it with stated or
+    inferred relationships.
 
-  Never put inferred and stated relationships in the same list or count
-  without each one's mark. Never let an inferred client become a stated one
-  through summary, emphasis, or a logo, name, or count.
+  In the fact store, record the basis in the fact's notes (`Relationship
+  basis: Stated`, `Inferred`, or `Lead (thin evidence)`), so every later step
+  carries it.
+
+  In an exhibit of customers, clients, or partners (a list, table, logo
+  wall, or count), order the entries stated first, then inferred, each
+  marked. Put leads last, below a dividing rule, under a label such as
+  "Leads (thin evidence, not established)". Counts and totals include only
+  stated relationships unless the count says otherwise. Never let an
+  inferred client or a lead become a stated one through summary, emphasis,
+  position, or a logo, name, or count.
 
 Name a transcript speaker only when the record establishes identity. Otherwise
 use `a speaker in the <title> webinar`. Diarization labels (`Speaker 1`, ...)
