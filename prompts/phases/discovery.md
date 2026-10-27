@@ -18,6 +18,28 @@ Treat public sources as intentionally public: a public repository, page, or
 file may be used for what it says about a firm. Record organizations,
 repositories, and roles, never personal details.
 
+Public archives keep what GitHub and the web no longer serve. Use them for the
+company and for direct competitors alike:
+
+- GH Archive, the public record of GitHub events (who pushed, opened pull
+  requests or issues, starred, or forked which repository, and when; pull
+  request and issue titles and bodies; branch and release names). Two routes:
+  the ClickHouse public playground, one cheap SQL request each
+  (`https://play.clickhouse.com/?user=play&query=` followed by a URL-encoded
+  query ending in `FORMAT TSV`, or the same query posted with `curl
+  --data-binary`), and, when the playground is unavailable, the raw hourly
+  files at `https://data.gharchive.org/YYYY-MM-DD-H.json.gz`, scanned with a
+  script for only the hours and repositories you need. The archive's date
+  range is limited; state it.
+- Software Heritage, the public archive of source code, which often keeps a
+  repository after GitHub deleted it. Check for a copy with one request to
+  `https://archive.softwareheritage.org/api/1/origin/https://github.com/OWNER/REPO/visit/latest/`;
+  when one exists, admit
+  `https://archive.softwareheritage.org/browse/origin/directory/?origin_url=https://github.com/OWNER/REPO`
+  and the runtime reads its file list and its Markdown and CSV files at the
+  last archived commit, within the archive's request limit.
+- The Wayback Machine, for pages, when the network allows it.
+
 Search for what that crawl cannot reach: other first-party hosts and
 subdomains, applicant tracking systems, documentation portals, public code,
 recorded talks and podcasts, customer and partner announcements, independent
@@ -68,10 +90,9 @@ Admit what answers a question, not everything that exists:
   Public GitHub, for direct competitors only, as cheaply as possible. Treat
   public repositories as intentionally public. The aim is what a firm and its
   people keep in Markdown and CSV files (clients, teams, accounts, offerings,
-  plans); other code is not read. Run GH Archive queries (the public record of
-  GitHub events, on the ClickHouse public playground:
-  `https://play.clickhouse.com/?user=play&query=` followed by a URL-encoded
-  query ending in `FORMAT TSV`) with `curl`; each is one cheap request.
+  plans); other code is not read. Run GH Archive queries on the ClickHouse
+  playground (see public archives above) with `curl`; each is one cheap
+  request.
   1. Find the firm's GitHub presence: a link on its site, a search for its
      name, or its people's profiles (from its team, about, and blog author
      pages). Some firms have an organization, some work only from employees'
@@ -109,13 +130,8 @@ Admit what answers a question, not everything that exists:
      sector, a product or service the firm tried and abandoned, or records of
      its business or operations (accounts, staffing, plans, pricing). For a
      deleted repository worth it:
-     - check for an archived copy with one request to
-       `https://archive.softwareheritage.org/api/1/origin/https://github.com/OWNER/REPO/visit/latest/`
-       (Software Heritage, the public archive of source code); when one
-       exists, admit
-       `https://archive.softwareheritage.org/browse/origin/directory/?origin_url=https://github.com/OWNER/REPO`,
-       and the runtime reads its Markdown and CSV files at the last archived
-       commit, within a request limit;
+     - admit its Software Heritage copy when one exists (see public archives
+       above);
      - admit one archive query URL that returns what GH Archive recorded
        about it (pull request and issue titles and bodies, branch and release
        names), as the record of what the project was and when.
@@ -180,6 +196,17 @@ Admit what answers a question, not everything that exists:
      archive's date range is limited, so state it.
   3. Admit an outside repository only after cloning it and finding the
      commits by `git log --all --author`.
+  4. The company's deleted repositories: the `repo_name LIKE 'ORG/%'` query
+     and the staff handles' activity show repositories GitHub no longer
+     serves. From what the archive kept (names, activity dates, pull request
+     and issue titles, branch and release names), decide which show company
+     information or the history of what it tried: a past product or service,
+     a client project, an attempt it abandoned, business or operations
+     records. For each one worth it, admit its Software Heritage copy when
+     one exists and one archive query URL that returns what GH Archive
+     recorded about it. This is for company information and history, so the
+     runtime reads the archived copy's file list and its Markdown and CSV
+     files, not its code.
 
   This is professional evidence about clients, partners, and project scope,
   not about people. Record organizations and repositories, never personal

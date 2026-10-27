@@ -377,6 +377,25 @@ downloaded audio, whose transcript is kept, the HTTP transport cache, and
 worker scratch space. Archive after every `run` that captures sources and
 after each wave of workers.
 
+## Public archives
+
+Discovery uses public archives for what GitHub and the web no longer serve,
+for the company and for direct competitors: GH Archive, the public record of
+GitHub events, through the ClickHouse public playground (one cheap SQL
+request) or, when that is unavailable, its raw hourly files at
+data.gharchive.org; Software Heritage, the public archive of source code, for
+the files of repositories GitHub has deleted (the runtime reads their file
+list and Markdown and CSV files, not their code); and the Wayback Machine for
+pages when the network allows it. The company's own deleted repositories are
+judged the same way as competitors': past products, client projects, and
+abandoned attempts are worth a look, for company information and history
+rather than code analysis.
+
+A verifier may make a bounded check of a repository's code (its file tree,
+the size and span of its history, and about a dozen key files) when a fact
+rests on it describing something big or ambitious, to judge whether it was
+built or only started and dropped.
+
 ## Market and competitors
 
 Every run researches the market and the company's competitors through their
@@ -401,7 +420,8 @@ as possible, treating public sources as intentionally public:
 3. Find the repositories: one query of the affiliated handles' activity, then
    the browser's repository lists; only the firm's work is admitted, never
    personal projects.
-4. Deleted and abandoned repositories: from what the public event record kept
+4. Deleted and abandoned repositories (for the company being researched too):
+   from what the public event record kept
    (names, activity dates, pull request and issue titles, branch and release
    names), decide which point at a customer project, an abandoned product, or
    business and operations records. For a deleted one worth it, read its
