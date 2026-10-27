@@ -422,7 +422,10 @@ For direct competitors the worker also investigates public GitHub, as cheaply
 as possible, treating public sources as intentionally public:
 
 1. Find the firm's presence by searching, never by guessing one exact name:
-   name variants in one GH Archive query, web search and GitHub's own search,
+   plain web searches first (`FIRM github`, `"FIRM" site:github.com`, the
+   firm's domain with `github`), reading only the result snippets, which show
+   organizations, employee handles that carry the firm's name, and bios that
+   name it; then name variants in one GH Archive query, GitHub's own search,
    links on the firm's site and package registries, and its people's
    profiles. Firms often have several organizations as well as employees'
    accounts; collect them all and confirm each from its profile or

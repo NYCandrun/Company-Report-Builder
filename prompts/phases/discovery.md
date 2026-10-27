@@ -49,9 +49,19 @@ Finding GitHub organizations, for the company and for competitors: never
 guess one exact name. A firm's organization is often named differently from
 its brand (`distyl-ai`, `DistylAI`, `getdistyl`, an abbreviation, a product
 name, an acquired company's name), and many firms have several (product,
-open source, client work, workshops, an acquired company). Search, cheapest
-first, and collect every one:
+open source, client work, workshops, an acquired company). An organization's
+display name can differ from its address too (Fractional AI's organization
+`fractional-ai` is displayed as "Ode AI"). Search, cheapest first, and collect
+every one:
 
+- plain web searches first, reading only the result snippets, which already
+  show an organization's or account's name, website, follower count, and bio:
+  `FIRM github`, `"FIRM" site:github.com`, and the firm's web domain with
+  `github` (`"tomoro.ai" github`). They find the firm's organizations and its
+  people's accounts: handles that carry the firm's name (`eric-distyl-ai`)
+  and profiles whose bio or company names the firm ("AI Engineer at Distyl
+  AI", "@ tomoro.ai"). Some firms have no organization at all and work only
+  from their engineers' accounts;
 - one GH Archive query for name variants in organization and account names:
   `SELECT splitByChar('/', repo_name)[1] AS org, count(), max(created_at) FROM
   github_events WHERE repo_name ILIKE '%VARIANT%' GROUP BY org ORDER BY count()
@@ -65,8 +75,10 @@ first, and collect every one:
   publisher;
 - the organization listed on its people's GitHub profiles.
 
-Confirm an organization belongs to the firm from its profile (name, website,
-email domain) or its repositories, not from the name alone.
+Confirm an organization or account belongs to the firm from its profile
+(website, company, bio, email domain) or its repositories, not from the name
+alone: look-alike names are common (`fraction-ai` and `odeai` are other
+companies, not Fractional AI).
 
 The headless browser is one command: `python3 -m research_control web render
 --url URL` prints a page's title and its text as desktop Chrome renders it
