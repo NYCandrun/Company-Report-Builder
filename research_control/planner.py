@@ -148,7 +148,12 @@ class AdaptivePlanner:
         """Reconcile synthesis with facts filed from supplemented sources, revising only what they affect."""
         created: list[str] = []
         sources = supplement_sources(self.root)
-        synthesis = [task for task in self.store.tasks(phase="initial_synthesis") if task["task_type"] == "synthesis"]
+        # The synthesis being supplemented: every synthesis task except supplement passes themselves.
+        synthesis = [
+            task for task in self.store.tasks(phase="initial_synthesis")
+            if task["task_type"] == "synthesis" and "supplement_sources" not in task["metadata"]
+            and task["state"] != "superseded"
+        ]
         if not sources or not synthesis or not all(task["state"] in SATISFIED_STATES for task in synthesis):
             return created
         identifier = sha256("\n".join(sorted(sources)).encode("utf-8")).hexdigest()[:12]
