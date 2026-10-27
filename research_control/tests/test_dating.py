@@ -1,0 +1,46 @@
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+
+from research_control.dating import DATE_OVERRIDES, SOURCE_DATES, write_source_dates
+from research_control.io import atomic_write_json, atomic_write_jsonl, atomic_write_text, load_jsonl
+
+
+class SourceDatingTests(unittest.TestCase):
+    def test_sources_are_dated_by_content_with_age_flags(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            atomic_write_json(root / "tools/outputs/run-state.json", {"created_at": "2026-10-27T00:00:00Z"})
+            receipts = [
+                {"source_id": "SRC-PUB", "status": "captured", "source": {"date published": "2026-09-01", "date captured": "2026-10-27"}},
+                {"source_id": "SRC-OLD", "status": "captured", "source": {"date published": "2025-12-15", "date captured": "2026-10-27"}},
+                {"source_id": "SRC-VID", "status": "captured", "source": {"date captured": "2026-10-27"}},
+                {"source_id": "SRC-LIVE", "status": "captured", "source": {"date captured": "2026-10-27"}},
+                {"source_id": "SRC-POD", "status": "captured", "source": {"date captured": "2026-10-27"}},
+            ]
+            atomic_write_text(root / "01-sources/captures/SRC-VID/raw.html", '"publishDate":{"simpleText":"Jul 25, 2025"}')
+            atomic_write_text(root / "01-sources/captures/SRC-VID/transcript.txt", "# Transcript\n")
+            atomic_write_text(root / "01-sources/captures/SRC-LIVE/raw.html", "<html>Careers</html>")
+            atomic_write_text(root / "01-sources/captures/SRC-POD/transcript.txt", "# Transcript\n")
+            report = write_source_dates(root, receipts)
+            rows = {row["source_id"]: row for row in load_jsonl(root / SOURCE_DATES)}
+            self.assertEqual("current", rows["SRC-PUB"]["flag"])
+            self.assertEqual("dated", rows["SRC-OLD"]["flag"])
+            self.assertEqual(("2025-07-25", "dated"), (rows["SRC-VID"]["content_date"], rows["SRC-VID"]["flag"]))
+            self.assertEqual("live page at capture", rows["SRC-LIVE"]["basis"])
+            self.assertEqual("undated", rows["SRC-POD"]["flag"])
+            self.assertEqual(1, report["undated"])
+            # A dating pass's override fills an undated source, keeping its evidence.
+            atomic_write_jsonl(root / DATE_OVERRIDES, [
+                {"source_id": "SRC-POD", "date": "2026-06-04", "basis": "episode page", "evidence": "https://example.com/ep"},
+            ])
+            write_source_dates(root, receipts)
+            rows = {row["source_id"]: row for row in load_jsonl(root / SOURCE_DATES)}
+            self.assertEqual(("2026-06-04", "as of"), (rows["SRC-POD"]["content_date"], rows["SRC-POD"]["flag"]))
+            self.assertIn("episode page", rows["SRC-POD"]["basis"])
+
+
+if __name__ == "__main__":
+    unittest.main()

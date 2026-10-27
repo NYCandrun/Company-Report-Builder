@@ -9,6 +9,7 @@ from typing import Any
 
 from research_control.capture import MANIFEST_FIELDS
 from research_control.discovery import ALTERNATES_PART, coverage_markdown
+from research_control.dating import write_source_dates
 from research_control.io import (
     atomic_write_json,
     atomic_write_jsonl,
@@ -208,7 +209,9 @@ def reduce_capture_parts(root: Path, store: RuntimeStore) -> dict[str, Any]:
             for part in media if part["transcript"].get("status") != "transcribed"
         )
     atomic_write_text(root / "06-checks/coverage.md", "\n".join(coverage) + "\n")
+    dating = write_source_dates(root, parts)
     return {
+        "source_dating": dating,
         "status": "PASS",
         "assigned": len(considered),
         "captured": len(manifest_rows),

@@ -366,7 +366,7 @@ def _parser() -> argparse.ArgumentParser:
     recapture.add_argument("--blocked", action="store_true", help="re-queue every capture whose receipt is blocked")
 
     reduce = subparsers.add_parser("reduce", help="merge isolated worker parts as the single writer")
-    reduce.add_argument("kind", choices=["discovery", "capture", "extraction"])
+    reduce.add_argument("kind", choices=["discovery", "capture", "extraction", "dating"])
 
     subparsers.add_parser("render", help="build final HTML, PDF, and page previews")
     subparsers.add_parser("release", help="run independent exact-artifact release acceptance")
@@ -588,6 +588,10 @@ def main() -> None:
         if args.command == "reduce":
             if args.kind == "extraction":
                 _print_json(reduce_extraction_parts(root))
+            elif args.kind == "dating":
+                from research_control.dating import write_source_dates
+                from research_control.reducers import _json_parts
+                _print_json(write_source_dates(root, _json_parts(root / "tools/outputs/worker-parts/capture")))
             else:
                 with open_runtime(root) as store:
                     _print_json(reduce_discovery(root, store) if args.kind == "discovery" else reduce_capture_parts(root, store))

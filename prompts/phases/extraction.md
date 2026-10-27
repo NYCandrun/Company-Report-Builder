@@ -27,3 +27,8 @@ brand, systems, or deliverables). Say which in the fact's notes
 (`Scope: offering` or `Scope: engagement, <client>`), and record a client
 named only by a repository's or file's subject as a relationship with its
 mark.
+
+Set each candidate's `source_date` from the source's row in
+`tools/outputs/source-dates.jsonl` (content date and basis), or from a date
+the source states for that specific fact when it is more precise. Never
+present a capture date as a publication date.

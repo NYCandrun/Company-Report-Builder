@@ -10,3 +10,9 @@ Markdown summary. Record evidence paths for applied changes. Run fact-ID and
 writing validators. Return counts for all three dispositions, outstanding
 mandatory fixes, changed paths, and validator status. A declared `apply`
 without a changed/evidence path is incomplete.
+
+Also apply source dating: a fact whose source date is missing, undated, or a
+capture date standing in for a publication date takes the content date and
+basis from `tools/outputs/source-dates.jsonl` when that table has one, and a
+claim about the present that rests only on `dated` or `undated` evidence is
+reworded with its date or narrowed.

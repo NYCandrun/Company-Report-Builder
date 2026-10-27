@@ -74,6 +74,15 @@ separate field is assigned.
 
 ## Currency
 
+Every fact carries the date its source's content reflects, from
+`tools/outputs/source-dates.jsonl` (published, embedded upload date, last
+modified or last commit, or a live page's capture date), never a capture date
+standing in for an unknown publication date. Each source there has an age
+flag at the research date: `current`, `as of`, `dated` (more than two quarters
+old), or `undated`. Use them: `dated` evidence is cited with its date and age
+wherever it is used, and `undated` evidence never supports a claim about the
+present.
+
 Evidence within the last quarter may support plain current wording. Older
 current-state evidence needs `as of <date>`. A repository, spreadsheet, or
 other document snapshot is dated by its own content or its last commit, not
