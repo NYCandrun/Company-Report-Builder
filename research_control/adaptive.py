@@ -13,6 +13,7 @@ from research_control.discovery import ALTERNATES_PART, BLOCKED_SOURCES_LIST
 from research_control.io import load_json, load_jsonl, workflow
 from research_control.orchestration import current_phase, initialize, load_state, phase_order, reopen_phase
 from research_control import verification
+from research_control.validators.extraction import validate_part as validate_extraction_part
 from research_control.automatic import RUNTIME_WORKER, run_automatic
 from research_control.media import is_media_url
 from research_control.planner import AdaptivePlanner
@@ -230,6 +231,12 @@ def _validate_semantic_receipt(root: Path, store: RuntimeStore, task: dict[str, 
         if missing:
             raise ValueError(
                 f"{task['task_id']}: no alternate or --none record for: {', '.join(missing[:15])}"
+            )
+    if task["task_type"] == "extraction" and task["metadata"].get("candidate_part"):
+        failures = validate_extraction_part(root, task)
+        if failures:
+            raise ValueError(
+                f"{task['task_id']}: extraction parts are invalid ({len(failures)} problems): {'; '.join(failures[:10])}"
             )
     if task["task_type"] == "verification" and task["metadata"].get("part"):
         failures = verification.validate_part(root, task["metadata"]["part"], task["metadata"]["fact_ids"])

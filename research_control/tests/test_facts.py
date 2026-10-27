@@ -7,6 +7,7 @@ from pathlib import Path
 from research_control import FAIL, PASS
 from research_control.io import atomic_write_jsonl, load_jsonl
 from research_control.reducers import reduce_extraction_parts
+from research_control.validators.extraction import validate_part as validate_extraction_part
 from research_control.validators.dates import validate_fact_dates, validate_source_dates
 from research_control.validators.facts import validate_records
 from research_control.validators.quotes import validate as validate_quotes
@@ -107,6 +108,34 @@ class ExtractionReducerTests(unittest.TestCase):
             self.assertEqual(1, report["candidates"])
             merged = load_jsonl(root / "tools/candidates/all.jsonl")
             self.assertEqual(["CAND-BBB-001"], [row["candidate_id"] for row in merged])
+
+
+    def test_extraction_part_check_rejects_missing_quotes_and_dispositions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "tools/extracts/canonical").mkdir(parents=True)
+            (root / "tools/extracts/canonical/SRC-1.txt").write_text("Tribe builds production agents for enterprises.\n", encoding="utf-8")
+            task = {
+                "inputs": [{"id": "SRC-1", "source_id": "SRC-1", "path": "tools/extracts/canonical/SRC-1.txt", "source_paths": []}],
+                "metadata": {
+                    "candidate_id_prefix": "CAND-AAA-",
+                    "candidate_part": "parts/aaa.candidates.jsonl",
+                    "disposition_part": "parts/aaa.dispositions.jsonl",
+                },
+            }
+            row = {
+                "topic": "product", "claim": "Tribe builds agents.", "source_id": "SRC-1", "location": "line 1",
+                "source_date": "2026-01-01", "grade": "P", "about": "Tribe AI", "said_by": "Tribe AI", "notes": "",
+            }
+            atomic_write_jsonl(root / "parts/aaa.candidates.jsonl", [
+                {**row, "candidate_id": "CAND-AAA-001", "quote": "builds production agents"},
+                {**row, "candidate_id": "CAND-AAA-002", "quote": "sells consulting hours"},
+            ])
+            atomic_write_jsonl(root / "parts/aaa.dispositions.jsonl", [])
+            failures = validate_extraction_part(root, task)
+            self.assertTrue(any("CAND-AAA-002: quote not found" in item for item in failures))
+            self.assertFalse(any("CAND-AAA-001" in item for item in failures))
+            self.assertTrue(any("SRC-1: needs exactly one disposition" in item for item in failures))
 
 
 if __name__ == "__main__":
