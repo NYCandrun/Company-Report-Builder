@@ -42,6 +42,8 @@ ol.source-notes { padding-left: 2.4em; font-size: 13px; }
 ol.source-notes li { margin: 4px 0; max-width: none; overflow-wrap: anywhere; }
 ol.source-notes .grade { display: inline-block; min-width: 1.4em; color: var(--muted); font-weight: 600; }
 ol.source-notes .part { font-weight: 600; }
+ol.source-notes .back { text-decoration: none; margin-left: 4px; }
+sup.cn a:target, ol.source-notes li:target { background: #fff3b0; }
 @media print { body { background: white; } main { width: auto; margin: 0; padding: 36pt 42pt; box-shadow: none; } }
 """.strip()
 
@@ -96,13 +98,21 @@ def _with_citations(markdown: str, citation_map: dict[str, Any]) -> tuple[str, d
     if SOURCE_LIST not in kept and citation_map.get("notes"):
         kept += ["", "## Sources", "", SOURCE_LIST]
     replacements: dict[str, str] = {}
+    first_use: dict[int, str] = {}
     for index, citations in groups.items():
-        anchors = ",".join(
-            f'<a href="{html.escape(item.get("link") or "#note-" + str(item["n"]))}" data-cite="{item["n"]}"'
-            + (f' title="{html.escape(item["place"])}"' if item.get("place") else "") + f'>{item["n"]}</a>'
-            for item in citations
-        )
-        replacements[CITE.format(index)] = f'<sup class="cn">{anchors}</sup>'
+        anchors = []
+        for item in citations:
+            number = int(item["n"])
+            anchor_id = f"cite-{index}-{number}"
+            first_use.setdefault(number, anchor_id)
+            # The number jumps to the source entry in this document; the exact passage, moment,
+            # or line is kept on the anchor (data-link) and listed in that entry.
+            anchors.append(
+                f'<a id="{anchor_id}" href="#note-{number}" data-cite="{number}" '
+                f'data-link="{html.escape(item.get("link") or "")}"'
+                + (f' title="{html.escape(item["place"])}"' if item.get("place") else "") + f'>{number}</a>'
+            )
+        replacements[CITE.format(index)] = f'<sup class="cn">{",".join(anchors)}</sup>'
     items = []
     for note in citation_map.get("notes", []):
         url = str(note.get("url") or "")
@@ -114,8 +124,9 @@ def _with_citations(markdown: str, citation_map: dict[str, Any]) -> tuple[str, d
         places = note.get("places") or []
         cited = (" Cited at " + ", ".join(f'<a href="{html.escape(item["link"])}">{html.escape(item["label"])}</a>'
                                          for item in places) + ".") if places else ""
+        back = f' <a class="back" href="#{first_use[int(note["n"])]}" title="Back to the text">↩</a>' if int(note["n"]) in first_use else ""
         items.append(f'<li id="note-{note["n"]}" value="{note["n"]}"><span class="grade">{html.escape(str(note.get("grade") or ""))}</span> '
-                     f'{described}.{part}{cited}{link}</li>')
+                     f'{described}.{part}{cited}{link}{back}</li>')
     replacements[f"<p>{SOURCE_LIST}</p>"] = f'<ol class="source-notes">{"".join(items)}</ol>'
     return "\n".join(kept) + ("\n" if markdown.endswith("\n") else ""), replacements
 

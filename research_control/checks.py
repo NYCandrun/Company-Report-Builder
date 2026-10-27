@@ -476,8 +476,9 @@ def _validate_citations(root: Path) -> dict[str, Any]:
                 deep = [located[fact] for fact in item.get("facts", []) if fact in located]
                 if deep and item.get("link") not in deep:
                     failures.append(f"{path.name}: citation {item['n']} does not link to its fact's deep link")
-            rendered = [(int(number), html.unescape(link)) for link, number in re.findall(
-                r'<a href="([^"]*)" data-cite="(\d+)"', html_path.read_text(encoding="utf-8", errors="replace"))]
+            page_text = html_path.read_text(encoding="utf-8", errors="replace")
+            rendered = [(int(number), html.unescape(link)) for number, link in re.findall(
+                r'<a id="cite-[^"]*" href="#note-\d+" data-cite="(\d+)" data-link="([^"]*)"', page_text)]
             if rendered != expected:
                 failures.append(f"{path.name}: the page's superscript citations {len(rendered)} do not match the map's {len(expected)} "
                                 "(numbers or deep links differ); rebuild the page")

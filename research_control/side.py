@@ -482,6 +482,10 @@ def file(root: Path, label: str) -> dict[str, Any]:
     problems = check(root, label, "extract")["problems"]
     if problems:
         raise ValueError("the extraction parts are not clean: " + "; ".join(problems[:10]))
+    if not (folder / "new-facts.txt").is_file():
+        # Number from the main run as it is now (another side run may have merged since this
+        # one was laid out), and know every verdict it holds.
+        _refresh_fact_store(root, folder)
     _normalize_parts(folder, state)
     merged = reducers.reduce_extraction_parts(folder)
     filed = filing.file_candidates(folder, worker=f"side run {label}")
@@ -498,6 +502,16 @@ def file(root: Path, label: str) -> dict[str, Any]:
     return {"label": label, "candidates": merged["candidates"], "filed": filed.get("filed", 0), "new_facts": len(new_facts),
             "links_located": links.get("located", links), "digests": digests,
             "start_workers": [{"read": brief, "model_level": "strong", "effort": "high"}]}
+
+
+def _refresh_fact_store(root: Path, folder: Path) -> None:
+    for path in sorted((folder / "02-facts").glob("*.md")):
+        path.unlink()
+    for path in sorted((root / "02-facts").glob("*.md")):
+        shutil.copy2(path, folder / "02-facts" / path.name)
+    main_facts = sorted(row["fact_id"] for row in load_fact_tables(sorted((root / "02-facts").glob("*.md"))) if row.get("fact_id"))
+    atomic_write_text(folder / "main-facts.txt", "".join(f"{fact_id}\n" for fact_id in main_facts))
+    atomic_write_jsonl(folder / verification.VERDICTS, verification_sandbox.verdict_rows(root))
 
 
 def _normalize_parts(folder: Path, state: dict[str, Any]) -> None:

@@ -65,10 +65,17 @@ def _part(link: dict[str, Any]) -> tuple[str, str, str] | None:
     return f"{repository}~{rest}", f"branch {rest}, not merged", f"{base}/compare/{rest}"
 
 
-def _place(link: dict[str, Any], part: tuple[str, str, str] | None) -> tuple[str, float] | None:
-    """Where in the source a fact sits, for the source list: a recording's timestamp, or the
-    lines of a file or diff; with a sort key. Pages are linked to the quoted words instead."""
+PASSAGE_WORDS = 6
+
+
+def _place(link: dict[str, Any], part: tuple[str, str, str] | None, quote: str = "") -> tuple[str, float] | None:
+    """Where in the source a fact sits, for the source list: a recording's timestamp, the lines
+    of a file or diff, or a page's quoted passage (its first words); with a sort key."""
     anchor = str(link.get("anchor", ""))
+    if link.get("kind", "page") == "page" and link.get("located") and quote.strip():
+        words = quote.split()
+        label = "\u201c" + " ".join(words[:PASSAGE_WORDS]) + ("\u2026" if len(words) > PASSAGE_WORDS else "") + "\u201d"
+        return label, 0.0
     clock = CLOCK.match(anchor)
     if link.get("kind") == "recording" and clock:
         hours, minutes, seconds = (int(value) for value in clock.groups())
@@ -289,15 +296,15 @@ def build(root: Path, write: bool = True) -> dict[str, Any]:
             note = notes[number_for[key] - 1]
             if source_id not in note["source_ids"]:
                 note["source_ids"].append(source_id)
-            place = _place(link, part)
-            if place and link.get("deep_link") and place[0] not in {item["label"] for item in note["places"]}:
+            place = _place(link, part, str(row.get("verbatim_quote", "")))
+            if place and link.get("deep_link") and link["deep_link"] not in {item["link"] for item in note["places"]}:
                 note["places"].append({"label": place[0], "link": link["deep_link"], "order": place[1]})
             by_number.setdefault(number_for[key], []).append(fact_id)
         for number in sorted(by_number):
             note = notes[number - 1]
             located = [fact for fact in by_number[number]
                        if links.get(fact, {}).get("located") and links[fact].get("deep_link")]
-            place = _place(links[located[0]], _part(links[located[0]])) if located else None
+            place = _place(links[located[0]], _part(links[located[0]]), str(facts[located[0]].get("verbatim_quote", ""))) if located else None
             citations.append({"n": number, "group": index, "facts": by_number[number],
                               "link": links[located[0]]["deep_link"] if located else note["url"], "deep": bool(located),
                               **({"place": place[0]} if place else {})})

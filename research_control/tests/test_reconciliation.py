@@ -190,8 +190,11 @@ class CitationBuildTests(unittest.TestCase):
             self.assertEqual(2, len(built["problems"]))
             self.assertIn("cites no fact", built["problems"][0])
             page = markdown_to_html((root / citation_build.BRIEF).read_text(encoding="utf-8"), "Company brief", "", data)
-            self.assertIn('<sup class="cn"><a href="https://example.com/#:~:text=agents" data-cite="1">1</a></sup>', page)
-            self.assertIn('data-cite="1">1</a>,<a href="https://news.example/launch" data-cite="2">2</a></sup>', page)
+            # The number jumps to the source entry; the exact passage rides on the anchor.
+            self.assertIn('<sup class="cn"><a id="cite-0-1" href="#note-1" data-cite="1" data-link="https://example.com/#:~:text=agents" title="\u201cagents\u201d">1</a></sup>', page)
+            self.assertIn('href="#note-2" data-cite="2" data-link="https://news.example/launch">2</a></sup>', page)
+            self.assertIn('<a class="back" href="#cite-0-1"', page)
+            self.assertIn('Cited at <a href="https://example.com/#:~:text=agents">\u201cagents\u201d</a>', page)
             self.assertNotIn("PRD-00", page)
             self.assertIn('<li id="note-2" value="2"><span class="grade">S</span> Launch post. news.example. March 1, 2026.', page)
 
@@ -245,7 +248,7 @@ class SourceListTests(unittest.TestCase):
             self.assertEqual([1, 2, 1, 3, 3], [item["n"] for item in data["citations"]])
             self.assertEqual([], citations.validate_map(data, root)["failures"])
             page = markdown_to_html((root / citation_build.BRIEF).read_text(encoding="utf-8"), "Company brief", "", data)
-            self.assertIn('data-cite="3" title="8:13">3</a>', page)
+            self.assertIn('data-cite="3" data-link="https://www.youtube.com/watch?v=abcdefghijk&amp;t=493s" title="8:13">3</a>', page)
             self.assertIn('<span class="part">File src/run.py</span>. Cited at <a href="https://github.com/acme/agent/blob/'
                           f'{sha}/src/run.py?plain=1#L3">line 3</a>', page)
             self.assertIn('Cited at <a href="https://www.youtube.com/watch?v=abcdefghijk&amp;t=90s">1:30</a>', page)
