@@ -115,3 +115,33 @@ class RelationshipConsistencyTests(unittest.TestCase):
             self.assertIn("- Microsoft: inferred in offering.md; stated in customers-proof.md", text)
             self.assertIn("- Holiday Inn Club Vacations: inferred in direction.md; lead in customers-proof.md", text)
             self.assertNotIn("- Acme", text)
+
+
+class ReportOutlineTests(unittest.TestCase):
+    def test_the_report_outline_follows_the_runs_questions(self) -> None:
+        import tempfile
+
+        from research_control.io import atomic_write_text, load_json
+        from research_control.report_outline import OUTLINE, report_words, write_report_outline
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            atomic_write_text(root / "00-scope.md", "# Scope\n\nFocus: Go-to-market\n\n"
+                              "**Q1. Product and architecture.** What does it deliver?\n\n"
+                              "**Q2. Accounts and engagements over time.** How have client accounts moved?\n\n"
+                              "**Q10. Scale.** How big is it?\n")
+            result = write_report_outline(root)
+            outline = load_json(root / OUTLINE)
+            self.assertEqual(["Q1", "Q2", "Q10"], [section["question"] for section in outline["sections"]])
+            self.assertEqual("Accounts and engagements over time", outline["sections"][1]["title"])
+            self.assertEqual("Go-to-market", outline["focus"])
+            self.assertEqual({"include": True, "questions": ["Q2"]}, outline["accounts_exhibit"])
+            self.assertEqual(1_500 + 3 * 450, outline["words"]["target"])
+            self.assertEqual(3, result["sections"])
+            # Prose is counted; tables and fact IDs are not.
+            self.assertEqual(4, report_words("Tribe builds agents today [PRD-001, PRD-002].\n| a | b |\n|---|---|\n| c | d |\n"))
+            # A scope that lists its questions one per line works too, with a general focus.
+            atomic_write_text(root / "00-scope.md", "# Scope\n\n## Research questions\n\n- Q1 product and architecture.\n- Q7 competitors.\n")
+            outline = load_json(root / OUTLINE) if write_report_outline(root) else {}
+            self.assertEqual(("Company research", ["Q1", "Q7"], False),
+                             (outline["focus"], [section["question"] for section in outline["sections"]], outline["accounts_exhibit"]["include"]))

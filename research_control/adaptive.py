@@ -263,6 +263,15 @@ def check_work(root: Path, task_id: str) -> dict[str, Any]:
         for output in task["outputs"]:
             if "*" not in output and "{" not in output and not (root / output).exists():
                 problems.append(f"output missing: {output}")
+        outline_path = root / "tools/lists/report-outline.json"
+        brief = root / "05-synthesis/company-brief.md"
+        if task["task_type"] == "brief_writer" and outline_path.is_file() and brief.is_file():
+            from research_control.report_outline import report_words
+
+            words = load_json(outline_path)["words"]
+            count = report_words(brief.read_text(encoding="utf-8"))
+            if not words["minimum"] <= count <= words["maximum"]:
+                problems.append(f"the report has {count} words; the outline sets {words['minimum']} to {words['maximum']}")
         return {"task_id": task_id, "problems": problems, "status": "clean" if not problems else "problems"}
 
 

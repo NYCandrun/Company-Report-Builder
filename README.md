@@ -180,6 +180,18 @@ marked `<!-- only: ... -->` reach only the task types that use them. `run`
 prints a short summary (status, the workers to start, what blocks or waits);
 the full result is in `tools/outputs/last-run.json`.
 
+## The final report follows the run's questions
+
+Before the report is written, the runtime builds its outline from the numbered
+research questions in `00-scope.md` (`tools/lists/report-outline.json`): an
+opening summary with a portfolio exhibit of every offering, one section per
+question in order, an exhibit of accounts over time when the questions cover
+customers, clients, accounts, or engagements, the four-part catalogue, open
+questions, the limits of the evidence, and source notes. Its prose length is
+1,500 words plus 450 for each question, give or take a quarter (tables and
+exhibits not counted), and `work check` holds the writer to it. The cover's
+focus is the scope's `Focus:` line, or "Company research".
+
 ## Checks between synthesis and review
 
 Before the reviews start, a script lists every organization whose client

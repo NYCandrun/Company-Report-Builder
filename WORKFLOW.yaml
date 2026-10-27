@@ -354,18 +354,29 @@
           "metadata": {"dispatch": "early", "schedule": "starts with capture and runs alongside research", "factual_scope": "presentation_only"}
         },
         {
+          "id": "report-outline",
+          "task_type": "report_outline",
+          "prompt": "prompts/core/runtime.md",
+          "inputs": [{"id": "scope_map", "path": "00-scope.md", "required": true}],
+          "outputs": ["tools/lists/report-outline.json"],
+          "independent": false,
+          "exclusive_inputs": false,
+          "metadata": {"planner": "static-profile", "single_writer": true, "executor": "runtime"}
+        },
+        {
           "id": "write-brief",
           "task_type": "brief_writer",
           "prompt": "prompts/phases/brief-writing.md",
           "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
           "inputs": [
+            {"id": "report_outline", "path": "tools/lists/report-outline.json", "required": true},
             {"id": "reviewed_synthesis", "path": "05-synthesis/*.md", "required": true},
             {"id": "cited_fact_rows", "path": "tools/outputs/cited-fact-rows.md", "required": true},
             {"id": "source_manifest", "path": "01-sources/MANIFEST.csv", "required": true},
             {"id": "verification_verdicts", "path": "tools/outputs/verification-verdicts.jsonl", "required": true},
             {"id": "brand_guide", "path": "07-final-report/brand-guide.html", "required": true}
           ],
-          "depends_on": ["brand-guide"],
+          "depends_on": ["brand-guide", "report-outline"],
           "outputs": ["05-synthesis/company-brief.md", "05-synthesis/design-notes.md", "05-synthesis/design/style.css", "tools/outputs/citation-map-company-brief.json", "tools/outputs/exhibit-map.json"],
           "independent": false,
           "exclusive_inputs": true,

@@ -30,11 +30,16 @@ def _stem(word: str) -> str:
     return word
 
 
+QUESTION_LINE = re.compile(r"^\s*(?:[-*]\s*)?\**(Q\d+)[.:)]?\**\s+(.+?)\s*$", re.M)
+
+
 def question_texts(root: Path) -> dict[str, str]:
-    """Each numbered question in `00-scope.md`, title and text."""
+    """Each numbered question in `00-scope.md`, title and text: bold blocks
+    (`**Q1. Title.** text`) or, failing those, one question per line (`- Q1 title`)."""
     path = root / "00-scope.md"
     text = path.read_text(encoding="utf-8") if path.is_file() else ""
-    return {match.group(1): f"{match.group(2)} {match.group(3)}" for match in QUESTION_BLOCK.finditer(text)}
+    blocks = {match.group(1): f"{match.group(2)} {match.group(3)}" for match in QUESTION_BLOCK.finditer(text)}
+    return blocks or {match.group(1): match.group(2) for match in QUESTION_LINE.finditer(text)}
 
 
 def terms(root: Path, questions: list[str] | None = None) -> set[str]:

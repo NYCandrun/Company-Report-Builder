@@ -12,10 +12,11 @@ Apply these rules to authored prose. Verbatim quotes preserve their source.
 - Do not narrate how wording changed from an earlier draft.
 - Preserve proper nouns, source titles, URLs, file names, fact IDs, and quotes.
 
-The final deliverable is a **company brief**, written from a product-marketing
-point of view. It must not presume employment and must not use `onboarding`,
-`starting at`, `the new PMM`, or `the role` in reader-facing copy. The cover
-says **Focus: Product marketing**.
+The final deliverable is a **company brief** that answers the run's research
+questions in their order (`tools/lists/report-outline.json`). Its cover says
+**Focus:** followed by the scope's focus, or "Company research" when the scope
+names none. It must not presume employment and must not use `onboarding`,
+`starting at`, `the new PMM`, or `the role` in reader-facing copy.
 
 Markdown retains fact IDs for traceability. Final HTML and PDF do not expose
 fact IDs, repository paths, script names, build instructions, internal

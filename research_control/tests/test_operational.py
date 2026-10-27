@@ -391,6 +391,9 @@ class OperationalRunTests(unittest.TestCase):
                 atomic_write_json(root / "tools/outputs/exhibit-map.json", {"elements": [{"element_id": "portfolio", "fact_ids": ["ACME-001"], "evidence_bearing": True}]})
 
             complete_task(root, "final.brand-guide", "brand-guide-worker", lambda: write_brand_guide(root))
+            from research_control.report_outline import write_report_outline
+
+            complete_task(root, "final.report-outline", "runtime-executor", lambda: write_report_outline(root))
             complete_task(root, "final.write-brief", "brief-writer", write_brief)
             complete_task(root, "final.model-diagrams", "diagram-modeler", lambda: write_diagram_models(root))
             complete_task(root, "final.build-diagrams", "diagram-builder", lambda: write_diagram_artifacts(root))
