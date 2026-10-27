@@ -277,6 +277,36 @@ class AdaptivePlannerTests(unittest.TestCase):
                 self.assertNotIn(small, extracted)
 
 
+class SupplementBatchTests(unittest.TestCase):
+    def test_supplement_keeps_finished_batches_and_replaces_unfinished_ones(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            copy_template(root)
+            state = initialize(root, "https://example.com")
+            save_state(root, state)
+            atomic_write_json(root / "tools/lists/supplement-sources.json", {"sources": {"SRC-1": "recaptured", "SRC-2": "recaptured"}})
+            old = {"id": "SRC-1", "source_id": "SRC-1", "path": "s/SRC-1.txt", "token_start": 0, "token_end": 10, "sha256": "old"}
+            stopped = {**old, "id": "SRC-2", "source_id": "SRC-2", "path": "s/SRC-2.txt"}
+            with RuntimeStore(root) as store:
+                store.initialize(run_id=state["run_id"], company_url=state["company_url"])
+                for task_id, item in (("facts.extract.done", old), ("facts.extract.stopped", stopped)):
+                    store.add_task(WorkItem(
+                        task_id=task_id, phase="facts", task_type="extraction", inputs=[item],
+                        outputs=[f"parts/{task_id}.jsonl"], prompt_files=["prompts/phases/extraction.md"],
+                    ))
+                store.claim("w", task_id="facts.extract.done")
+                store.start("facts.extract.done", "w")
+                (root / "parts").mkdir()
+                (root / "parts/facts.extract.done.jsonl").write_text("{}\n", encoding="utf-8")
+                store.complete("facts.extract.done", "w")
+                slices = [{**old, "sha256": "new"}, {**stopped, "sha256": "new"}]
+                kept, uncovered = AdaptivePlanner(root, store)._unchanged_batches(slices)
+                # The finished batch's facts stand and the new text is extracted again;
+                # the unfinished batch over changed text is not kept.
+                self.assertEqual(["facts.extract.done"], kept)
+                self.assertEqual({"SRC-1", "SRC-2"}, {item["id"] for item in uncovered})
+
+
 class AlternateCopiesTests(unittest.TestCase):
     def test_blocked_captures_get_alternate_passes_before_the_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
