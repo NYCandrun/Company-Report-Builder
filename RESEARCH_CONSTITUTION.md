@@ -83,8 +83,11 @@ The company-site sweep covers every discoverable company sitemap, including
 non-English docs and relevant microsites, for PDF and embedded-media discovery.
 The runtime performs this crawl and captures ordinary pages and PDFs itself.
 High-value pages are captured in full. Every company-hosted PDF is downloaded
-with a text copy and page boundaries. Every long-form company-channel or
-company-site video is in scope for transcription. YouTube Shorts are not. The
+with a text copy and page boundaries. Video is in scope at every length,
+including Shorts, clips, and social video drops: every video on the company's
+own channels (YouTube, LinkedIn, X, Instagram, TikTok, Vimeo, and the company
+site), and every video or podcast in which the company's founders, executives,
+or named leaders appear, wherever it is published. The
 runtime transcribes media from published captions or, failing that, from a
 public audio download transcribed locally with Whisper, with timestamps. When
 neither works, the transcript is recorded as a limitation with the reason.
@@ -125,7 +128,8 @@ If the network path is blocked or repeatedly fails, stop that channel and use
 dated first-party sources for messaging history.
 
 URLs on login-walled platforms (LinkedIn, X, Facebook, Instagram, Threads,
-TikTok) are recorded as leads with provenance and are not captured. When a
+TikTok) are recorded as leads with provenance and are not captured, except
+videos admitted on the video channel, which capture attempts to transcribe. When a
 question depends on such content, look for a public copy of it.
 
 ## Evidence

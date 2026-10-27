@@ -38,15 +38,21 @@ Admit what answers a question, not everything that exists:
   packaging, pricing, or the specific capability being compared. Do not admit a
   competitor's documentation or blog wholesale.
 - Social platforms that require login (LinkedIn, X, Facebook, Instagram,
-  Threads, TikTok) are recorded automatically as uncaptured leads. Admit the
+  Threads, TikTok) are recorded automatically as uncaptured leads, except
+  videos admitted on the `video` channel, which the runtime tries to transcribe. Admit the
   official profiles and any post that a question depends on, and look for a
   public copy (a press release, blog post, or transcript) of that content.
-- Video and podcasts: admit long-form company talks and interviews. The
-  runtime transcribes media during capture, from published captions or from a
-  public audio download transcribed locally with Whisper. When a platform yields page text only, also admit a
-  transcribable copy of the appearance when one exists: the publisher's episode page, the
-  episode's direct audio enclosure from its RSS feed, or a publisher-hosted
-  player page.
+- Video and podcasts, at every length (Shorts, clips, and social video drops
+  included): enumerate every video on the company's own channels (YouTube,
+  LinkedIn, X, Instagram, TikTok, Vimeo, and video embedded on the company
+  site), and find every video or podcast in which the company's founders,
+  executives, or named leaders appear: interviews, panels, keynotes, webinars,
+  news segments, and short media drops. Search by each leader's name as well
+  as the company's. The runtime transcribes each one during capture, from
+  captions or from the audio with Whisper. When a platform yields page text
+  only, also admit a transcribable copy of the appearance when one exists:
+  the publisher's episode page, the direct audio enclosure from its RSS feed,
+  or a publisher-hosted player page.
 
 Close each assigned channel with one terminal state and specific evidence:
 

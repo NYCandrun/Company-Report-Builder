@@ -51,6 +51,8 @@ LEAD_ONLY_HOSTS = (
     "linkedin.com", "twitter.com", "x.com", "facebook.com", "instagram.com",
     "threads.net", "tiktok.com",
 )
+AUDIO_VIDEO_SUFFIXES = (".mp3", ".m4a", ".mp4", ".wav", ".webm", ".ogg", ".aac")
+MEDIA_CHANNELS = {"video", "podcasts"}
 QUESTION_ID = re.compile(r"\bQ\d+\b")
 SKIP_SUFFIXES = {
     ".7z", ".avi", ".css", ".dmg", ".eot", ".exe", ".gif", ".gz", ".ico",
@@ -166,11 +168,12 @@ def lead_only(url: str) -> bool:
     return any(host == name or host.endswith(f".{name}") for name in LEAD_ONLY_HOSTS)
 
 
-def candidate_relevance(url: str) -> str:
+def candidate_relevance(url: str, channel: str = "") -> str:
     path = urlparse(url).path.casefold()
     if "sitemap" in path and path.endswith(".xml"):
         return "inventory"
-    return "lead" if lead_only(url) else "candidate"
+    # Video on social platforms is captured for transcription when a media channel admits it.
+    return "lead" if lead_only(url) and channel not in MEDIA_CHANNELS else "candidate"
 
 
 def source_kind(url: str) -> str:
@@ -184,8 +187,6 @@ def source_kind(url: str) -> str:
     return "web_page"
 
 
-AUDIO_VIDEO_SUFFIXES = (".mp3", ".m4a", ".mp4", ".wav", ".webm", ".ogg", ".aac")
-MEDIA_CHANNELS = {"video", "podcasts"}
 
 
 def admissible_media(url: str, channel: str) -> bool:
@@ -329,7 +330,7 @@ class DiscoveryEngine:
                     host_key=host_key(canonical),
                     channel=selected_channel,
                     source_kind=source_kind(canonical),
-                    relevance=candidate_relevance(canonical),
+                    relevance=candidate_relevance(canonical, selected_channel),
                     discovered_from=discovered_from,
                     depth=depth,
                 )
@@ -340,6 +341,14 @@ class DiscoveryEngine:
                     discovered_from=discovered_from,
                 )
                 if was_created:
+                    created.append(source["source_id"])
+                elif source["relevance"] == "lead" and candidate_relevance(canonical, selected_channel) == "candidate":
+                    # A lead becomes capturable when a media channel admits it as video.
+                    metadata = {**source.get("metadata", {}), "promoted_from_lead_by": selected_channel}
+                    self.store.update_source(source["source_id"], relevance="candidate", metadata=metadata)
+                    self.store.set_discovery_channel(
+                        selected_channel, "open", f"reopened by promoted lead {source['source_id']}"
+                    )
                     created.append(source["source_id"])
             except (ValueError, PermissionError) as error:
                 rejected.append({"url": value, "reason": str(error)})
@@ -640,6 +649,16 @@ class DiscoveryEngine:
                     "use `discovery add` for each materially different pass"
                 )
         result = self.store.set_discovery_channel(channel, state, evidence)
+        self.write_catalog()
+        return result
+
+    def reopen_channel(self, channel: str, evidence: str) -> dict[str, Any]:
+        """Reopen a closed channel when the research scope it was closed against changes."""
+        if channel not in DISCOVERY_CHANNELS:
+            raise ValueError(f"unknown discovery channel: {channel}")
+        if not evidence.strip():
+            raise ValueError("reopen evidence is required")
+        result = self.store.set_discovery_channel(channel, "open", f"reopened: {evidence.strip()}")
         self.write_catalog()
         return result
 

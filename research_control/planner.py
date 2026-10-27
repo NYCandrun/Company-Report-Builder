@@ -206,6 +206,15 @@ class AdaptivePlanner:
             )
 
         barrier = self.store.task(barrier_id)
+        if barrier and barrier["state"] == "succeeded" and any(
+            task and task["state"] != "succeeded"
+            or (task and str(task.get("finished_at") or "") > str(barrier.get("finished_at") or ""))
+            for task in discovery_tasks
+        ):
+            # Discovery reopened after the snapshot: refresh the snapshot. Captures
+            # already done stay valid; new sources wait for the refreshed barrier.
+            self.store.mark_stale(barrier_id, "discovery changed after the discovery snapshot")
+            barrier = self.store.task(barrier_id)
         capture_ids: list[str] = []
         if barrier and barrier["state"] == "succeeded":
             for source in self.store.sources():

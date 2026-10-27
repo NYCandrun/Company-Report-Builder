@@ -257,6 +257,9 @@ def _parser() -> argparse.ArgumentParser:
     discovery_close.add_argument("--channel", required=True, choices=DISCOVERY_CHANNELS)
     discovery_close.add_argument("--state", required=True, choices=["saturated", "sufficient", "not_applicable", "blocked", "incomplete"])
     discovery_close.add_argument("--evidence", required=True)
+    discovery_reopen = discovery_sub.add_parser("reopen", help="reopen a closed channel after a scope change")
+    discovery_reopen.add_argument("--channel", required=True, choices=DISCOVERY_CHANNELS)
+    discovery_reopen.add_argument("--evidence", required=True)
     discovery_retry = discovery_sub.add_parser(
         "retry", help="return explicitly transport-blocked sources to the discovery frontier"
     )
@@ -408,6 +411,8 @@ def main() -> None:
                     ))
                 elif args.discovery_command == "close":
                     _print_json(engine.close_channel(args.channel, args.state, args.evidence))
+                elif args.discovery_command == "reopen":
+                    _print_json(engine.reopen_channel(args.channel, args.evidence))
                 elif args.discovery_command == "retry":
                     _print_json(engine.retry_blocked_sources(
                         args.channel, evidence=args.evidence, source_ids=args.source_id,
