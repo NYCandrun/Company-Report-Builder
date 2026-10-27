@@ -130,7 +130,33 @@ def _iso_date(value: str) -> str:
     try:
         return parsedate_to_datetime(value).date().isoformat()
     except (TypeError, ValueError, OverflowError):
-        return ""
+        pass
+    # Display dates such as "Jul 25, 2025" or "Premiered March 3, 2024".
+    match = re.search(r"([A-Z][a-z]{2,8})\.? (\d{1,2}), (\d{4})", value)
+    if match:
+        for pattern in ("%b %d %Y", "%B %d %Y"):
+            try:
+                return datetime.strptime(" ".join(match.groups()), pattern).date().isoformat()
+            except ValueError:
+                continue
+    return ""
+
+
+# Publication dates that pages embed outside standard meta tags, as YouTube
+# watch pages do in their player data.
+EMBEDDED_DATES = (
+    re.compile(r'itemprop="(?:datePublished|uploadDate)"\s+content="([^"]+)"'),
+    re.compile(r'"(?:uploadDate|publishDate|datePublished)":"([^"]+)"'),
+    re.compile(r'"publishDate":\{"simpleText":"([^"]+)"\}'),
+)
+
+
+def _embedded_publish_date(html: str) -> str:
+    for pattern in EMBEDDED_DATES:
+        match = pattern.search(html)
+        if match and _iso_date(match.group(1)):
+            return _iso_date(match.group(1))
+    return ""
 
 
 def _manifest_rows(path: Path) -> list[dict[str, str]]:
@@ -306,6 +332,7 @@ def capture_source_part(
                 if not date_published:
                     notes = f"Unparsed publication-date metadata: {raw_date}"
                 break
+        date_published = date_published or _embedded_publish_date(body.decode("utf-8", errors="replace"))
         local_files = [str(raw_path.relative_to(root)), str(text_path.relative_to(root))]
         method = "shared-cache public HTTP capture" if cache_hit else "public HTTP capture"
         token_estimate = max(1, len(content) // 4)
@@ -679,7 +706,7 @@ def _browser_capture(root: Path, *, url: str, source_id: str, grade: str, http_r
         "source": {
             "id": source_id, "grade": grade, "title": title or url,
             "publisher": parsed.netloc.removeprefix("www."), "url": url,
-            "date published": "", "date last modified": "",
+            "date published": _embedded_publish_date(rendered.get("html", "")), "date last modified": "",
             "date captured": datetime.now(timezone.utc).date().isoformat(),
             "local file": ";".join(paths), "method": "headless browser capture after HTTP refusal",
             "notes": f"Plain HTTP request was refused ({http_reason}); text taken from the rendered page",
@@ -770,6 +797,8 @@ def _capture_page(
         receipt["local_paths"] = list(dict.fromkeys([*receipt["local_paths"], str((directory / "rendered.html").relative_to(root))]))
         if rendered.get("title") and receipt["source"]["title"] in {"", url}:
             receipt["source"]["title"] = rendered["title"]
+        if not receipt["source"].get("date published"):
+            receipt["source"]["date published"] = _embedded_publish_date(rendered.get("html", ""))
         return _finish_derivative(
             root, receipt, text_path, "public HTTP capture + headless browser text",
             "JavaScript-rendered page; text taken from the rendered DOM",
