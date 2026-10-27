@@ -588,9 +588,10 @@ class AdaptivePlanner:
         for task in self.store.tasks(phase="facts"):
             if task["task_type"] == "extraction" and task["task_id"] not in current and task["state"] not in ACTIVE_STATES:
                 self.store.supersede(task["task_id"], "replaced by a batch over the current source slices")
-        extraction_tasks = [self.store.task(task_id) for task_id in extraction_ids]
         reducer_id = "facts.reduce-extraction"
-        if extraction_ids and all(task and task["state"] == "succeeded" for task in extraction_tasks):
+        if extraction_ids:
+            # Planned with every current batch as a dependency, so a batch added
+            # after the reducer ran (a supplement) reruns it, and filing waits.
             self._add(
                 WorkItem(
                     task_id=reducer_id,

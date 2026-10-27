@@ -267,7 +267,11 @@ class AdaptivePlannerTests(unittest.TestCase):
                 facts_plan = AdaptivePlanner(root, store).reconcile()
                 extraction_tasks = [task for task in store.tasks(phase="facts") if task["task_type"] == "extraction"]
                 self.assertGreater(len(extraction_tasks), 1)
-                self.assertEqual(len(extraction_tasks) + 1, facts_plan["task_count"])
+                # Triage, the batches, and the reducer, which waits on every current batch.
+                self.assertEqual(len(extraction_tasks) + 2, facts_plan["task_count"])
+                reducer = store.task("facts.reduce-extraction")
+                self.assertEqual("planned", reducer["state"])
+                self.assertEqual({task["task_id"] for task in extraction_tasks}, set(reducer["depends_on"]))
                 self.assertTrue(all(task["metadata"]["estimated_tokens"] <= 90_000 for task in extraction_tasks))
                 extracted = {item["source_id"] for task in extraction_tasks for item in task["inputs"]}
                 self.assertNotIn(small, extracted)
