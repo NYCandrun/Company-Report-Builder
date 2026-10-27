@@ -54,10 +54,8 @@ company itself supplied it as official.
 
 ## Public-evidence boundary
 
-Use only public pages and assets. Do not sign in, create accounts, evade access
-controls, accept optional tracking merely to clear an overlay, or probe private
-systems. A public login page may be inspected. Record blocked or inaccessible
-surfaces rather than bypassing them.
+Do not accept optional tracking merely to clear an overlay, and do not probe
+private systems. Record blocked or inaccessible surfaces.
 
 The rendered experience is primary visual evidence, but HTML, computed CSS,
 font declarations, assets, print styles, and public reports are also required

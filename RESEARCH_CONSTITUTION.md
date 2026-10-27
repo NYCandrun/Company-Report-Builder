@@ -120,10 +120,8 @@ check them unless the user asks.
 
 ### Public-access boundary
 
-Use only public access. Never use logins, fake accounts, or paywall workarounds.
-Follow `robots.txt`, back off when rate limited, and log failed access. Try the
-Wayback Machine once. If
-the network path is blocked or repeatedly fails, stop that channel and use
+Back off when rate limited and log failed access. Try the Wayback Machine once.
+If the network path is blocked or repeatedly fails, stop that channel and use
 dated first-party sources for messaging history.
 
 URLs on login-walled platforms (LinkedIn, X, Facebook, Instagram, Threads,

@@ -42,5 +42,4 @@ Never write to a shared manifest or shared review file from parallel workers.
 Write a worker-specific part for deterministic single-writer merge. Never
 commit unrelated workers' files.
 
-Respect public access: follow robots, back off when rate limited, do not bypass
-logins or paywalls, and record blocked items.
+Back off when rate limited and record blocked items.

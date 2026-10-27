@@ -43,8 +43,7 @@ Admit what answers a question, not everything that exists:
   public copy (a press release, blog post, or transcript) of that content.
 - Video and podcasts: admit long-form company talks and interviews. The
   runtime transcribes media during capture, from published captions or from a
-  public audio download transcribed locally with Whisper, never with cookies
-  or a login. When a platform yields page text only, also admit a
+  public audio download transcribed locally with Whisper. When a platform yields page text only, also admit a
   transcribable copy of the appearance when one exists: the publisher's episode page, the
   episode's direct audio enclosure from its RSS feed, or a publisher-hosted
   player page.
