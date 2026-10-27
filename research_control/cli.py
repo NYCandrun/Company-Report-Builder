@@ -30,7 +30,7 @@ from research_control.orchestration import (
     status_summary,
 )
 from research_control.planner import ALTERNATES_TASK, discovery_task_id
-from research_control.supplement import add_supplement
+from research_control.supplement import add_supplement, defer_slices
 from research_control.provision import RUNS_DIRECTORY, provision_run, run_slug, sync_engine
 from research_control.publication import render
 from research_control.reducers import reduce_capture_parts, reduce_discovery, reduce_extraction_parts
@@ -255,6 +255,11 @@ def _parser() -> argparse.ArgumentParser:
     work_fail.add_argument("--reason", required=True)
     work_fail.add_argument("--terminal", action="store_true", help="do not retry this failure")
     work_sub.add_parser("recover", help="recover expired leases")
+    work_defer = work_sub.add_parser(
+        "defer-slices", help="orchestrator: leave extraction slices out (a token budget); the gap stays recorded"
+    )
+    work_defer.add_argument("slice_ids", nargs="+")
+    work_defer.add_argument("--reason", required=True)
     work_rerun = work_sub.add_parser(
         "rerun", help="orchestrator: rerun a finished task, and its finished consumers, after its inputs changed"
     )
@@ -500,6 +505,9 @@ def main() -> None:
             if args.work_command == "restore":
                 with open_runtime(root) as store:
                     _print_json(store.restore(args.task_id, args.reason))
+                return
+            if args.work_command == "defer-slices":
+                _print_json(defer_slices(root, args.slice_ids, args.reason))
                 return
             if args.work_command == "rerun":
                 with open_runtime(root) as store:

@@ -10,7 +10,7 @@ from typing import Any
 
 from research_control.discovery import ALTERNATES_PART, BLOCKED_SOURCES_LIST, DISCOVERY_CHANNELS, MEDIA_CHANNELS, DiscoveryEngine
 from research_control import verification
-from research_control.supplement import add_supplement, supplement_added_at, SUPPLEMENT_FACTS, SUPPLEMENT_REPORT, base_source, supplement_sources
+from research_control.supplement import add_supplement, deferred_slices, supplement_added_at, SUPPLEMENT_FACTS, SUPPLEMENT_REPORT, base_source, supplement_sources
 from research_control.media import is_media_url
 from research_control.io import atomic_write_jsonl, atomic_write_text, load_json, load_jsonl, workflow
 from research_control.validators.facts import load_fact_tables
@@ -614,6 +614,8 @@ class AdaptivePlanner:
             {**item, "pass": listed_at[base_source(item["id"])]} if base_source(item["id"]) in listed_at else item
             for item in uncovered
         ]
+        deferred = deferred_slices(self.root)
+        uncovered = [item for item in uncovered if deferred.get(item["id"], {}).get("sha256") != item.get("sha256")]
         batches = self._pack_slices(uncovered)
         extraction_ids: list[str] = list(kept)
         for batch in batches:
@@ -649,7 +651,9 @@ class AdaptivePlanner:
         current = set(extraction_ids)
         for task in self.store.tasks(phase="facts"):
             if task["task_type"] == "extraction" and task["task_id"] not in current and task["state"] not in ACTIVE_STATES:
-                self.store.supersede(task["task_id"], "replaced by a batch over the current source slices")
+                held = [deferred[item["id"]]["reason"] for item in task["inputs"] if item.get("id") in deferred]
+                reason = f"deferred: {held[0]}" if held and len(held) == len(task["inputs"]) else "replaced by a batch over the current source slices"
+                self.store.supersede(task["task_id"], reason)
         reducer_id = "facts.reduce-extraction"
         if extraction_ids:
             # Planned with every current batch as a dependency, so a batch added
@@ -929,6 +933,7 @@ class AdaptivePlanner:
         current = {item["id"]: item for item in slices}
         supplemented = set(supplement_sources(self.root))
         listed_at = supplement_added_at(self.root)
+        deferred = deferred_slices(self.root)
         kept: list[str] = []
         covered: set[str] = set()
         tasks = [
@@ -955,6 +960,11 @@ class AdaptivePlanner:
                 if source in supplemented and str(task["created_at"]) < listed_at.get(source, ""):
                     # Unfinished work planned before the source was listed again is
                     # replaced by the new pass rather than run beside it.
+                    holds = False
+                    break
+                if task["state"] != "succeeded" and item.get("sha256") \
+                        and deferred.get(item.get("id", ""), {}).get("sha256") == item["sha256"]:
+                    # A slice the orchestrator deferred is not extracted; its pending batch goes.
                     holds = False
                     break
                 if not same(item) or item["id"] in covered:

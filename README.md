@@ -114,6 +114,11 @@ example a repository's branches and pull requests), list it with
 its capture alone with `work rerun capture.source.src-… --only --reason WHY`,
 then rerun `capture.reduce-captures` the same way. Facts already filed stand;
 the new text is extracted, appended at filing, and reconciled into synthesis.
+When a token budget will not cover every new slice, choose the slices worth
+reading and leave the rest out with
+`work defer-slices SRC-…:part-NNNN … --reason WHY`; the next `run` retires their
+pending batches, and `tools/lists/deferred-slices.json` records the gap. A
+deferred slice whose text later changes is planned again.
 
 Runtime-owned tasks (marked `executor: runtime`) never become packets and
 cannot be completed by a worker; `run` executes them under the reserved worker

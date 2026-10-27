@@ -338,6 +338,14 @@ class SupplementBatchTests(unittest.TestCase):
                 kept, uncovered = AdaptivePlanner(root, store)._unchanged_batches([old, stopped])
                 self.assertNotIn("facts.extract.stopped", kept)
                 self.assertIn("SRC-2", {item["id"] for item in uncovered})
+                # A slice the orchestrator deferred drops its pending batch; a finished one stands.
+                atomic_write_json(root / "tools/lists/supplement-sources.json", {"sources": {}})
+                atomic_write_json(root / "tools/lists/deferred-slices.json", {"slices": {
+                    "SRC-2": {"sha256": "old", "reason": "token budget"}, "SRC-1": {"sha256": "old", "reason": "token budget"},
+                }})
+                kept, uncovered = AdaptivePlanner(root, store)._unchanged_batches([old, stopped])
+                self.assertEqual(["facts.extract.done"], kept)
+                self.assertEqual(["SRC-2"], [item["id"] for item in uncovered])
 
 
 class AlternateCopiesTests(unittest.TestCase):
