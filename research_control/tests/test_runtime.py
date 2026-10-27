@@ -95,7 +95,10 @@ class RuntimeTests(unittest.TestCase):
                     store.complete(task_id, "runtime")
                 store.mark_stale("capture.a", "retry requested")
                 self.assertEqual("ready", store.task("capture.a")["state"])
-                self.assertEqual(0, store.task("capture.a")["attempt_count"])
+                rerun = store.task("capture.a")
+                self.assertEqual(rerun["attempt_count"], rerun["attempt_base"])
+                store.claim("runtime", task_id="capture.a")
+                self.assertEqual(2, store.task("capture.a")["attempt_count"])
                 self.assertEqual("planned", store.task("capture.reduce")["state"])
 
     def test_declared_revision_owns_current_shared_output(self) -> None:

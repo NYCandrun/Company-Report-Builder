@@ -152,6 +152,7 @@ class RuntimeStore:
                 track_input_staleness INTEGER NOT NULL,
                 max_attempts INTEGER NOT NULL,
                 attempt_count INTEGER NOT NULL DEFAULT 0,
+                attempt_base INTEGER NOT NULL DEFAULT 0,
                 lease_owner TEXT,
                 lease_expires_at TEXT,
                 heartbeat_at TEXT,
@@ -249,6 +250,15 @@ class RuntimeStore:
             CREATE INDEX IF NOT EXISTS shared_url_uses_purpose ON shared_url_uses(purpose, consumer);
             """
         )
+        columns = {row[1] for row in self.connection.execute("PRAGMA table_info(tasks)")}
+        if "attempt_base" not in columns:
+            # Attempt numbers stay unique per task; a requested rerun moves the
+            # base its attempt budget counts from instead of resetting them.
+            self.connection.execute("ALTER TABLE tasks ADD COLUMN attempt_base INTEGER NOT NULL DEFAULT 0")
+            self.connection.execute(
+                "UPDATE tasks SET attempt_count=(SELECT MAX(attempt) FROM attempts WHERE attempts.task_id=tasks.task_id) "
+                "WHERE attempt_count < (SELECT COALESCE(MAX(attempt), 0) FROM attempts WHERE attempts.task_id=tasks.task_id)"
+            )
         self.connection.commit()
 
     def initialize(
@@ -446,7 +456,7 @@ class RuntimeStore:
         now = utc_now()
         with self.connection:
             candidates = self.connection.execute(
-                "SELECT task_id, state, attempt_count, max_attempts FROM tasks "
+                "SELECT task_id, state, attempt_count - attempt_base AS attempt_count, max_attempts FROM tasks "
                 "WHERE state IN ('planned', 'ready', 'retryable', 'stale')"
             ).fetchall()
             for row in candidates:
@@ -521,9 +531,9 @@ class RuntimeStore:
         if stale:
             now = utc_now()
             with self.connection:
-                # Rerunning changed work is a fresh attempt, not a retry of a failure.
+                # Rerunning changed work gets a fresh attempt budget.
                 self.connection.executemany(
-                    "UPDATE tasks SET state='stale', finished_at=NULL, attempt_count=0, updated_at=? WHERE task_id=?",
+                    "UPDATE tasks SET state='stale', finished_at=NULL, attempt_base=attempt_count, updated_at=? WHERE task_id=?",
                     [(now, task_id) for task_id in sorted(stale)],
                 )
             for task_id in sorted(stale):
@@ -570,13 +580,13 @@ class RuntimeStore:
         now = utc_now()
         with self.connection:
             self.connection.execute(
-                # A requested rerun is a fresh attempt, not a retry of a failure.
-                "UPDATE tasks SET state='stale', finished_at=NULL, attempt_count=0, last_error=?, updated_at=? "
+                # A requested rerun gets a fresh attempt budget, not a retry of a failure.
+                "UPDATE tasks SET state='stale', finished_at=NULL, attempt_base=attempt_count, last_error=?, updated_at=? "
                 "WHERE task_id=?",
                 (reason, now, task_id),
             )
             self.connection.executemany(
-                "UPDATE tasks SET state='stale', finished_at=NULL, attempt_count=0, updated_at=? WHERE task_id=?",
+                "UPDATE tasks SET state='stale', finished_at=NULL, attempt_base=attempt_count, updated_at=? WHERE task_id=?",
                 [(now, child) for child in stale[1:]],
             )
         self.event("task_stale", task_id, {"reason": reason})
@@ -608,7 +618,7 @@ class RuntimeStore:
         global_limit = int(metadata.get("global_concurrency", DEFAULT_GLOBAL_CONCURRENCY))
         host_limit = int(metadata.get("host_concurrency", DEFAULT_HOST_CONCURRENCY))
         capability_values = sorted(set(capabilities or []))
-        clauses = ["state IN ('ready', 'retryable')", "attempt_count < max_attempts"]
+        clauses = ["state IN ('ready', 'retryable')", "attempt_count - attempt_base < max_attempts"]
         values: list[Any] = []
         if task_id:
             clauses.append("task_id=?")
@@ -797,7 +807,7 @@ class RuntimeStore:
         telemetry: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         task = self._owned_active(task_id, worker_id, ACTIVE_STATES)
-        exhausted = task["attempt_count"] >= task["max_attempts"]
+        exhausted = task["attempt_count"] - task["attempt_base"] >= task["max_attempts"]
         state = "retryable" if retryable and not exhausted else "blocked" if retryable else "failed"
         now = utc_now()
         terminal = {
