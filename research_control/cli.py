@@ -12,7 +12,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 
 from research_control import PASS, __version__
-from research_control.adaptive import advance, complete_work, open_runtime, runtime_status
+from research_control.adaptive import advance, complete_work, open_runtime, retry_media, runtime_status
 from research_control.capture import capture_source_part, capture_url
 from research_control.checks import check_phase
 from research_control.discovery import DISCOVERY_CHANNELS, DiscoveryEngine, DiscoveryPolicy, public_fetch
@@ -298,6 +298,11 @@ def _parser() -> argparse.ArgumentParser:
     web_list.add_argument("--details", action="store_true")
     web_sub.add_parser("export")
 
+    media = subparsers.add_parser("media", help="manage media transcripts")
+    media_sub = media.add_subparsers(dest="media_command", required=True)
+    media_retry = media_sub.add_parser("retry", help="re-queue media captures whose transcript was unavailable")
+    media_retry.add_argument("--source-id", action="append", default=[])
+
     reduce = subparsers.add_parser("reduce", help="merge isolated worker parts as the single writer")
     reduce.add_argument("kind", choices=["discovery", "capture", "extraction"])
 
@@ -482,6 +487,9 @@ def main() -> None:
                 else:
                     path = cache.export_ledger()
                     _print_json({"status": "exported", "ledger": str(path.relative_to(root))})
+            return
+        if args.command == "media":
+            _print_json(retry_media(root, args.source_id))
             return
         if args.command == "reduce":
             if args.kind == "extraction":

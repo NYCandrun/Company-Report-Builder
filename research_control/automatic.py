@@ -89,11 +89,15 @@ HANDLERS: dict[str, Callable[[Path, RuntimeStore, dict[str, Any]], Any]] = {
 def run_automatic(
     root: Path,
     store: RuntimeStore,
-    phase: str,
+    phases: list[str],
     complete: Callable[[RuntimeStore, dict[str, Any], str], Any],
     replan: Callable[[], Any],
 ) -> dict[str, Any]:
-    """Execute every ready runtime-owned task in ``phase`` until none remain."""
+    """Execute every ready runtime-owned task in ``phases`` until none remain.
+
+    ``phases`` is the current phase plus the phases before it, so deterministic
+    work that went stale after its phase closed is redone automatically.
+    """
     interval = float(
         workflow(root / "WORKFLOW.yaml").get("adaptive_runtime", {}).get("discovery", {})
         .get("min_host_interval_seconds", 1.0)
@@ -104,8 +108,8 @@ def run_automatic(
     while True:
         store.refresh_ready()
         ready = [
-            task for task in store.tasks(phase=phase, states={"ready", "retryable"})
-            if task["metadata"].get("executor") == "runtime"
+            task for task in store.tasks(states={"ready", "retryable"})
+            if task["metadata"].get("executor") == "runtime" and task["phase"] in phases
         ]
         if not ready:
             break

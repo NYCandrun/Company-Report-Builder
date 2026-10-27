@@ -1,7 +1,9 @@
 """Timestamped transcripts for public video and audio sources.
 
-Order of preference: published captions, then a public audio download
-transcribed locally with Whisper. A source that yields neither is recorded
+Order of preference for YouTube: published captions, captions through yt-dlp
+with alternate player clients, then audio through a public Invidious instance
+transcribed locally with Whisper. Other media: a public audio download
+transcribed with Whisper. YouTube requests are spaced to avoid rate limits. A source that yields neither is recorded
 with the reason. Machine transcripts do
 not establish speaker identity.
 
@@ -13,12 +15,16 @@ unavailable with that reason; the page capture itself still stands.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
+import re
 import shutil
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
+from urllib.request import Request, urlopen
 
 from research_control.io import atomic_write_text
 
@@ -60,6 +66,94 @@ def _captions(video_id: str) -> list[tuple[float, str]]:
 
     fetched = YouTubeTranscriptApi().fetch(video_id, languages=["en", "en-US", "en-GB"])
     return [(float(item.start), item.text.replace("\n", " ").strip()) for item in fetched if item.text.strip()]
+
+
+YT_CAPTION_CLIENTS = (None, "web_embedded", "android_vr")
+YT_REQUEST_SPACING_SECONDS = float(os.environ.get("RESEARCH_CONTROL_YT_SPACING", "20"))
+INVIDIOUS_INSTANCES = tuple(
+    value.strip().rstrip("/") for value in os.environ.get(
+        "RESEARCH_CONTROL_INVIDIOUS", "https://invidious.schenkel.eti.br"
+    ).split(",") if value.strip()
+)
+_last_youtube_request = 0.0
+
+
+def _pace_youtube() -> None:
+    """Space YouTube requests; bursts trigger 429s and bot checks."""
+    global _last_youtube_request
+    wait = YT_REQUEST_SPACING_SECONDS - (time.monotonic() - _last_youtube_request)
+    if wait > 0:
+        time.sleep(wait)
+    _last_youtube_request = time.monotonic()
+
+
+def _vtt_lines(text: str) -> list[tuple[float, str]]:
+    """Parse WebVTT, dropping inline tags and the rolling repeats of auto-captions."""
+    lines: list[tuple[float, str]] = []
+    start: float | None = None
+    for raw in text.splitlines():
+        timing = re.match(r"(\d+):(\d{2}):(\d{2})[.,](\d{3}) -->", raw.strip())
+        if timing:
+            hours, minutes, seconds, millis = (int(value) for value in timing.groups())
+            start = hours * 3600 + minutes * 60 + seconds + millis / 1000
+            continue
+        value = re.sub(r"<[^>]+>", "", raw).strip()
+        if start is None or not value or value.startswith(("WEBVTT", "Kind:", "Language:", "NOTE")):
+            continue
+        if lines and (value == lines[-1][1] or lines[-1][1].endswith(value)):
+            continue
+        lines.append((start, value))
+    return lines
+
+
+def _ytdlp_captions(url: str, directory: Path) -> tuple[list[tuple[float, str]], str]:
+    if shutil.which("yt-dlp") is None:
+        raise RuntimeError("yt-dlp is unavailable for caption download")
+    failures: list[str] = []
+    for client in YT_CAPTION_CLIENTS:
+        _pace_youtube()
+        command = [
+            "yt-dlp", "--no-progress", "--skip-download", "--write-subs", "--write-auto-subs",
+            "--sub-langs", "en,en-orig,en-US,en-GB", "--sub-format", "vtt",
+            "-o", str(directory / "captions"), "--", url,
+        ]
+        if shutil.which("node"):
+            command[1:1] = ["--js-runtimes", "node", "--remote-components", "ejs:github"]
+        if client:
+            command[1:1] = ["--extractor-args", f"youtube:player_client={client}"]
+        result = subprocess.run(command, text=True, capture_output=True, timeout=300)
+        files = sorted(directory.glob("captions*.vtt"), key=lambda path: ("orig" in path.name, path.name))
+        for path in files:
+            lines = _vtt_lines(path.read_text(encoding="utf-8", errors="replace"))
+            if lines:
+                return lines, f"YouTube captions via yt-dlp ({client or 'default'} client; may be machine generated)"
+        detail = (result.stderr or result.stdout).strip().splitlines()
+        failures.append(f"{client or 'default'}: {next((line for line in reversed(detail) if 'ERROR' in line), 'no captions')[:160]}")
+    raise RuntimeError("; ".join(failures))
+
+
+def _invidious_audio(video_id: str, directory: Path) -> tuple[Path, str]:
+    """Fetch audio through a public Invidious instance's local proxy."""
+    failures: list[str] = []
+    for instance in INVIDIOUS_INSTANCES:
+        try:
+            request = Request(f"{instance}/api/v1/videos/{video_id}?local=true", headers={"User-Agent": "Mozilla/5.0"})
+            with urlopen(request, timeout=60) as response:
+                data = json.loads(response.read())
+            formats = [item for item in data.get("adaptiveFormats", []) if str(item.get("type", "")).startswith("audio/")]
+            chosen = next((item for item in formats if str(item.get("itag")) == "140"), formats[0] if formats else None)
+            if not chosen:
+                raise RuntimeError("no audio formats listed")
+            stream = chosen["url"] if chosen["url"].startswith("http") else f"{instance}{chosen['url']}"
+            path = directory / "audio.m4a"
+            with urlopen(Request(stream, headers={"User-Agent": "Mozilla/5.0"}), timeout=600) as response, path.open("wb") as handle:
+                shutil.copyfileobj(response, handle)
+            if path.stat().st_size < 10_000:
+                raise RuntimeError("audio stream was empty")
+            return path, instance
+        except Exception as error:
+            failures.append(f"{instance}: {type(error).__name__}: {str(error)[:120]}")
+    raise RuntimeError("; ".join(failures) or "no Invidious instance configured")
 
 
 def _download_audio(url: str, directory: Path) -> Path:
@@ -118,6 +212,22 @@ def transcribe(url: str, directory: Path) -> dict[str, Any]:
             method = "published YouTube captions (may be machine generated)"
         except Exception as error:
             attempts.append(f"captions: {type(error).__name__}: {str(error).splitlines()[0][:200]}")
+        if not lines:
+            try:
+                lines, method = _ytdlp_captions(url, directory)
+            except Exception as error:
+                attempts.append(f"yt-dlp captions: {str(error)[:400]}")
+        if not lines:
+            try:
+                audio, instance = _invidious_audio(video_id, directory)
+                audio_sha256 = hashlib.sha256(audio.read_bytes()).hexdigest()
+                try:
+                    lines = _whisper(audio)
+                finally:
+                    audio.unlink(missing_ok=True)
+                method = f"audio via Invidious ({instance}) + local Whisper ({WHISPER_MODEL}) machine transcript"
+            except Exception as error:
+                attempts.append(f"invidious audio: {str(error)[:300]}")
     if not lines:
         try:
             audio = _download_audio(url, directory)

@@ -9,7 +9,7 @@ from research_control import PASS
 from research_control.checks import check_phase, run_validator
 from research_control.dispatch import emit_ready_packets
 from research_control.io import load_json, workflow
-from research_control.orchestration import current_phase, initialize, load_state
+from research_control.orchestration import current_phase, initialize, load_state, phase_order
 from research_control.automatic import RUNTIME_WORKER, run_automatic
 from research_control.planner import AdaptivePlanner
 from research_control.triage import validate_triage
@@ -62,8 +62,9 @@ def advance(root: Path, company_url: str | None = None) -> dict[str, Any]:
                 continue
 
             planned = AdaptivePlanner(root, store).reconcile()
+            order = phase_order(root)
             automatic = run_automatic(
-                root, store, phase,
+                root, store, order[: order.index(phase) + 1],
                 lambda current_store, task, worker: _complete(root, current_store, task, worker),
                 lambda: AdaptivePlanner(root, store).reconcile(),
             )
@@ -206,6 +207,30 @@ def _validate_semantic_receipt(root: Path, store: RuntimeStore, task: dict[str, 
             raise ValueError(f"{task['task_id']}: capture is not terminal; create required derivatives or record blocking evidence")
         if receipt.get("status") == "captured" and not receipt.get("canonical_text_ready"):
             raise ValueError(f"{task['task_id']}: captured source lacks canonical text")
+
+
+def retry_media(root: Path, source_ids: list[str] | None = None) -> dict[str, Any]:
+    """Re-queue media captures whose transcript was unavailable.
+
+    YouTube rate limits and bot checks come and go, so a later attempt can
+    succeed. The capture tasks go stale and the runtime recaptures them on the
+    next `run`; dependent reducers are invalidated through the usual hashes.
+    """
+    selected = set(source_ids or [])
+    requeued: list[str] = []
+    with open_runtime(root) as store:
+        for task in store.tasks(states={"succeeded"}):
+            if task["task_type"] != "capture":
+                continue
+            source_id = task["metadata"].get("source_id", "")
+            if selected and source_id not in selected:
+                continue
+            receipt_path = root / task["metadata"]["receipt"]
+            receipt = load_json(receipt_path) if receipt_path.is_file() else {}
+            if (receipt.get("transcript") or {}).get("status") == "unavailable" or source_id in selected:
+                store.mark_stale(task["task_id"], "media transcript retry requested")
+                requeued.append(source_id)
+    return {"requeued": requeued, "next": "python3 -m research_control run"}
 
 
 def runtime_status(root: Path) -> dict[str, Any]:
