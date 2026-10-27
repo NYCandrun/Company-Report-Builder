@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from research_control.io import atomic_write_jsonl, atomic_write_text, load_json
+from research_control.runtime import RuntimeStore, WorkItem
 from research_control.supplement import add_supplement, supplement_added_at
 from research_control.triage import (
     RETRIAGE_DECISIONS,
@@ -53,6 +54,35 @@ class RetriageTests(unittest.TestCase):
             add_supplement(root, ["SRC-A"], "recaptured", at="2026-10-27T10:00:00Z")
             add_supplement(root, ["SRC-A"], "extracted again for Q13", at="2026-10-27T18:00:00Z")
             self.assertEqual({"SRC-A": "2026-10-27T18:00:00Z"}, supplement_added_at(root))
+
+
+class ScopeRevisionTests(unittest.TestCase):
+    def test_recorded_scope_edit_keeps_scope_and_its_readers_current(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _fixture(root)
+            with RuntimeStore(root) as store:
+                store.initialize(run_id="r", company_url="https://example.com")
+                store.add_task(WorkItem(
+                    task_id="scope.scope", phase="scope", task_type="scope", inputs=[], outputs=["00-scope.md"],
+                    prompt_files=["p.md"],
+                ))
+                store.add_task(WorkItem(
+                    task_id="final.brand-guide", phase="final", task_type="brand_guide",
+                    inputs=[{"id": "scope_map", "path": "00-scope.md"}], outputs=["guide.html"], prompt_files=["p.md"],
+                    track_input_staleness=True,
+                ))
+                for task_id in ("scope.scope", "final.brand-guide"):
+                    store.claim("w", task_id=task_id, bypass_limits=True)
+                    store.start(task_id, "w")
+                    if task_id == "final.brand-guide":
+                        atomic_write_text(root / "guide.html", "<html></html>")
+                    store.complete(task_id, "w")
+                add_scope_question(root, "Q13", "Accounts", "How have accounts moved?", "", "owner asked")
+                store.record_revision("scope.add-question.q13", "scope", ["00-scope.md", "tools/lists/retriage-request.json"], "Q13", "runtime")
+                store.rebaseline_inputs(["00-scope.md"], "Q13 added")
+                self.assertEqual([], store.invalidate_stale())
+                self.assertEqual("succeeded", store.task("final.brand-guide")["state"])
 
 
 if __name__ == "__main__":

@@ -584,6 +584,44 @@ class RuntimeStore:
         self.refresh_ready()
         return self.task(task_id) or task
 
+    def record_revision(self, task_id: str, phase: str, outputs: list[str], reason: str, worker_id: str) -> dict[str, Any]:
+        """Record an orchestrator's sanctioned edit of shared files as a finished
+        revise-mode task, so the edit owns those files and the task that first
+        wrote them is not treated as changed under it."""
+        if self.task(task_id):
+            raise ValueError(f"{task_id}: a revision with this ID is already recorded")
+        self.add_task(WorkItem(
+            task_id=task_id, phase=phase, task_type="revision", inputs=[], outputs=outputs,
+            prompt_files=["prompts/core/runtime.md"], output_mode="revise", exclusive_inputs=False,
+            metadata={"executor": "runtime", "reason": reason},
+        ))
+        self.claim(worker_id, task_id=task_id, bypass_limits=True)
+        self.start(task_id, worker_id)
+        return self.complete(task_id, worker_id)
+
+    def rebaseline_inputs(self, paths: list[str], reason: str) -> list[str]:
+        """Accept an edit of these inputs for finished tasks that track input
+        staleness: their recorded input hashes are refreshed, so they are not
+        rerun for it. For edits whose effect reaches downstream another way."""
+        refreshed: list[str] = []
+        for task in self.tasks(states={"succeeded"}):
+            if not task["track_input_staleness"]:
+                continue
+            patterns = [str(item["path"]) for item in task["inputs"] if item.get("path")]
+            if not any(path in patterns for path in paths):
+                continue
+            current = hash_patterns(self.root, patterns)
+            if current == task["input_hashes"]:
+                continue
+            with self.connection:
+                self.connection.execute(
+                    "UPDATE tasks SET input_hashes_json=?, updated_at=? WHERE task_id=?",
+                    (json.dumps(current, sort_keys=True), utc_now(), task["task_id"]),
+                )
+            self.event("task_rebaselined", task["task_id"], {"paths": paths, "reason": reason})
+            refreshed.append(task["task_id"])
+        return refreshed
+
     def supersede(self, task_id: str, reason: str) -> dict[str, Any]:
         """Retire a finished or idle task whose work now belongs to replacement tasks."""
         task = self.task(task_id)

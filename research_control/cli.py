@@ -17,7 +17,7 @@ from research_control.capture import capture_source_part, capture_url
 from research_control.checks import check_phase
 from research_control.discovery import DISCOVERY_CHANNELS, DiscoveryEngine, DiscoveryPolicy, public_fetch
 from research_control.gates.release import check_release
-from research_control.io import workflow
+from research_control.io import utc_now, workflow
 from research_control.orchestration import (
     current_phase,
     fail_task,
@@ -279,6 +279,10 @@ def _parser() -> argparse.ArgumentParser:
     scope_add.add_argument("--text", required=True)
     scope_add.add_argument("--channels", default="")
     scope_add.add_argument("--reason", required=True)
+    scope_edit = scope_sub.add_parser(
+        "record-edit", help="record an orchestrator's edit of 00-scope.md so tasks that read it keep their results"
+    )
+    scope_edit.add_argument("--reason", required=True)
     archive_parser = subparsers.add_parser(
         "archive", help="orchestrator: commit the run's sources and outputs to its run-data branch on the remote"
     )
@@ -432,9 +436,32 @@ def main() -> None:
             from research_control.orchestration import append_history
             from research_control.triage import add_scope_question
 
+            from research_control.automatic import RUNTIME_WORKER
+            from research_control.triage import RETRIAGE_REQUEST
+
+            if args.scope_command == "record-edit":
+                outputs = ["00-scope.md"] + ([RETRIAGE_REQUEST] if (root / RETRIAGE_REQUEST).is_file() else [])
+                with open_runtime(root) as store:
+                    revision = store.record_revision(
+                        f"scope.edit.{utc_now().replace(':', '').replace('-', '').lower()}", "scope", outputs,
+                        args.reason, RUNTIME_WORKER,
+                    )
+                    rebaselined = store.rebaseline_inputs(["00-scope.md"], args.reason)
+                append_history(root, "scope-edit-recorded", args.reason)
+                _print_json({"revision": revision["task_id"], "rebaselined": rebaselined})
+                return
             request = add_scope_question(root, args.id, args.title, args.text, args.channels, args.reason)
+            with open_runtime(root) as store:
+                # The scope edit is a recorded revision: it owns the new scope, and
+                # tasks reading the scope keep their results; the question reaches
+                # them through re-triage and supplement extraction instead.
+                store.record_revision(
+                    f"scope.add-question.{args.id.lower()}", "scope", ["00-scope.md", RETRIAGE_REQUEST],
+                    f"{args.id} added: {args.reason}", RUNTIME_WORKER,
+                )
+                rebaselined = store.rebaseline_inputs(["00-scope.md"], f"{args.id} added; re-triage {request['id']}")
             append_history(root, "scope-question-added", f"{args.id}: {args.title} ({args.reason}); re-triage {request['id']}")
-            _print_json(request)
+            _print_json({**request, "rebaselined": rebaselined})
             return
         if args.command == "archive":
             from research_control.archive import archive
