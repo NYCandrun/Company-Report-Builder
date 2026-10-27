@@ -394,6 +394,8 @@ def _extraction_brief(root: Path, folder: Path, label: str, batch: dict[str, Any
         "## This batch", "",
         f"- Candidate IDs start with `{task['metadata']['candidate_id_prefix']}` followed by a zero-padded sequence.",
         f"- Inputs (one disposition each, by input ID): {', '.join(item['id'] for item in batch['inputs'])}.",
+        f"- Each disposition row has `assignment_id` (`{task['task_id']}`), `input_id`, `source_id`, `disposition`, "
+        "`reason`, `evidence_paths` (a list), and `output_ids` (the candidate IDs filed from it).",
         f"- Write candidates to `{folder.relative_to(root)}/{task['metadata']['candidate_part']}` and dispositions to "
         f"`{folder.relative_to(root)}/{task['metadata']['disposition_part']}`.", "",
     ]
@@ -480,6 +482,7 @@ def file(root: Path, label: str) -> dict[str, Any]:
     problems = check(root, label, "extract")["problems"]
     if problems:
         raise ValueError("the extraction parts are not clean: " + "; ".join(problems[:10]))
+    _normalize_parts(folder, state)
     merged = reducers.reduce_extraction_parts(folder)
     filed = filing.file_candidates(folder, worker=f"side run {label}")
     main_facts = set((folder / "main-facts.txt").read_text(encoding="utf-8").split())
@@ -495,6 +498,30 @@ def file(root: Path, label: str) -> dict[str, Any]:
     return {"label": label, "candidates": merged["candidates"], "filed": filed.get("filed", 0), "new_facts": len(new_facts),
             "links_located": links.get("located", links), "digests": digests,
             "start_workers": [{"read": brief, "model_level": "strong", "effort": "high"}]}
+
+
+def _normalize_parts(folder: Path, state: dict[str, Any]) -> None:
+    """Fill in the bookkeeping fields of a batch's disposition rows a worker left out (the
+    batch's assignment ID, the list form of evidence paths): mechanical, meaning unchanged."""
+    for batch_id in state.get("batches", []):
+        task = load_json(folder / "extract" / f"{batch_id}.json")
+        path = folder / task["metadata"]["disposition_part"]
+        if not path.is_file():
+            continue
+        rows = load_jsonl(path)
+        changed = False
+        for row in rows:
+            if not row.get("assignment_id"):
+                row["assignment_id"] = task["task_id"]
+                changed = True
+            if "evidence_paths" not in row and row.get("evidence_path"):
+                row["evidence_paths"] = [row.pop("evidence_path")]
+                changed = True
+            if not row.get("source_id"):
+                row["source_id"] = str(row.get("input_id", "")).split(":", 1)[0]
+                changed = True
+        if changed:
+            atomic_write_jsonl(path, rows)
 
 
 def _writing_brief(root: Path, folder: Path, label: str, state: dict[str, Any], new_facts: list[str]) -> str:
