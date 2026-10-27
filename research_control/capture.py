@@ -10,6 +10,7 @@ import re
 import shutil
 import socket
 import subprocess
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
@@ -902,10 +903,21 @@ def _repository_text(checkout: Path, listed: list[str]) -> list[str]:
             omitted.append(f"{path} (lockfile or not a file)")
             continue
         data = file_path.read_bytes()
-        if b"\0" in data[:8192]:
+        if path.casefold().endswith(".pdf") and shutil.which("pdftotext"):
+            # A document kept in a repository (notes, a proposal) is read as text.
+            with tempfile.TemporaryDirectory() as scratch:
+                try:
+                    pages = _pdf_text(file_path, Path(scratch) / "pdf.txt")
+                    text = re.sub("[\u200b\u200c\u200d\ufeff]", "", (Path(scratch) / "pdf.txt").read_text(encoding="utf-8"))
+                    path = f"{path} (PDF, {pages} pages, as text)"
+                except RuntimeError as error:
+                    omitted.append(f"{path} (PDF text failed: {str(error)[:80]})")
+                    continue
+        elif b"\0" in data[:8192]:
             omitted.append(f"{path} (binary)")
             continue
-        text = data.decode("utf-8", errors="replace")
+        else:
+            text = data.decode("utf-8", errors="replace")
         if len(text) > REPOSITORY_FILE_LIMIT:
             deferred.append((path, text))
             continue

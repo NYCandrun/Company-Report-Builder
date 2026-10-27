@@ -35,7 +35,8 @@ FACT_LINKS = "tools/outputs/fact-links.jsonl"
 LINKS_REPORT = "06-checks/fact-links.md"
 ELLIPSIS = re.compile(r"\s*(?:\.\.\.|…|\[\.\.\.\]|\[…\])\s*")
 TIMESTAMP = re.compile(r"^\[(\d{1,2}):(\d{2}):(\d{2})\]\s*")
-FILE_HEADER = re.compile(r"^--- FILE: (.+?)(?: \(\d+ lines\))? ---$")
+FILE_HEADER = re.compile(r"^--- FILE: (.+?)(?: \(PDF, (\d+) pages, as text\))?(?: \(\d+ lines\))? ---$")
+PDF_PAGE = re.compile(r"^--- page (\d+) ---$")
 COMMIT_HEADER = re.compile(r"^=== COMMIT ([0-9a-f]{7,40}) ")
 UNMERGED_HEADER = re.compile(r"^=== UNMERGED: (.+?) \(\d+ commits")
 CONVERSATION_HEADER = re.compile(r"^=== (?:PULL REQUEST|ISSUE) #\d+: .* \((https://github\.com/\S+)\) ===$")
@@ -147,6 +148,12 @@ def _repository_link(lines: list[str], index: int, quote_text: str) -> tuple[str
     for back in range(index, -1, -1):
         current = lines[back]
         match = FILE_HEADER.match(current)
+        if match and match.group(2):
+            # A PDF kept in the repository: its page, from the text's page markers.
+            path = match.group(1)
+            page = next((PDF_PAGE.match(lines[position]).group(1) for position in range(index, back, -1)
+                         if PDF_PAGE.match(lines[position])), "1")
+            return f"{base}/blob/{commit}/{quote(path)}", f"{path} page {page} at {commit[:7]}"
         if match:
             path = match.group(1)
             number = index - back
