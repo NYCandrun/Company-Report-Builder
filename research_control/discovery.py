@@ -21,7 +21,7 @@ from typing import Any, Callable
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 from urllib.request import Request, build_opener
 
-from research_control.capture import PublicRedirectHandler, USER_AGENT, _robots_allowed
+from research_control.capture import PublicRedirectHandler, USER_AGENT
 from research_control.io import atomic_write_json, atomic_write_jsonl, atomic_write_text, utc_now, workflow
 from research_control.runtime import DISCOVERY_COMPLETE, DISCOVERY_TERMINAL, RuntimeStore
 from research_control.web_cache import SharedWebCache
@@ -231,8 +231,6 @@ def public_fetch(url: str, policy: DiscoveryPolicy) -> FetchResult:
         raise ValueError(f"discovery hostname cannot be resolved: {hostname}") from error
     if any(not ipaddress.ip_address(value).is_global for value in addresses):
         raise PermissionError(f"discovery URL resolves to a non-public address: {hostname}")
-    if not _robots_allowed(url):
-        raise PermissionError(f"robots.txt disallows discovery fetch: {url}")
     request = Request(
         url,
         headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml,application/xml,text/xml;q=0.9,*/*;q=0.2"},
@@ -357,7 +355,7 @@ class DiscoveryEngine:
         return {"channel": channel, "new_source_ids": created, "rejected": rejected, "channel_state": channel_state}
 
     def seed_sitemaps(self) -> dict[str, Any]:
-        """Admit robots-declared and conventional sitemaps as crawl inventories."""
+        """Admit sitemaps declared in robots.txt, plus /sitemap.xml, as crawl inventories."""
         parsed = urlparse(self.company_url)
         base = f"{parsed.scheme}://{parsed.netloc}"
         declared = [f"{base}/sitemap.xml"]
