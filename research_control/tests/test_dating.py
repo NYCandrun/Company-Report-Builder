@@ -39,6 +39,16 @@ class SourceDatingTests(unittest.TestCase):
             self.assertEqual(("live data at capture", "current"), (rows["SRC-FEED"]["basis"], rows["SRC-FEED"]["flag"]))
             self.assertEqual("undated", rows["SRC-POD"]["flag"])
             self.assertEqual(("2022-09-15", "release date in captions.info.json"), (rows["SRC-YT"]["content_date"], rows["SRC-YT"]["basis"]))
+            self.assertEqual("youtube.com", rows["SRC-YT"]["platform"] or "youtube.com")
+            # A recording that says when it was recorded is dated by that; the posting date is kept.
+            atomic_write_jsonl(root / "tools/outputs/worker-parts/extraction/x.candidates.jsonl", [
+                {"source_id": "SRC-YT", "notes": "Recorded: 2022-06-02; basis: host says 'June 2nd' at [00:00:40]"},
+            ])
+            write_source_dates(root, receipts)
+            row = {row["source_id"]: row for row in load_jsonl(root / SOURCE_DATES)}["SRC-YT"]
+            self.assertEqual(("2022-06-02", "2022-09-15"), (row["content_date"], row["posted_date"]))
+            self.assertEqual("recorded 2022-06-02, posted 2022-09-15", row["date_note"])
+            write_source_dates(root, receipts)
             self.assertEqual(1, report["undated"])
             # A dating pass's override fills an undated source, keeping its evidence.
             atomic_write_jsonl(root / DATE_OVERRIDES, [

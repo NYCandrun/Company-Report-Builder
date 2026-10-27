@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from research_control import FAIL, PASS
-from research_control.io import atomic_write_jsonl, load_jsonl
+from research_control.io import atomic_write_jsonl, atomic_write_text, load_jsonl
 from research_control.reducers import reduce_extraction_parts
 from research_control.validators.extraction import validate_part as validate_extraction_part
 from research_control.validators.dates import validate_fact_dates, validate_source_dates
@@ -109,6 +109,34 @@ class ExtractionReducerTests(unittest.TestCase):
             merged = load_jsonl(root / "tools/candidates/all.jsonl")
             self.assertEqual(["CAND-BBB-001"], [row["candidate_id"] for row in merged])
 
+
+    def test_reducer_marks_repeated_quotes_without_dropping_them(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            atomic_write_text(root / "02-facts/q01.md", "\n".join([
+                "| Fact ID | Claim | Verbatim quote | Source ID | Location | Source date | Grade | Topics | About | Said by | Verdict | Candidate | Notes |",
+                "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+                "| PRD-001 | c | Tribe builds agents. | SRC-1 | l | 2026 | P | Q1 | Tribe | Tribe | filed | CAND-AAA-001 | |",
+            ]) + "\n")
+            parts = root / "tools/outputs/worker-parts/extraction"
+            atomic_write_jsonl(parts / "aaa.candidates.jsonl", [
+                {"candidate_id": "CAND-AAA-001", "source_id": "SRC-1", "quote": "Tribe builds agents."},
+            ])
+            atomic_write_jsonl(parts / "bbb.candidates.jsonl", [
+                {"candidate_id": "CAND-BBB-001", "source_id": "SRC-1", "quote": "Tribe  builds agents."},
+                {"candidate_id": "CAND-BBB-002", "source_id": "SRC-1", "quote": "It ships in weeks."},
+                {"candidate_id": "CAND-BBB-003", "source_id": "SRC-1", "quote": "it ships in weeks."},
+            ])
+            for batch in ("aaa", "bbb"):
+                atomic_write_jsonl(parts / f"{batch}.dispositions.jsonl", [{
+                    "assignment_id": f"facts.extract.{batch}", "input_id": "SRC-1", "source_id": "SRC-1",
+                    "disposition": "completed", "evidence_paths": [], "output_ids": [],
+                }])
+            report = reduce_extraction_parts(root)
+            rows = {row["candidate_id"]: row.get("duplicate_of") for row in load_jsonl(root / "tools/candidates/all.jsonl")}
+            self.assertEqual(2, report["duplicates_marked"])
+            self.assertEqual({"CAND-AAA-001": None, "CAND-BBB-001": "PRD-001", "CAND-BBB-002": None,
+                              "CAND-BBB-003": "CAND-BBB-002"}, rows)
 
     def test_extraction_part_check_rejects_missing_quotes_and_dispositions(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

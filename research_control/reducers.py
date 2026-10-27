@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import re
 from io import StringIO
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ from typing import Any
 from research_control.capture import MANIFEST_FIELDS
 from research_control.discovery import ALTERNATES_PART, coverage_markdown
 from research_control.dating import write_source_dates
+from research_control.validators import facts as fact_tables
 from research_control.io import (
     atomic_write_json,
     atomic_write_jsonl,
@@ -295,6 +297,7 @@ def reduce_extraction_parts(root: Path, batches: list[dict[str, Any]] | None = N
         })
     triaged_out = [row for row in excluded_dispositions(root) if row["input_id"] not in grouped]
     aggregate.extend(triaged_out)
+    duplicates = _mark_duplicates(root, candidates)
     atomic_write_jsonl(root / "tools/candidates/all.jsonl", candidates)
     atomic_write_jsonl(root / "tools/outputs/extraction-dispositions.jsonl", aggregate)
     return {
@@ -305,7 +308,40 @@ def reduce_extraction_parts(root: Path, batches: list[dict[str, Any]] | None = N
         "slice_dispositions": len(dispositions),
         "dispositions": len(aggregate),
         "excluded_by_triage": len(triaged_out),
+        "duplicates_marked": duplicates,
     }
+
+
+def _quote_key(source_id: str, quote_text: str) -> tuple[str, str]:
+    text = str(quote_text or "").replace("\u2019", "'").replace("\u201c", '"').replace("\u201d", '"')
+    return str(source_id), re.sub(r"\s+", " ", text).strip().casefold()
+
+
+def _mark_duplicates(root: Path, candidates: list[dict[str, Any]]) -> int:
+    """Mark candidates that repeat a filed fact or an earlier candidate (same source and
+    quote) with `duplicate_of`, so passes over the same text need no cross-checking."""
+    filed: dict[tuple[str, str], str] = {}
+    filed_candidates: set[str] = set()
+    paths = sorted((root / "02-facts").glob("*.md"))
+    for fact in fact_tables.load_fact_tables(paths) if paths else []:
+        filed.setdefault(_quote_key(fact.get("source_id", ""), fact.get("verbatim_quote", "")), str(fact.get("fact_id", "")))
+        filed_candidates.update(re.findall(r"CAND-[A-Z0-9]+-\d+", " ".join(str(value) for value in fact.values())))
+    seen: dict[tuple[str, str], str] = {}
+    marked = 0
+    for row in candidates:
+        identifier = str(row.get("candidate_id", row.get("id", "")))
+        row.pop("duplicate_of", None)
+        key = _quote_key(row.get("source_id", ""), row.get("quote", ""))
+        if not key[1] or identifier in filed_candidates:
+            seen.setdefault(key, identifier)
+            continue
+        original = filed.get(key) or seen.get(key)
+        if original:
+            row["duplicate_of"] = original
+            marked += 1
+        else:
+            seen[key] = identifier
+    return marked
 
 
 def _write_csv(path: Path, fields: tuple[str, ...], rows: list[dict[str, str]]) -> None:

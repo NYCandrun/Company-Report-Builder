@@ -139,6 +139,21 @@ never shrink. This costs one pass over the index plus the relevant sources,
 instead of re-extracting the corpus and rebuilding every fact ID, citation,
 and verdict downstream.
 
+## Provenance, dates, and deep links
+
+Every source has a row in `tools/outputs/source-dates.jsonl`: its URL,
+platform, publisher or channel, the date its content reflects and the basis
+for it, its posting date, and, for a recording that states when it was
+recorded, the recorded date and the words that state it (extraction records
+these as `Recorded:` notes). Recordings whose stated date differs from their
+posting are listed in `06-checks/source-dating.md`. Every filed fact gets a
+deep link in `tools/outputs/fact-links.jsonl`, computed from its quote: the
+repository file and line at the captured commit, the line in a commit's or
+pull request's diff, the recording's timestamp, or a text fragment that
+highlights the quoted words on a page (`reduce links`; also run by
+verification's prepare step). Unlocated quotes are listed in
+`06-checks/fact-links.md`. The brief's citation map uses both.
+
 ## Keeping the evidence
 
 A run folder is ignored by the template's git. `python3 -m research_control

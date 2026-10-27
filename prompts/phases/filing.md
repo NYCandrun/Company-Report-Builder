@@ -26,3 +26,9 @@ fact row already in `02-facts/` unchanged. File only candidates that are not
 already filed: one with the same source ID and quote as a filed fact gets a
 `duplicate` disposition naming that fact; every other candidate is appended
 under a new fact ID.
+
+A candidate marked `duplicate_of` repeats a filed fact or an earlier candidate
+with the same source and quote (the reducer marks them, so extraction passes
+over the same text need no cross-checking). Do not file it; record it as a
+duplicate of that ID. Near-duplicates the reducer cannot see (the same claim
+quoted differently) are yours to merge as before.

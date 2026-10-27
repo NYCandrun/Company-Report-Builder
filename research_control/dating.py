@@ -9,9 +9,11 @@ research date, so stale evidence is flagged wherever it is used.
 from __future__ import annotations
 
 import json
+import re
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from research_control.capture import _embedded_publish_date, _iso_date
 from research_control.io import atomic_write_jsonl, atomic_write_text, load_json, load_jsonl
@@ -52,6 +54,42 @@ def _media_info_date(directory: Path) -> tuple[date | None, str]:
             if isinstance(info.get(key), (int, float)):
                 return datetime.fromtimestamp(info[key], timezone.utc).date(), f"{key.replace('_', ' ')} in {path.name}"
     return None, ""
+
+
+def _channel(directory: Path) -> str:
+    """The channel or uploader a media route recorded, where there is one."""
+    for path in sorted(directory.glob("*.info.json")):
+        try:
+            info = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        for key in ("channel", "uploader", "author"):
+            if info.get(key):
+                return str(info[key])
+    return ""
+
+
+def _flag(content: date, as_of: date) -> tuple[float, str]:
+    quarters = round(max((as_of - content).days, 0) / 91.3, 1)
+    return quarters, "current" if quarters < 1 else "as of" if quarters <= 2 else "dated"
+
+
+RECORDED = re.compile(r"Recorded:\s*(\d{4}-\d{2}-\d{2})")
+
+
+def recorded_dates(root: Path) -> dict[str, tuple[str, str]]:
+    """Recording dates that extraction found stated in recordings, by source:
+    the earliest stated date and the note that states it."""
+    found: dict[str, tuple[str, str]] = {}
+    for path in sorted((root / "tools/outputs/worker-parts/extraction").glob("*.candidates.jsonl")):
+        for row in load_jsonl(path):
+            match = RECORDED.search(str(row.get("notes", "")))
+            if match and _as_date(match.group(1)):
+                source_id = str(row.get("source_id", ""))
+                note = str(row.get("notes", ""))[:240]
+                if source_id not in found or match.group(1) < found[source_id][0]:
+                    found[source_id] = (match.group(1), note)
+    return found
 
 
 def date_source(
@@ -100,6 +138,8 @@ def date_source(
     row: dict[str, Any] = {
         "source_id": source_id,
         "url": source.get("url", ""),
+        "platform": (urlparse(str(source.get("url", ""))).hostname or "").removeprefix("www."),
+        "publisher": _channel(root / "01-sources/captures" / source_id) or str(source.get("publisher", "")),
         "content_date": content.isoformat() if content else "",
         "basis": basis or "undated",
         "captured": captured.isoformat() if captured else "",
@@ -118,10 +158,26 @@ def write_source_dates(root: Path, receipts: list[dict[str, Any]]) -> dict[str, 
     as_of = research_date(root)
     overrides_path = root / DATE_OVERRIDES
     overrides = {str(row.get("source_id")): row for row in load_jsonl(overrides_path)} if overrides_path.is_file() else {}
+    recorded = recorded_dates(root)
     rows = [
         date_source(root, receipt, as_of, overrides.get(str(receipt.get("source_id"))))
         for receipt in receipts if receipt.get("status") == "captured"
     ]
+    # What a recording says about when it was recorded dates what was said in it;
+    # the posting date is kept beside it.
+    for row in rows:
+        row["posted_date"] = row["content_date"]
+        stated = recorded.get(row["source_id"])
+        if not stated:
+            continue
+        row["recorded_date"], row["recorded_basis"] = stated
+        recorded_on = date.fromisoformat(stated[0])
+        if row["content_date"] and abs((date.fromisoformat(row["content_date"]) - recorded_on).days) <= 3:
+            continue
+        row["date_note"] = f"recorded {stated[0]}, posted {row['content_date'] or 'undated'}"
+        row["content_date"] = stated[0]
+        row["basis"] = f"recorded date stated in the recording (posted {row['posted_date'] or 'undated'})"
+        row["age_quarters"], row["flag"] = _flag(recorded_on, as_of)
     rows.sort(key=lambda row: row["source_id"])
     atomic_write_jsonl(root / SOURCE_DATES, rows)
     counts = {flag: sum(1 for row in rows if row["flag"] == flag) for flag in ("current", "as of", "dated", "undated")}
@@ -142,10 +198,23 @@ def write_source_dates(root: Path, receipts: list[dict[str, Any]]) -> dict[str, 
         "| Source | Content date | Basis | Age (quarters) | Flag | URL |",
         "|---|---|---|---|---|---|",
     ]
+    mismatched = [row for row in rows if row.get("date_note")]
     lines += [
         f"| `{row['source_id']}` | {row['content_date'] or '—'} | {row['basis']} | "
         f"{'' if row['age_quarters'] is None else row['age_quarters']} | {row['flag']} | {row['url']} |"
         for row in rows if row["flag"] in {"dated", "undated"}
+    ]
+    lines += [
+        "",
+        f"## Recordings dated differently from their posting ({len(mismatched)})",
+        "",
+        "| Source | Recorded | Posted | Stated in the recording | Publisher | URL |",
+        "|---|---|---|---|---|---|",
+        *(
+            f"| `{row['source_id']}` | {row['recorded_date']} | {row['posted_date'] or '—'} | "
+            f"{row['recorded_basis'].replace('|', '/')} | {row['publisher']} | {row['url']} |"
+            for row in mismatched
+        ),
     ]
     atomic_write_text(root / DATING_REPORT, "\n".join(lines) + "\n")
     return {"sources": len(rows), **counts}

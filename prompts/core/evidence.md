@@ -86,6 +86,10 @@ old), or `undated`. Use them: `dated` evidence is cited with its date and age
 wherever it is used, and `undated` evidence never supports a claim about the
 present.
 
+A recording is dated by when it was recorded where it says so
+(`recorded_date` in source dates), with its posting date kept beside it; when
+the two differ, cite both, and date what was said by the recording.
+
 Evidence within the last quarter may support plain current wording. Older
 current-state evidence needs `as of <date>`. A repository, spreadsheet, or
 other document snapshot is dated by its own content or its last commit, not
@@ -101,6 +105,8 @@ publishes it.
 
 ## Citation meaning
 
-A citation supports the exact adjacent words. Never cite a source directly in
+A citation supports the exact adjacent words. It names where the source came
+from (publisher or channel, platform), its date, and resolves to the quoted
+place through the fact's deep link (`tools/outputs/fact-links.jsonl`). Never cite a source directly in
 the brief without a fact row. Structural correctness does not establish
 semantic support. An independent claim review remains required.

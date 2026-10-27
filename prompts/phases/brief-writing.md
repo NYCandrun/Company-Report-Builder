@@ -34,7 +34,10 @@ employees. Section 8 uses reproducible counts and plain-language method names.
 
 Create the company-brief citation map plus its element-level exhibit map. Each
 citation record links rendered placement to fact IDs, source IDs, and the
-canonical deep URL. Do not expose fact IDs in rendered output, but do not
+fact's deep link from `tools/outputs/fact-links.jsonl` (the file and line at
+a commit, the line in a diff, the recording's timestamp, or a text fragment
+on the page), with the source's publisher and its posted and recorded dates
+from `tools/outputs/source-dates.jsonl`. Do not expose fact IDs in rendered output, but do not
 remove them from Markdown. The architecture-diagram tasks own the separate
 model and SVG deliverables; do not create a one-page summary. Do not review
 your own claim support. Run writing and fact-ID checks before return.

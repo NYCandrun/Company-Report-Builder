@@ -21,3 +21,7 @@ Every row includes `fact_id`, `verdict`, `reason`, and `evidence_paths`;
 corrected rows also include `corrected_claim` or `corrected_receipt`.
 Then run the verdict schema check. Return only counts, problem IDs, path, and
 validator status.
+
+Each fact's deep link (`tools/outputs/fact-links.jsonl`) opens the source at
+the quoted words; use it, and the capture it was computed from, to check the
+quote in place.

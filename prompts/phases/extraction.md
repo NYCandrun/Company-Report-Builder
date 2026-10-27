@@ -34,6 +34,11 @@ each repository cover, with one fact per distinct claim:
   model, or integration the README and other docs describe.
 - How it works: its architecture, components, models and APIs called, data it
   reads and writes, configuration, prompts, and integrations, from the code.
+- What was built and delivered: each system, tool, integration, deliverable,
+  or service the company actually built or delivered, for whom (with its
+  relationship mark), when, and the evidence that it was built or delivered
+  (shipped code, a repository shaped to a client, a recorded handover, use,
+  or follow-on work), kept apart from what was sold, proposed, or promised.
 - What it seems to do: behavior the code implements that the docs do not
   state. This is inference: start the claim with `My inference:` and cite the
   code lines.
@@ -81,6 +86,10 @@ thoroughly as code, one fact per distinct claim:
 - Budgets and money: contract values, budgets, rates, bookings, revenue, and
   every change in them, with both figures and their dates. Plans and
   forecasts stay plans.
+- Built and delivered: what the company actually built, shipped, or
+  delivered for each account (systems, deliverables, workshops, staff
+  placed), as the record shows it, and how that differs from what was sold
+  or proposed.
 - Projects: what each project is, its stage, and how its scope and stage
   shifted.
 - Land, expand, churn: first engagements, follow-on phases and expansions,
@@ -94,6 +103,12 @@ thoroughly as code, one fact per distinct claim:
   request, a concern, or an opinion.
 - Contradictions: where two records, two versions, or a record and a public
   statement disagree, extract both with their dates and say so in notes.
+- Recording dates: a recording is dated by when it was posted
+  (`tools/outputs/source-dates.jsonl`). When the recording itself states or
+  implies when it was recorded (a date said aloud, a named event, "this week
+  we launched X"), extract that as a fact with topic `recording date` and
+  notes `Recorded: YYYY-MM-DD; basis: <what is said, at [hh:mm:ss]>`. When it
+  differs from the posted date, what was said is dated by the recording.
 - Sourcing: in notes, name the file, section, call, or recording each fact
   comes from, and for a repository the commit that last changed it (its date
   is when it was edited or pushed).
@@ -103,18 +118,21 @@ Date each repository fact by the commit that introduced the quoted content
 commit, and say which in notes. Quote single lines from a diff without its
 leading `+` or `-`.
 
+Locations are how citations resolve, so make them exact: for a recording, the
+`[hh:mm:ss]` timestamp of the quoted passage; for a repository, the file path
+(or commit, branch, or pull request) and line; for a page, the section
+heading. Every fact also gets a deep link computed from its quote after
+extraction (`tools/outputs/fact-links.jsonl`), so quote the source's exact
+words.
+
 Set each candidate's `source_date` from the source's row in
 `tools/outputs/source-dates.jsonl` (content date and basis), or from a date
 the source states for that specific fact when it is more precise. Never
 present a capture date as a publication date.
 
 When an input's source is listed in `tools/lists/supplement-sources.json`, it
-was recaptured with more content after its earlier facts were filed. Read the
-facts already filed from it (search `02-facts/` for its source ID) and the
-candidates earlier batches extracted from it but not yet filed
-(`tools/outputs/worker-parts/extraction/*.candidates.jsonl`, same `source_id`), and extract
-what they do not already cover, across every dimension in "Repositories" and
-"Business records and conversations" above and the questions the list's reason
-names (earlier passes were thinner than these rules ask), plus any earlier
-claim the new text corrects or dates more precisely (say so in notes). Do not
-re-extract a fact already filed.
+was recaptured with more content, or listed again for a new question, after
+its earlier facts were filed. Extract everything its text supports across
+every dimension above and the questions the list's reason names, and say in
+notes where the text corrects or dates an earlier claim more precisely. Do not
+search earlier facts or candidates: duplicates are removed after extraction.
