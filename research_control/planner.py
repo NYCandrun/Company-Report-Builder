@@ -703,7 +703,8 @@ class AdaptivePlanner:
                     ],
                     outputs=[verification.VERDICTS, verification.REPORT],
                     prompt_files=["prompts/core/runtime.md", "prompts/phases/verification.md"],
-                    depends_on=shard_ids,
+                    # Waiting on prepare too keeps a rerun from merging before its new shards exist.
+                    depends_on=[prepare_id, *shard_ids],
                     schema_files=[],
                     validators=[],
                     priority=20,
