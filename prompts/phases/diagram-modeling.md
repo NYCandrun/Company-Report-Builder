@@ -64,3 +64,7 @@ or architectural distinction not already explained by the other views.
 
 Do not draw anything. The scheduler will not release the build task until the
 model registry passes deterministic validation.
+
+Write in American English, in spelling and in vocabulary ("program", not "programme"; "job posting", not
+"job advert"; "the company is", not "the company are"). Quotes, quoted titles, and names keep the
+source's spelling. `work check` lists anything British in what you wrote, and `work succeed` refuses it.

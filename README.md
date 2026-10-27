@@ -225,9 +225,15 @@ diagram labels, and captions. `work check` lists British spellings and terms
 "financial year", "the company are") in the text the worker wrote, and
 `work succeed` refuses them. Verbatim quotes, quoted titles, code, links, and
 names (a capitalized word inside a sentence, such as "Ministry of Defence")
-keep the source's spelling. The final checks run the same test on the report,
-its captions, and the diagrams, and a test keeps the framework's own prompts
-and documentation in American English.
+keep the source's spelling. The rule is stated in the shared rules every
+worker reads, in the instructions of every task that drafts text (scope,
+discovery, triage, extraction, synthesis, reviews, verification, the brand
+guide, the report, the diagrams, and the publication checks), and in each
+worker's finishing steps. The control agent's own writing is held to it too:
+`scope add-question`, `scope record-edit`, and `work record-edit` refuse British
+spellings and terms. The final checks run the same test on the report, its
+captions, and the diagrams, and tests keep the framework's own prompts,
+documentation, and the text the engine writes into a run in American English.
 
 ## Checks between synthesis and review
 

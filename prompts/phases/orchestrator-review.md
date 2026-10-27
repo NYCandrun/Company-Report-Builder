@@ -16,3 +16,7 @@ including their placement in the report, plus desktop/mobile brand-guide and
 every brand-guide PDF page; remaining exceptions, deterministic title/subtitle results, and the exact
 commands used. Do not declare the run complete. Only release acceptance may do
 that.
+
+Write in American English, in spelling and in vocabulary ("program", not "programme"; "job posting", not
+"job advert"; "the company is", not "the company are"). Quotes, quoted titles, and names keep the
+source's spelling. `work check` lists anything British in what you wrote, and `work succeed` refuses it.

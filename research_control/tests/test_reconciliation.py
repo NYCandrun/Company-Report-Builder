@@ -277,3 +277,44 @@ class AmericanEnglishTests(unittest.TestCase):
                  repository / "RESEARCH_CONSTITUTION.md"]
         problems = [f"{path.relative_to(repository)} {problem}" for path in texts for problem in american.check_file(path)]
         self.assertEqual([], problems)
+
+
+class AmericanEnglishEverywhereTests(unittest.TestCase):
+    def test_every_drafting_worker_and_the_engines_own_text_use_american_english(self) -> None:
+        import ast
+        import json
+
+        from research_control.validators import american
+
+        repository = Path(__file__).resolve().parents[2]
+        workflow = json.loads((repository / "WORKFLOW.yaml").read_text(encoding="utf-8"))
+        for profile in workflow["execution_profiles"].values():
+            for task in profile.get("tasks", []):
+                if (task.get("metadata") or {}).get("executor") != "runtime":
+                    self.assertIn("prompts/core/runtime.md", task.get("cores", []), task["id"])
+        self.assertIn("## American English", (repository / "prompts/core/runtime.md").read_text(encoding="utf-8"))
+        # Text the engine writes into a run (state files, reports, notes): sentences in its string literals.
+        problems = []
+        for path in sorted((repository / "research_control").rglob("*.py")):
+            if "tests" in path.parts or path.name == "american.py":
+                continue
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str) and " " in node.value.strip():
+                    problems += [f"{path.name}:{node.lineno} {word}" for word, _ in american.findings(node.value)]
+        self.assertEqual([], problems)
+
+    def test_the_control_agents_recorded_edits_are_held_to_american_english(self) -> None:
+        import tempfile
+
+        from research_control.cli import _require_american
+        from research_control.io import atomic_write_text
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            atomic_write_text(root / "00-scope.md", "**Q14. Partner programme.** How does the programme work?\n")
+            with self.assertRaisesRegex(ValueError, "programme"):
+                _require_american(root, ["00-scope.md"])
+            with self.assertRaisesRegex(ValueError, "job advert"):
+                _require_american(root, [], ["Seen in a job advert"])
+            atomic_write_text(root / "00-scope.md", "**Q14. Partner program.** How does the program work?\n")
+            _require_american(root, ["00-scope.md"], ["Seen in a job posting"])

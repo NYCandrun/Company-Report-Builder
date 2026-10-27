@@ -34,3 +34,7 @@ guidance. Write one terminal record per file to
 `tools/outputs/input-classification.jsonl`, using its repository-relative path
 as `input_id`. If `00-inputs/` is empty, write one `completed_zero` record for
 `__none__` with `00-scope.md` as evidence.
+
+Write the scope in American English, in spelling and in vocabulary: questions, notes, and decisions
+("program", not "programme"; "job posting", not "job advert"). Names and quoted titles keep their
+spelling. `work check` lists anything British, and `work succeed` refuses it.

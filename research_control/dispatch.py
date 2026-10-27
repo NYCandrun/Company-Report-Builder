@@ -241,6 +241,10 @@ def worker_brief(root: Path, task: dict[str, Any], route: dict[str, Any], packet
                   "", notes.group(1).strip(), ""]
     lines += [
         "---", "", "## Finish", "",
+        "Write everything you author in American English, in spelling and in vocabulary (the runtime rules give "
+        "examples: \"program\", not \"programme\"; \"job posting\", not \"job advert\"). Quotes, quoted titles, and "
+        "names keep the source's spelling.",
+        "",
         f"4. Check with `python3 -m research_control work check {task_id}` and fix what it reports until its status is clean. "
         "If a check flags text you believe is correct as the source has it (a false positive), do not reword it: "
         "say so in your report.",

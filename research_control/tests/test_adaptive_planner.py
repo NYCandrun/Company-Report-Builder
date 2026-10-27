@@ -669,6 +669,9 @@ class WorkerBriefTests(unittest.TestCase):
             self.assertIn("- `02-facts/*.md`", brief)
             # Each task carries only the rules it uses: extraction gets receipts, not browsing or citation meaning.
             self.assertIn("## Fact receipts", brief)
+            # American English reaches every worker: the shared rules and the brief's own finishing steps.
+            self.assertIn("## American English", brief)
+            self.assertIn("Write everything you author in American English", brief)
             self.assertNotIn("## Browsing", brief)
             self.assertNotIn("## Citation meaning", brief)
             self.assertNotIn("<!-- only:", brief)

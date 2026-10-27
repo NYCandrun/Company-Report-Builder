@@ -181,3 +181,8 @@ PASS, NOT APPLICABLE, or BLOCKED plus
 specific evidence for every requirement above. A blocked public source is an
 evidence limitation; a blocked output, missing QA render, or known visual
 defect is not completion.
+
+Write the guide's own text in American English, in spelling and in vocabulary ("color", "center",
+"program"). When you show the company's own copy (a tagline, a headline, a button label), put it in
+quotation marks or a `<q>` or `<blockquote>` element so it keeps the company's spelling and is not
+flagged. `work check` lists anything British in the guide's text, and `work succeed` refuses it.

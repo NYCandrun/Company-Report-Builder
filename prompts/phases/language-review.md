@@ -13,3 +13,7 @@ files reviewed, counts, exact locations, and either findings or an explicit
 clean result. Mirror each problem as a stable finding in
 `tools/outputs/publication-findings-language.jsonl`; write one clean record when
 there are no findings.
+
+Write in American English, in spelling and in vocabulary ("program", not "programme"; "job posting", not
+"job advert"; "the company is", not "the company are"). Quotes, quoted titles, and names keep the
+source's spelling. `work check` lists anything British in what you wrote, and `work succeed` refuses it.

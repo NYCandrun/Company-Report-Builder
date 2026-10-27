@@ -431,6 +431,18 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _require_american(root: Path, paths: list[str], texts: list[str] | None = None) -> None:
+    """The control agent's own writing (scope questions, recorded edits) is held to American English too."""
+    from research_control.validators import american
+
+    problems = american.check_paths(root, paths) + [
+        f'"{word}" (use {advice})' for text in (texts or []) for word, advice in american.findings(text or "")
+    ]
+    if problems:
+        raise ValueError("American English is required in what is written into the run (quotes and names keep the "
+                         "source's spelling); fix: " + "; ".join(problems[:20]))
+
+
 def main() -> None:
     args = _parser().parse_args()
     root = _root(args.root)
@@ -506,6 +518,7 @@ def main() -> None:
             from research_control.triage import RETRIAGE_REQUEST
 
             if args.scope_command == "record-edit":
+                _require_american(root, ["00-scope.md"])
                 outputs = ["00-scope.md"] + ([RETRIAGE_REQUEST] if (root / RETRIAGE_REQUEST).is_file() else [])
                 with open_runtime(root) as store:
                     revision = store.record_revision(
@@ -516,6 +529,7 @@ def main() -> None:
                 append_history(root, "scope-edit-recorded", args.reason)
                 _print_json({"revision": revision["task_id"], "rebaselined": rebaselined})
                 return
+            _require_american(root, [], [args.title, args.text, args.reason])
             request = add_scope_question(root, args.id, args.title, args.text, args.channels, args.reason)
             with open_runtime(root) as store:
                 # The scope edit is a recorded revision: it owns the new scope, and
@@ -556,6 +570,8 @@ def main() -> None:
                 from research_control.automatic import RUNTIME_WORKER
                 from research_control.orchestration import append_history
 
+                # Captured source text keeps its own spelling; everything else written into the run is American.
+                _require_american(root, [path for path in args.paths if not path.startswith("01-sources/")], [args.reason])
                 with open_runtime(root) as store:
                     result = store.record_edit(list(args.paths), args.phase, args.reason, RUNTIME_WORKER)
                 append_history(root, "edit-recorded", f"{', '.join(args.paths)}: {args.reason}")

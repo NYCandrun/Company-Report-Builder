@@ -55,3 +55,7 @@ so where an inference rests on them. Customer, client, and partner
 relationships keep their `Stated` / `Inferred` / `Lead` marks. Do not restate a
 stated fact as an inference; the catalog is for conclusions that go beyond
 what any one source says. Run the fact-ID and writing checks before return.
+
+Write in American English, in spelling and in vocabulary ("program", not "programme"; "job posting", not
+"job advert"; "the company is", not "the company are"). Quotes, quoted titles, and names keep the
+source's spelling. `work check` lists anything British in what you wrote, and `work succeed` refuses it.

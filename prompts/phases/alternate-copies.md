@@ -44,3 +44,7 @@ the runtime captures it automatically. The task is complete only when every
 source in its list has at least one recorded outcome. Return the number of sources
 with an alternate, the number with none, and any that need a different access
 method.
+
+Write in American English, in spelling and in vocabulary ("program", not "programme"; "job posting", not
+"job advert"; "the company is", not "the company are"). Quotes, quoted titles, and names keep the
+source's spelling. `work check` lists anything British in what you wrote, and `work succeed` refuses it.

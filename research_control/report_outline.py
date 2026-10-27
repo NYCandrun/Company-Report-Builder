@@ -5,7 +5,7 @@ written into the scope by default rather than asked by the user. The report
 opens with an executive summary, then moves from broad context to specifics
 (the company and its history, its market, what it sells and how it is built,
 how it sells, its customers and accounts, its people and organization, its
-direction), and closes with the catalogue, open questions, the limits of the
+direction), and closes with the catalog, open questions, the limits of the
 evidence, and source notes. Each question is placed in the part it belongs
 to, so every one is answered, under plain topical headings. There is no
 length target: the report is as long as the evidence needs and no longer. The

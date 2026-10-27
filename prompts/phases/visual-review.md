@@ -48,3 +48,7 @@ for every brand-guide PDF page:
 Every page, diagram, HTML viewport, and brand-PDF page record must include the
 exact `artifact_sha256` from the review scope. Report how many targets were
 inspected and how many unchanged clean records were reused.
+
+Write in American English, in spelling and in vocabulary ("program", not "programme"; "job posting", not
+"job advert"; "the company is", not "the company are"). Quotes, quoted titles, and names keep the
+source's spelling. `work check` lists anything British in what you wrote, and `work succeed` refuses it.

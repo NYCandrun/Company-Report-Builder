@@ -16,3 +16,7 @@ Write `06-checks/currency-review.md` with the method, one decision per flagged
 row (keep, change, or add a flag, with the wording synthesis must use), and
 any item the timelines miss. Do not edit the currency file or the timelines;
 the synthesis writers and the corrections step apply your decisions.
+
+Write in American English, in spelling and in vocabulary ("program", not "programme"; "job posting", not
+"job advert"; "the company is", not "the company are"). Quotes, quoted titles, and names keep the
+source's spelling. `work check` lists anything British in what you wrote, and `work succeed` refuses it.

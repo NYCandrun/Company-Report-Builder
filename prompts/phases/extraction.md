@@ -156,3 +156,7 @@ its earlier facts were filed. Extract everything its text supports across
 every dimension above and the questions the list's reason names, and say in
 notes where the text corrects or dates an earlier claim more precisely. Do not
 search earlier facts or candidates: duplicates are removed after extraction.
+
+Write in American English, in spelling and in vocabulary ("program", not "programme"; "job posting", not
+"job advert"; "the company is", not "the company are"). Quotes, quoted titles, and names keep the
+source's spelling. `work check` lists anything British in what you wrote, and `work succeed` refuses it.

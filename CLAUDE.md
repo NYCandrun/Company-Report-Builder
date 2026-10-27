@@ -70,6 +70,15 @@ every ready packet until exact-artifact release passes.
   `python3 -m research_control --root runs/<slug> sync-engine` from the template
   checkout so the change is recorded in the run history.
 
+## American English
+
+Everything written into a run is in American English, in spelling and in
+vocabulary: what workers draft (facts, synthesis, reviews, the brand guide,
+the report, diagrams) and what you write yourself (scope questions, notes,
+recorded edits and their reasons). `scope add-question`, `scope record-edit`,
+and `work record-edit` refuse British spellings and terms, as `work succeed`
+does for workers. Quotes, quoted titles, and names keep the source's spelling.
+
 ## Model routing
 
 Every packet names an advisory tier (`model_route` in its JSON and in the

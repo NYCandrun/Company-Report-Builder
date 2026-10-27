@@ -72,3 +72,7 @@ other file:
   when the row cannot settle it, and then read only enough to decide.
 
 Return the relevant count per added question and the sources you opened.
+
+Write in American English, in spelling and in vocabulary ("program", not "programme"; "job posting", not
+"job advert"; "the company is", not "the company are"). Quotes, quoted titles, and names keep the
+source's spelling. `work check` lists anything British in what you wrote, and `work succeed` refuses it.

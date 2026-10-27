@@ -27,3 +27,7 @@ alter presentation only; they may not alter the architecture model.
 
 Do not perform the re-review yourself. The prior reviewers must rerun against
 the new artifact hashes before page acceptance.
+
+Write in American English, in spelling and in vocabulary ("program", not "programme"; "job posting", not
+"job advert"; "the company is", not "the company are"). Quotes, quoted titles, and names keep the
+source's spelling. `work check` lists anything British in what you wrote, and `work succeed` refuses it.

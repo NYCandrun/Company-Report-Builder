@@ -133,3 +133,7 @@ Never use a number of sources as completion evidence.
 Finally run `python3 -m research_control discovery receipt --channel CHANNEL`.
 The task is complete only when the receipt exists and agrees with the
 scheduler's terminal channel state.
+
+Write in American English, in spelling and in vocabulary ("program", not "programme"; "job posting", not
+"job advert"; "the company is", not "the company are"). Quotes, quoted titles, and names keep the
+source's spelling. `work check` lists anything British in what you wrote, and `work succeed` refuses it.

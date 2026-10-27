@@ -17,3 +17,7 @@ its premise fact/source IDs, captions, and SVG `data-model-id` bindings. Judge
 whether each consequential node and edge remains within its D/R evidence class
 and whether any H/U relationship is presented as established. Do not treat a
 valid model ID or real URL as substantive support by itself.
+
+Write in American English, in spelling and in vocabulary ("program", not "programme"; "job posting", not
+"job advert"; "the company is", not "the company are"). Quotes, quoted titles, and names keep the
+source's spelling. `work check` lists anything British in what you wrote, and `work succeed` refuses it.

@@ -18,3 +18,7 @@ rubric and disclose material evidence asymmetry.
 Do not verify your own citations and do not perform skeptical review. Those are
 separate contexts. Complete only the assigned synthesis file or at most two
 explicitly grouped deliverables. Run fact-ID and writing checks before return.
+
+Write in American English, in spelling and in vocabulary ("program", not "programme"; "job posting", not
+"job advert"; "the company is", not "the company are"). Quotes, quoted titles, and names keep the
+source's spelling. `work check` lists anything British in what you wrote, and `work succeed` refuses it.

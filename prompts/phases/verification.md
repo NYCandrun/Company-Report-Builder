@@ -32,3 +32,7 @@ validator status.
 Each fact's deep link (`tools/outputs/fact-links.jsonl`) opens the source at
 the quoted words; use it, and the capture it was computed from, to check the
 quote in place.
+
+Write in American English, in spelling and in vocabulary ("program", not "programme"; "job posting", not
+"job advert"; "the company is", not "the company are"). Quotes, quoted titles, and names keep the
+source's spelling. `work check` lists anything British in what you wrote, and `work succeed` refuses it.

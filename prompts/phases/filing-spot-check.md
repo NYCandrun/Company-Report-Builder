@@ -23,3 +23,7 @@ do not read the fact store or the captures whole.
 Give each file a table with one row per sampled item, the counts checked and
 wrong, and a line for each problem naming the candidate or fact ID and what is
 wrong. Write nothing else.
+
+Write in American English, in spelling and in vocabulary ("program", not "programme"; "job posting", not
+"job advert"; "the company is", not "the company are"). Quotes, quoted titles, and names keep the
+source's spelling. `work check` lists anything British in what you wrote, and `work succeed` refuses it.

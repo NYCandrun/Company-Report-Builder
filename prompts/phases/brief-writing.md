@@ -86,3 +86,7 @@ withdrawn: fix each in the Markdown and run it again. Rendered output never
 shows fact IDs. The architecture-diagram tasks own the separate
 model and SVG deliverables; do not create a one-page summary. Do not review
 your own claim support. Run writing and fact-ID checks before return.
+
+Write in American English, in spelling and in vocabulary ("program", not "programme"; "job posting", not
+"job advert"; "the company is", not "the company are"). Quotes, quoted titles, and names keep the
+source's spelling. `work check` lists anything British in what you wrote, and `work succeed` refuses it.

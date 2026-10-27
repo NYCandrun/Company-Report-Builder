@@ -19,3 +19,7 @@ the rest of the shared material every synthesis writer reads:
 
 Do not rewrite the digests, write `05-synthesis/` files, or review your own
 currency flags; the runtime and separate workers do those. Every row cites fact IDs that exist in the store.
+
+Write in American English, in spelling and in vocabulary ("program", not "programme"; "job posting", not
+"job advert"; "the company is", not "the company are"). Quotes, quoted titles, and names keep the
+source's spelling. `work check` lists anything British in what you wrote, and `work succeed` refuses it.

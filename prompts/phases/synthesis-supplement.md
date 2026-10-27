@@ -35,3 +35,7 @@ fact you cited or that changed text, `{"fact_id", "decision"` (`confirms`,
 `narrows`, `contradicts`, or `adds`)`, "passage", "why"}`. Leave out the facts
 you left uncited; the runtime records them in the reconciliation report. Run
 the fact-ID and writing checks before return.
+
+Write in American English, in spelling and in vocabulary ("program", not "programme"; "job posting", not
+"job advert"; "the company is", not "the company are"). Quotes, quoted titles, and names keep the
+source's spelling. `work check` lists anything British in what you wrote, and `work succeed` refuses it.

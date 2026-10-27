@@ -28,3 +28,7 @@ source decides, and the change over time is shown where values differ by date.
 relationship is marked differently in different synthesis files (found by
 script). Treat each as already found: settle it by the evidence rather than
 reporting the difference again.
+
+Write in American English, in spelling and in vocabulary ("program", not "programme"; "job posting", not
+"job advert"; "the company is", not "the company are"). Quotes, quoted titles, and names keep the
+source's spelling. `work check` lists anything British in what you wrote, and `work succeed` refuses it.
