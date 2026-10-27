@@ -597,7 +597,6 @@ def main() -> None:
                         "evidence": channel["completion_evidence"],
                     }
                     path = root / "tools/outputs/worker-parts/discovery" / f"{args.channel.replace('_', '-')}.json"
-                    from research_control.io import atomic_write_json
                     atomic_write_json(path, receipt)
                     _print_json({**receipt, "receipt": str(path.relative_to(root))})
             return
