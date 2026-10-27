@@ -179,8 +179,11 @@ Each capture writes a terminal receipt:
 `captured` with a canonical UTF-8 text derivative, or `blocked` with the
 concrete reason.
 
-- Web pages: HTTP capture with rendered-order text extraction; pages built by
-  JavaScript fall back to a headless browser when the host has one.
+- Web pages: HTTP capture with rendered-order text extraction. Pages built by
+  JavaScript, and pages whose site refuses the plain request (HTTP 401, 403,
+  or 429), fall back to a headless browser when the host has one; a browser
+  that only reaches a refusal or challenge page is recorded as blocked with
+  both reasons.
 - PDFs: `pdftotext` with page markers.
 - GitHub: public repositories, directories, and files are captured from a
   shallow git clone (README, file tree, file contents, last commit date), since

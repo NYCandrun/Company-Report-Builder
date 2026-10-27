@@ -588,6 +588,50 @@ def _reusable_transcript(root: Path, source_id: str, url: str) -> dict[str, Any]
     }
 
 
+REFUSAL_STATUSES = {401, 403, 429}
+REFUSAL_TITLES = ("access denied", "403", "forbidden", "just a moment", "attention required", "are you a robot")
+
+
+def _browser_capture(root: Path, *, url: str, source_id: str, grade: str, http_reason: str) -> dict[str, Any]:
+    """Capture a page through the headless browser after the plain request was refused."""
+    try:
+        rendered = _browser_render(url)
+    except Exception as error:
+        return _blocked_receipt(root, source_id, url, f"{http_reason}; headless browser: {str(error).splitlines()[0][:160]}")
+    text = re.sub(r"\n{3,}", "\n\n", rendered.get("text", "")).strip()
+    title = str(rendered.get("title", ""))
+    refused = any(marker in f"{title} {text[:200]}".casefold() for marker in REFUSAL_TITLES)
+    if refused or len(text) < MIN_HTML_TEXT_CHARACTERS:
+        detail = f"refusal page {title!r}" if refused else f"only {len(text)} characters of text"
+        return _blocked_receipt(root, source_id, url, f"{http_reason}; headless browser got {detail}")
+    directory = root / "01-sources/captures" / source_id
+    directory.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(directory / "rendered.html", rendered.get("html", ""))
+    atomic_write_text(directory / "content.txt", text + "\n")
+    paths = [str((directory / "rendered.html").relative_to(root)), str((directory / "content.txt").relative_to(root))]
+    parsed = urlparse(url)
+    receipt = {
+        "schema_version": "1.0.0", "task_type": "capture", "source_id": source_id, "status": "captured",
+        "source": {
+            "id": source_id, "grade": grade, "title": title or url,
+            "publisher": parsed.netloc.removeprefix("www."), "url": rendered.get("url") or url,
+            "date published": "", "date last modified": "",
+            "date captured": datetime.now(timezone.utc).date().isoformat(),
+            "local file": ";".join(paths), "method": "headless browser capture after HTTP refusal",
+            "notes": f"Plain HTTP request was refused ({http_reason}); text taken from the rendered page",
+        },
+        "local_paths": paths, "content_bytes": len(text.encode("utf-8")),
+        "estimated_tokens": max(1, len(text) // 4), "canonical_text_ready": True, "captured_at": utc_now(),
+        "disposition": {
+            "input_id": source_id, "disposition": "completed", "reason": "captured with a headless browser",
+            "evidence_paths": paths, "output_ids": [source_id],
+        },
+    }
+    receipt_path = root / "tools/outputs/worker-parts/capture" / f"{source_id}.json"
+    atomic_write_json(receipt_path, receipt)
+    return {**receipt, "receipt": str(receipt_path.relative_to(root))}
+
+
 def _capture_page(
     root: Path,
     *,
@@ -600,7 +644,11 @@ def _capture_page(
     try:
         receipt = capture_source_part(root, url=url, source_id=source_id, grade=grade, store=store)
     except Exception as error:  # every source receives a terminal disposition
-        return _blocked_receipt(root, source_id, url, f"{type(error).__name__}: {error}")
+        reason = f"{type(error).__name__}: {error}"
+        if getattr(error, "code", None) in REFUSAL_STATUSES and (use_browser if use_browser is not None else browser_available()):
+            # Some sites refuse plain HTTP clients but serve a real browser.
+            return _browser_capture(root, url=url, source_id=source_id, grade=grade, http_reason=reason)
+        return _blocked_receipt(root, source_id, url, reason)
     directory = root / "01-sources/captures" / source_id
     pdf_path = directory / "source.pdf"
     if pdf_path.is_file():
