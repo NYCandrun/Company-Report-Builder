@@ -16,7 +16,7 @@ from research_control.automatic import RUNTIME_WORKER, run_automatic
 from research_control.media import is_media_url
 from research_control.planner import AdaptivePlanner
 from research_control.triage import validate_triage
-from research_control.runtime import ACTIVE_STATES, DISCOVERY_TERMINAL, RuntimeStore
+from research_control.runtime import ACTIVE_STATES, DISCOVERY_TERMINAL, SATISFIED_STATES, RuntimeStore
 
 
 def open_runtime(root: Path) -> RuntimeStore:
@@ -104,7 +104,7 @@ def advance(root: Path, company_url: str | None = None, *, automatic: bool = Tru
                 }
             if active:
                 return {"status": "waiting", "phase": phase, "active_tasks": active, "runtime": store.summary()}
-            if tasks and all(task["state"] == "succeeded" for task in tasks):
+            if tasks and all(task["state"] in SATISFIED_STATES for task in tasks):
                 report, path = check_phase(root, phase, update_state=True)
                 if report["status"] != PASS:
                     return {
