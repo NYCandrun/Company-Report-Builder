@@ -189,12 +189,12 @@ concrete reason.
   Other media is downloaded and transcribed with Whisper. YouTube requests are
   spaced (`RESEARCH_CONTROL_YT_SPACING`, default 20 s); Invidious instances are
   set with `RESEARCH_CONTROL_INVIDIOUS`. Whisper transcripts label speakers
-  per word by automatic diarization (`sherpa-onnx` with the pyannote
-  segmentation and NVIDIA TitaNet-Large models, fetched once into
-  `~/.cache/research_control`; threshold `RESEARCH_CONTROL_DIARIZATION_THRESHOLD`,
-  default 0.7). Labels such as `Speaker 2` mark turns and group voices; they are
-  reliable across long turns and less so in quick exchanges, and they never
-  establish who is speaking. Published captions carry no speaker labels.
+  per word by automatic diarization: NVIDIA Sortformer
+  (`nvidia/diar_streaming_sortformer_4spk-v2`, CC-BY-4.0, from Hugging Face,
+  via NeMo; up to four speakers per recording), falling back to `sherpa-onnx`
+  with pyannote segmentation and TitaNet-Large when NeMo is not installed.
+  Labels such as `Speaker 2` mark turns and group voices; they never establish
+  who is speaking. Published captions carry no speaker labels.
 
 YouTube availability from cloud networks varies by the hour. Re-queue media
 whose transcript failed with:

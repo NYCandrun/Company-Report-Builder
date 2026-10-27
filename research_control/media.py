@@ -263,7 +263,55 @@ def _diarization_models() -> tuple[Path, Path]:
     return segmentation, embedding
 
 
-def _diarize(samples: Any) -> list[tuple[float, float, int]]:
+SORTFORMER_MODEL = os.environ.get("RESEARCH_CONTROL_SORTFORMER_MODEL", "nvidia/diar_streaming_sortformer_4spk-v2")
+_sortformer_pool: list[Any] = []
+_sortformer_lock = threading.Lock()
+
+
+def _sortformer_turns(samples: Any) -> list[tuple[float, float, int]]:
+    """Diarize with NVIDIA Sortformer (end-to-end, up to four speakers).
+
+    On a test podcast it kept the guest on one label across a two-second reply
+    and a long answer, and resolved a fast host-guest exchange that clustering
+    diarizers split or merged. Models are pooled, one per concurrent job.
+    """
+    import tempfile
+
+    import soundfile
+    from nemo.collections.asr.models import SortformerEncLabelModel
+
+    with _sortformer_lock:
+        model = _sortformer_pool.pop() if _sortformer_pool else None
+    if model is None:
+        model = SortformerEncLabelModel.from_pretrained(SORTFORMER_MODEL, map_location="cpu")
+        model.eval()
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".wav") as handle:
+            soundfile.write(handle.name, samples, 16000)
+            output = model.diarize(audio=[handle.name], batch_size=1, verbose=False)
+    finally:
+        with _sortformer_lock:
+            _sortformer_pool.append(model)
+    rows = output[0] if output and isinstance(output[0], list) else output
+    turns: list[tuple[float, float, int]] = []
+    for row in rows:
+        start, end, label = str(row).split()
+        turns.append((float(start), float(end), int(label.rsplit("_", 1)[-1])))
+    return sorted(turns)
+
+
+def _diarize(samples: Any) -> tuple[list[tuple[float, float, int]], str]:
+    """Return (start, end, speaker) turns and the method used.
+
+    Sortformer when NeMo is installed; otherwise sherpa-onnx clustering.
+    """
+    try:
+        return _sortformer_turns(samples), f"NVIDIA Sortformer ({SORTFORMER_MODEL}, up to 4 speakers)"
+    except ImportError:
+        return _sherpa_turns(samples), f"sherpa-onnx pyannote segmentation + TitaNet-Large, threshold {DIARIZATION_THRESHOLD}"
+
+
+def _sherpa_turns(samples: Any) -> list[tuple[float, float, int]]:
     """Return (start, end, speaker) turns; speaker numbers group similar voices."""
     import sherpa_onnx
 
@@ -340,15 +388,15 @@ def _whisper(audio: Path) -> tuple[list[tuple[float, str]], str]:
         raw, _info = model.transcribe(samples, vad_filter=True, beam_size=5, word_timestamps=True)
         segments = [item for item in raw if item.text.strip()]
         try:
-            turns = _diarize(samples)
+            turns, diarizer = _diarize(samples)
         except Exception as error:  # speaker labels are an enhancement; the transcript stands without them
             plain = [(float(item.start), item.text.strip()) for item in segments]
             return plain, f"no speaker labels ({type(error).__name__}: {str(error)[:120]})"
     words = [(float(word.start), float(word.end), word.word) for item in segments for word in (item.words or [])]
     speakers = len({speaker for _start, _end, speaker in turns})
     note = (
-        f"speaker labels by automatic diarization per word ({speakers} voice groups, threshold "
-        f"{DIARIZATION_THRESHOLD}); labels mark turns and group similar voices, they do not identify anyone"
+        f"speaker labels per word by automatic diarization ({diarizer}; {speakers} voices); "
+        "labels mark turns and group voices, they do not identify anyone"
     )
     return _label_speakers(words, turns), note
 

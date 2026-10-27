@@ -172,9 +172,9 @@ an intermediate extract.
 
 Auto-captions and machine transcripts do not establish speaker identity.
 Whisper transcripts carry automatic diarization labels (`Speaker 1`,
-`Speaker 2`, ...). A label groups similar voices and marks turn changes; it can
-split one person or merge two, especially in quick exchanges, and it never
-names anyone. Attribute a person only when the source establishes it, such as
+`Speaker 2`, ...). A label groups voices and marks turn changes; it can still
+split one person or merge two (recordings with more than four speakers share
+labels), and it never names anyone. Attribute a person only when the source establishes it, such as
 through an introduction, direct address, or reliable labels; a diarization
 label may carry a name only where the transcript ties that label to the person
 in the same exchange, and is then marked `(probable)`. Otherwise use a source-level
