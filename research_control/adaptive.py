@@ -133,6 +133,11 @@ def _reopen_unsatisfied_phases(root: Path, store: RuntimeStore) -> None:
         pending = [task["task_id"] for task in store.tasks(phase=phase_id) if task["state"] not in SATISFIED_STATES]
         if pending:
             reopen_phase(root, phase_id, f"{len(pending)} task(s) must rerun, e.g. {pending[0]}")
+        elif phase_id == "capture":
+            # A discovery channel reopened after capture finished brings capture back.
+            reopened = [item["channel"] for item in store.discovery_channels() if item["state"] not in DISCOVERY_TERMINAL]
+            if reopened:
+                reopen_phase(root, phase_id, f"discovery channel(s) reopened: {', '.join(reopened)}")
 
 
 def complete_work(
