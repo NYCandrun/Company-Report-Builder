@@ -501,10 +501,16 @@ class RuntimeStore:
                 prior = output_owner.get(relative)
                 if prior is None or rank >= prior[1]:
                     output_owner[relative] = (task["task_id"], rank)
+        # Outputs an active task is rewriting (a revise-mode pass in progress)
+        # are mid-edit, not changed under their finished owner.
+        in_progress: set[str] = set()
+        for active in self.tasks(states=ACTIVE_STATES):
+            for pattern in active["outputs"]:
+                in_progress.update(str(path.relative_to(self.root)) for path in resolve_pattern(self.root, pattern))
         for task in successes:
             owned_outputs = {
                 relative: digest for relative, digest in task["output_hashes"].items()
-                if output_owner.get(relative, (None, ""))[0] == task["task_id"]
+                if output_owner.get(relative, (None, ""))[0] == task["task_id"] and relative not in in_progress
             }
             outputs_current = bool(task["output_hashes"]) and all(
                 hash_path(self.root / relative) == digest
@@ -558,9 +564,14 @@ class RuntimeStore:
         ).fetchone()
         if not last or last["state"] != "succeeded" or not task["output_hashes"]:
             raise ValueError(f"{task_id}: its last attempt did not succeed, so there is no completed work to restore")
+        # A path a later-finished task revised belongs to that task now.
+        revised: set[str] = set()
+        for other in self.tasks(states={"succeeded"}):
+            if other["task_id"] != task_id and str(other.get("finished_at") or "") > str(last["finished_at"] or ""):
+                revised.update(other["output_hashes"])
         changed = [
             relative for relative, digest in task["output_hashes"].items()
-            if hash_path(self.root / relative) != digest
+            if relative not in revised and hash_path(self.root / relative) != digest
         ]
         if changed:
             raise ValueError(f"{task_id}: outputs changed since it finished: {', '.join(changed[:5])}")
@@ -591,7 +602,7 @@ class RuntimeStore:
         self.refresh_ready()
         return self.task(task_id) or task
 
-    def mark_stale(self, task_id: str, reason: str) -> dict[str, Any]:
+    def mark_stale(self, task_id: str, reason: str, *, propagate: bool = True) -> dict[str, Any]:
         task = self.task(task_id)
         if not task:
             raise KeyError(f"unknown task: {task_id}")
@@ -599,7 +610,7 @@ class RuntimeStore:
             return task
         # Completed consumers of this task's outputs are stale with it.
         stale = [task_id]
-        frontier = [task_id]
+        frontier = [task_id] if propagate else []
         while frontier:
             parent = frontier.pop()
             for row in self.connection.execute(

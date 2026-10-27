@@ -108,6 +108,10 @@ class AdaptivePlanner:
 
     def _add(self, item: WorkItem, created: list[str]) -> None:
         existing = self.store.task(item.task_id)
+        if existing and existing["state"] in ACTIVE_STATES:
+            # New upstream work for a task that is running now is added once it
+            # finishes; the next reconcile then reruns it.
+            return
         if existing and existing["state"] in FINAL_STATES:
             known = {
                 row["depends_on"] for row in self.store.connection.execute(
@@ -321,7 +325,11 @@ class AdaptivePlanner:
             receipt = load_json(receipt_path) if receipt_path.is_file() else {}
             current = by_channel.get(channel, {})
             if receipt.get("status") != current.get("state") or receipt.get("evidence") != current.get("completion_evidence"):
-                self.store.mark_stale(task_id, f"discovery channel {channel} changed after the worker receipt")
+                # Only the discovery reruns: captures already made from the
+                # channel's sources stay valid, and new sources get new captures.
+                self.store.mark_stale(
+                    task_id, f"discovery channel {channel} changed after the worker receipt", propagate=False
+                )
         discovery_tasks = [self.store.task(task_id) for task_id in discovery_ids]
         discovery_done = bool(channels) and all(item["state"] in DISCOVERY_TERMINAL for item in channels)
         workers_done = all(task and task["state"] in SATISFIED_STATES for task in discovery_tasks)

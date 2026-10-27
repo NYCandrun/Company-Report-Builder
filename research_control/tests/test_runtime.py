@@ -101,6 +101,27 @@ class RuntimeTests(unittest.TestCase):
                 self.assertEqual(2, store.task("capture.a")["attempt_count"])
                 self.assertEqual("planned", store.task("capture.reduce")["state"])
 
+    def test_a_running_revision_does_not_make_the_finished_owner_stale(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with RuntimeStore(root) as store:
+                store.initialize(run_id="run-4", company_url="https://example.com")
+                store.add_task(item("synthesis.write", "shared/report.md", phase="initial_synthesis", task_type="synthesis"))
+                store.add_task(item(
+                    "synthesis.supplement", "shared/report.md", phase="initial_synthesis",
+                    task_type="synthesis", output_mode="revise",
+                ))
+                (root / "shared").mkdir(parents=True)
+                store.claim("writer", task_id="synthesis.write")
+                store.start("synthesis.write", "writer")
+                (root / "shared/report.md").write_text("first\n", encoding="utf-8")
+                store.complete("synthesis.write", "writer")
+                store.claim("reviser", task_id="synthesis.supplement")
+                store.start("synthesis.supplement", "reviser")
+                (root / "shared/report.md").write_text("first, revised\n", encoding="utf-8")
+                self.assertEqual([], store.invalidate_stale())
+                self.assertEqual("succeeded", store.task("synthesis.write")["state"])
+
     def test_declared_revision_owns_current_shared_output(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
