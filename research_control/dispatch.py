@@ -147,15 +147,19 @@ RUN_NOTES = re.compile(r"^## Notes for downstream phases\s*\n(.*?)(?=^## |\Z)", 
 # What a worker reads is put in its brief, so it reads once instead of opening file
 # after file. Stores (captures, the fact store, the final report) stay out: the
 # instructions say which rows or passages to open.
-MATERIAL_LIMIT = 1_000_000
-MATERIAL_FILE_LIMIT = 400_000
+MATERIAL_LIMIT = 800_000
+MATERIAL_FILE_LIMIT = 600_000
+# A pattern is put in whole only when everything it matches is small (the synthesis
+# files, say); a large set (every cited fact's packet) is listed for the worker
+# to open what it needs.
+PATTERN_LIMIT = 500_000
 NOT_INLINED = ("01-sources/", "02-facts/", "04-competitors/", "07-final-report/", "tools/outputs/git-cache/")
 TEXT_SUFFIXES = {".md", ".txt", ".json", ".jsonl", ".csv", ".tsv", ".yaml", ".yml"}
 
 
 def task_material(root: Path, task: dict[str, Any]) -> tuple[str, list[str]]:
     """The text of the files a task reads, each under a header, and the paths left out
-    (stores, files the task edits, files over the size limits)."""
+    (stores, files the task edits, large sets, files over the size limits)."""
     from research_control.io import resolve_pattern
 
     outputs = {str(path.relative_to(root)) for pattern in task["outputs"] for path in resolve_pattern(root, pattern)}
@@ -170,11 +174,16 @@ def task_material(root: Path, task: dict[str, Any]) -> tuple[str, list[str]]:
         if pattern.startswith(NOT_INLINED):
             left.append(pattern)
             continue
-        paths = sorted(resolve_pattern(root, pattern)) if any(mark in pattern for mark in "*{?") else [root / pattern]
-        for path in paths:
+        is_pattern = any(mark in pattern for mark in "*{?")
+        paths = sorted(resolve_pattern(root, pattern)) if is_pattern else [root / pattern]
+        readable = [path for path in paths if path.is_file() and str(path.relative_to(root)) not in outputs
+                    and path.suffix.casefold() in TEXT_SUFFIXES]
+        size = sum(path.stat().st_size for path in readable)
+        if is_pattern and size > PATTERN_LIMIT:
+            left.append(pattern)
+            continue
+        for path in readable:
             relative = str(path.relative_to(root))
-            if not path.is_file() or relative in outputs or path.suffix.casefold() not in TEXT_SUFFIXES:
-                continue
             text = path.read_text(encoding="utf-8", errors="replace").rstrip()
             if len(text) > MATERIAL_FILE_LIMIT or total + len(text) > MATERIAL_LIMIT:
                 left.append(relative)
