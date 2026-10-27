@@ -35,7 +35,9 @@ FACT_LINKS = "tools/outputs/fact-links.jsonl"
 LINKS_REPORT = "06-checks/fact-links.md"
 ELLIPSIS = re.compile(r"\s*(?:\.\.\.|…|\[\.\.\.\]|\[…\])\s*")
 TIMESTAMP = re.compile(r"^\[(\d{1,2}):(\d{2}):(\d{2})\]\s*")
-FILE_HEADER = re.compile(r"^--- FILE: (.+?)(?: \(PDF, (\d+) pages, as text\))?(?: \(\d+ lines\))? ---$")
+FILE_HEADER = re.compile(
+    r"^--- FILE: (.+?)(?: \(PDF, (\d+) pages, as text\))?(?: \((HTML, as text|data sample[^)]*)\))?(?: \(\d+ lines\))? ---$"
+)
 PDF_PAGE = re.compile(r"^--- page (\d+) ---$")
 COMMIT_HEADER = re.compile(r"^=== COMMIT ([0-9a-f]{7,40}) ")
 UNMERGED_HEADER = re.compile(r"^=== UNMERGED: (.+?) \(\d+ commits")
@@ -154,6 +156,10 @@ def _repository_link(lines: list[str], index: int, quote_text: str) -> tuple[str
             page = next((PDF_PAGE.match(lines[position]).group(1) for position in range(index, back, -1)
                          if PDF_PAGE.match(lines[position])), "1")
             return f"{base}/blob/{commit}/{quote(path)}", f"{path} page {page} at {commit[:7]}"
+        if match and match.group(3):
+            # Read as text or sampled: its lines are not the file's lines, so the link is to the file.
+            path = match.group(1)
+            return f"{base}/blob/{commit}/{quote(path)}", f"{path} ({match.group(3).split(':')[0]}) at {commit[:7]}"
         if match:
             path = match.group(1)
             number = index - back

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import os
 import subprocess
+import json
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from research_control.capture import (
@@ -109,9 +111,28 @@ class RepositoryCaptureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             checkout = Path(directory)
             (checkout / "README.md").write_text("# Tool\n", encoding="utf-8")
-            (checkout / "data.json").write_text("x" * (REPOSITORY_FILE_LIMIT + 10), encoding="utf-8")
-            text = "\n".join(_repository_text(checkout, ["README.md", "data.json"]))
-            self.assertIn("--- FILE: data.json", text)
+            (checkout / "notes.txt").write_text("x" * (REPOSITORY_FILE_LIMIT + 10), encoding="utf-8")
+            text = "\n".join(_repository_text(checkout, ["README.md", "notes.txt"]))
+            self.assertIn("--- FILE: notes.txt", text)
+            self.assertNotIn("FILES NOT INCLUDED", text)
+
+    def test_large_data_files_are_sampled_and_html_is_read_as_text(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            checkout = Path(directory)
+            records = [{"id": number, "title": f"Document {number}", "body": "y" * 400} for number in range(3000)]
+            (checkout / "documents.json").write_text(json.dumps(records), encoding="utf-8")
+            (checkout / "report.html").write_text(
+                "<html><style>p{}</style><body><h1>Claim quality</h1><p>42 videos scored</p>"
+                "<script>var data = 1;</script></body></html>", encoding="utf-8")
+            lines = _repository_text(checkout, ["documents.json", "report.html"])
+            text = "\n".join(lines)
+            header = next(line for line in lines if line.startswith("--- FILE: documents.json"))
+            self.assertIn("data sample: 3000 records", header)
+            self.assertIn('"title": "Document 0"', text)
+            self.assertLess(len(text), 30_000)
+            self.assertIn("--- FILE: report.html (HTML, as text)", text)
+            self.assertIn("42 videos scored", text)
+            self.assertNotIn("var data", text)
             self.assertNotIn("FILES NOT INCLUDED", text)
 
     def test_unmerged_branches_and_pull_requests_are_captured_once_without_bot_work(self) -> None:
@@ -145,6 +166,15 @@ class RepositoryCaptureTests(unittest.TestCase):
             merged_text = "\n".join(_unmerged_work(repo, merged=frozenset({4}))[0])
             self.assertIn("=== MERGED BY SQUASH OR REBASE: feature, pull request #4", merged_text)
             self.assertNotIn("=== UNMERGED", merged_text)
+            # A diff over the per-ref limit is included file by file, naming what did not fit.
+            with mock.patch("research_control.capture.UNMERGED_REF_LIMIT", 10):
+                by_file = "\n".join(_unmerged_work(repo)[0])
+            self.assertIn("included file by file", by_file)
+            self.assertIn("claim quality", by_file)
+            with mock.patch("research_control.capture.UNMERGED_REF_LIMIT", 10), mock.patch("research_control.capture.PATCH_FILE_LIMIT", 10):
+                by_file = "\n".join(_unmerged_work(repo)[0])
+            self.assertIn("file diffs not included: explorer.py", by_file)
+            self.assertNotIn("claim quality", by_file)
             # Pull requests worth reading: human ones, and for a path, those that changed it.
             _git(repo, "update-ref", "refs/remotes/pull/9", "bump")
             self.assertEqual([4], _conversation_numbers(repo))

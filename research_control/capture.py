@@ -862,8 +862,13 @@ def _github_checkout(root: Path, owner: str, repo: str) -> Path:
 # Repository text included in a capture, so extraction can read what the code
 # does rather than only what its README says. Docs and manifests come first,
 # then source code, then other text such as datasets, until the budget is used.
-REPOSITORY_TEXT_BUDGET = 1_000_000
-REPOSITORY_FILE_LIMIT = 250_000
+REPOSITORY_TEXT_BUDGET = 3_000_000
+REPOSITORY_FILE_LIMIT = 500_000
+# A data file over the per-file limit is described and sampled, not dropped: its
+# size, record count, structure, and first records.
+DATA_SUFFIXES = {".json", ".jsonl", ".ndjson", ".csv", ".tsv"}
+DATA_SAMPLE_CHARS = 20_000
+HTML_SUFFIXES = {".html", ".htm"}
 SKIPPED_FILES = {"package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "uv.lock", "Cargo.lock", "go.sum"}
 MANIFEST_NAMES = {
     "pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "package.json", "Dockerfile",
@@ -884,6 +889,43 @@ def _repository_rank(path: str) -> tuple[int, str]:
     if Path(path).suffix in CODE_SUFFIXES or path.endswith(".md"):
         return (2, path)
     return (3, path)
+
+
+def _data_sample(path: str, text: str) -> tuple[str, str]:
+    """A large data file's shape and first records, with its full size stated."""
+    suffix = Path(path).suffix.casefold()
+    described = ""
+    if suffix == ".json":
+        try:
+            value = json.loads(text)
+        except ValueError:
+            value = None
+        if isinstance(value, list):
+            described = f"{len(value)} records"
+            sample = json.dumps(value[:50], indent=1, ensure_ascii=False)
+        elif isinstance(value, dict):
+            sizes = ", ".join(
+                f"{key}: {len(item)} items" if isinstance(item, (list, dict)) else f"{key}: value"
+                for key, item in list(value.items())[:40]
+            )
+            described = f"object with {len(value)} keys: {sizes}"
+            sample = json.dumps(
+                {key: (item[:20] if isinstance(item, list) else dict(list(item.items())[:20]) if isinstance(item, dict) else item)
+                 for key, item in list(value.items())[:40]},
+                indent=1, ensure_ascii=False,
+            )
+        else:
+            sample = text
+    else:
+        rows = text.count("\n")
+        described = f"{rows} lines" + (", first line is the header" if suffix in {".csv", ".tsv"} else "")
+        sample = text
+    sample = sample[:DATA_SAMPLE_CHARS]
+    if "\n" in sample:
+        sample = sample[: sample.rfind("\n")]
+    described = described.replace("(", "[").replace(")", "]")
+    label = f"data sample: {described + ', ' if described else ''}{len(text)} characters in all, first {len(sample)} shown"
+    return sample + "\n", label
 
 
 def _repository_text(checkout: Path, listed: list[str]) -> list[str]:
@@ -916,8 +958,17 @@ def _repository_text(checkout: Path, listed: list[str]) -> list[str]:
         elif b"\0" in data[:8192]:
             omitted.append(f"{path} (binary)")
             continue
+        elif Path(path).suffix.casefold() in HTML_SUFFIXES:
+            # A rendered report kept in a repository is read as its text, not its markup.
+            extractor = TextExtractor()
+            extractor.feed(data.decode("utf-8", errors="replace"))
+            text = extractor.text()
+            path = f"{path} (HTML, as text)"
         else:
             text = data.decode("utf-8", errors="replace")
+        if len(text) > REPOSITORY_FILE_LIMIT and Path(path).suffix.casefold() in DATA_SUFFIXES:
+            text, label = _data_sample(path, text)
+            path = f"{path} ({label})"
         if len(text) > REPOSITORY_FILE_LIMIT:
             deferred.append((path, text))
             continue
@@ -941,10 +992,13 @@ def _repository_text(checkout: Path, listed: list[str]) -> list[str]:
 # commit's changes (earlier versions of files show how deals, projects, and the
 # company moved), then each branch or pull request the default branch lacks.
 HISTORY_LIMIT = 2_000
-CHANGE_HISTORY_BUDGET = 1_500_000
-CHANGE_COMMIT_LIMIT = 200_000
-UNMERGED_TEXT_BUDGET = 600_000
-UNMERGED_REF_LIMIT = 300_000
+CHANGE_HISTORY_BUDGET = 3_000_000
+CHANGE_COMMIT_LIMIT = 400_000
+UNMERGED_TEXT_BUDGET = 2_000_000
+UNMERGED_REF_LIMIT = 1_000_000
+# A change too large to include whole is included file by file: each file's diff
+# under this limit, with the rest listed.
+PATCH_FILE_LIMIT = 200_000
 BOT_MARKERS = ("[bot]", "dependabot", "renovate")
 
 
@@ -958,6 +1012,23 @@ def _commit_history(checkout: Path, scope: str = "") -> list[str]:
     if len(log) > HISTORY_LIMIT:
         lines.append(f"... {len(log) - HISTORY_LIMIT} earlier commits")
     return lines
+
+
+def _patch_by_file(checkout: Path, command: list[str], paths: list[str], room: int) -> tuple[str, list[str]]:
+    """A large change's diff one file at a time within the room left; the rest named."""
+    parts: list[str] = []
+    left_out: list[str] = []
+    for path in paths:
+        if not path or Path(path).name in SKIPPED_FILES:
+            continue
+        patch = _git([*command, "--", path], cwd=checkout, timeout=120).replace("\0", "").rstrip("\n")
+        if len(patch) > PATCH_FILE_LIMIT or len(patch) > room:
+            left_out.append(f"{path} ({len(patch)} characters)")
+            continue
+        if patch:
+            parts.append(patch)
+            room -= len(patch)
+    return "\n".join(parts), left_out
 
 
 def _change_history(checkout: Path, scope: str = "") -> list[str]:
@@ -983,8 +1054,15 @@ def _change_history(checkout: Path, scope: str = "") -> list[str]:
         patch = _git(["show", "--no-color", "--format=", sha, "--", scope or ".", *excludes], cwd=checkout, timeout=300)
         if len(patch) > CHANGE_COMMIT_LIMIT or used + len(patch) > CHANGE_HISTORY_BUDGET:
             stat = _git(["show", "--format=", "--stat=200", sha, "--", scope or ".", *excludes], cwd=checkout).rstrip()
-            kept.append([f"=== COMMIT {sha[:7]} {day} {subject} (diff of {len(patch)} characters not included; files changed below) ===", stat])
-            used += len(stat)
+            paths = _git(["show", "--format=", "--name-only", sha, "--", scope or ".", *excludes], cwd=checkout).splitlines()
+            parts, left_out = _patch_by_file(checkout, ["show", "--no-color", "--format=", sha], paths, CHANGE_HISTORY_BUDGET - used - len(stat))
+            block = [f"=== COMMIT {sha[:7]} {day} {subject} (diff of {len(patch)} characters, included file by file) ===", stat]
+            if parts:
+                block += ["", parts]
+            if left_out:
+                block += ["", f"(file diffs not included: {'; '.join(left_out)})"]
+            kept.append(block)
+            used += len(stat) + len(parts)
             continue
         used += len(patch)
         kept.append([f"=== COMMIT {sha[:7]} {day} {subject} ===", patch.replace("\0", "").rstrip("\n")])
@@ -1054,7 +1132,13 @@ def _unmerged_work(checkout: Path, scope: str = "", merged: frozenset[int] = fro
         if "\0" in patch:
             patch = patch.replace("\0", "")
         if len(patch) > UNMERGED_REF_LIMIT or used + len(patch) > UNMERGED_TEXT_BUDGET:
-            lines.append(f"(diff of {len(patch)} characters not included: over the unmerged-work budget)")
+            parts, left_out = _patch_by_file(checkout, ["diff", "--no-color", "HEAD..." + ref], patch_paths, UNMERGED_TEXT_BUDGET - used)
+            lines.append(f"(diff of {len(patch)} characters, included file by file)")
+            if parts:
+                used += len(parts)
+                lines += ["", parts]
+            if left_out:
+                lines.append(f"(file diffs not included: {'; '.join(left_out)})")
             continue
         used += len(patch)
         lines += ["", patch.rstrip("\n")]

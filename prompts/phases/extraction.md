@@ -51,6 +51,10 @@ each repository cover, with one fact per distinct claim:
   for one deal or project make a timeline: record each step, and record the
   sales cycle, expansion, or apparent churn they suggest as inference with its
   steps' fact IDs.
+- Large files: a file headed `(data sample: …)` is a dataset too large to
+  include; its header gives its size, record count, and shape, and the sample
+  its first records. State totals from the header, never by counting the
+  sample. A file headed `(HTML, as text)` is a page's text, not its markup.
 
 Mark each fact's delivery status in notes:
 - `Shipped`: on the default branch and implemented in its code.

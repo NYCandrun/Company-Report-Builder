@@ -30,6 +30,10 @@ REPO = "\n".join([
     "-THRESHOLD = 0.5",
     "+THRESHOLD = 0.7",
     "+REVIEWERS = 3",
+    "",
+    "--- FILE: public/report/index.html (HTML, as text) (2 lines) ---",
+    "Claim quality",
+    "42 videos scored",
 ])
 
 
@@ -44,6 +48,9 @@ class DeepLinkTests(unittest.TestCase):
             link = deep_link(root, source, "REVIEWERS = 3")
             anchor = sha256(b"app/score.py").hexdigest()
             self.assertEqual(f"https://github.com/TribeAI/tool/commit/1234567#diff-{anchor}R3", link["deep_link"])
+            # A page read as text has no matching source line, so the link is to the file.
+            link = deep_link(root, source, "42 videos scored")
+            self.assertEqual("https://github.com/TribeAI/tool/blob/abcdef1234567890/public/report/index.html", link["deep_link"])
 
     def test_recordings_link_to_the_timestamp(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
