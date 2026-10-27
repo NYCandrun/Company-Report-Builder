@@ -632,8 +632,9 @@ def auto_capture_source(
     """Capture a public page, PDF, or media source end to end without an agent.
 
     With ``shallow_repositories`` (sources about other firms, such as competitors), a
-    GitHub repository is read at its latest commit only: its file list and README, or
-    the one file a URL names, with no history, branches, pull requests, or authorship.
+    GitHub repository is read at its latest commit only: its file list and Markdown
+    files, or the one file a URL names, with no history, branches, pull requests, or
+    authorship.
 
     Produces a terminal receipt: ``captured`` with a canonical text derivative,
     or ``blocked`` with the concrete reason. Media sources also get a
@@ -1528,9 +1529,18 @@ def _github_conversation_capture(root: Path, *, url: str, source_id: str, grade:
     return {**receipt, "receipt": str(receipt_path.relative_to(root))}
 
 
+# A shallow look reads a repository's Markdown (cheap, and where firms write down clients,
+# teams, and plans), README first and shallower paths before deeper ones, up to this much.
+SHALLOW_MARKDOWN_CHARACTERS = 300_000
+SHALLOW_FILE_CHARACTERS = 60_000
+MARKDOWN_SUFFIXES = (".md", ".mdx", ".markdown")
+SKIPPED_DIRECTORIES = {"node_modules", "vendor", "third_party", ".venv", "dist", "build"}
+
+
 def _github_shallow_capture(root: Path, *, url: str, source_id: str, grade: str) -> dict[str, Any]:
     """A shallow look at another firm's public repository: the latest commit's file list and
-    README (or the one file the URL names), nothing from its history or its people."""
+    Markdown files, README first (or the one file the URL names), nothing from its history or
+    its people."""
     parts = [part for part in urlparse(url).path.split("/") if part]
     if len(parts) < 2 or (len(parts) > 2 and parts[2] not in {"tree", "blob"}):
         raise RuntimeError("a shallow look takes a repository, directory, or file URL on github.com")
@@ -1554,17 +1564,34 @@ def _github_shallow_capture(root: Path, *, url: str, source_id: str, grade: str)
     lines = [
         f"Repository: {owner}/{repo}", f"Source URL: {url}", f"Captured commit: {commit} (committed {committed})",
         "Method: shallow look at the latest commit ("
-        + ("the one file named" if relative and (target / relative).is_file() else "file list and README only")
+        + ("the one file named" if relative and (target / relative).is_file() else "file list and Markdown files")
         + "; no history, branches, or authors)", "",
         f"--- FILE TREE ({len(listed)} files{', under ' + relative if relative else ''}) ---", *listed[:300],
         *([f"... {len(listed) - 300} more files"] if len(listed) > 300 else []),
     ]
     named = target / relative if relative else None
-    readmes = [named] if named and named.is_file() else sorted(
-        path for path in (named or target).glob("*") if path.is_file() and path.name.casefold().startswith("readme"))
-    for path in readmes[:2]:
-        text = path.read_text(encoding="utf-8", errors="replace")[:60_000]
-        lines += ["", f"--- FILE: {path.relative_to(target)} ---", _drop_blobs(text)]
+    if named and named.is_file():
+        chosen = [relative]
+    else:
+        markdown = [item for item in listed if item.casefold().endswith(MARKDOWN_SUFFIXES)
+                    and not SKIPPED_DIRECTORIES & set(item.split("/")[:-1])]
+        # README first, then shallower paths before deeper ones.
+        chosen = sorted(markdown, key=lambda item: (not Path(item).name.casefold().startswith("readme"),
+                                                    item.count("/"), item.casefold()))
+    room = SHALLOW_MARKDOWN_CHARACTERS
+    left_out: list[str] = []
+    for item in chosen:
+        path = target / item
+        if not path.is_file():
+            continue
+        text = _drop_blobs(path.read_text(encoding="utf-8", errors="replace")[:SHALLOW_FILE_CHARACTERS])
+        if len(text) > room:
+            left_out.append(item)
+            continue
+        room -= len(text)
+        lines += ["", f"--- FILE: {item} ---", text]
+    if left_out:
+        lines += ["", f"--- MARKDOWN NOT READ ({len(left_out)} files over the shallow look's limit) ---", *left_out[:100]]
     directory = root / "01-sources/captures" / source_id
     directory.mkdir(parents=True, exist_ok=True)
     text_path = directory / "content.txt"

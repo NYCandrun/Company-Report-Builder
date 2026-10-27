@@ -66,12 +66,14 @@ Admit what answers a question, not everything that exists:
   browser (`https://github.com/orgs/ORG/repositories`) and admit only the
   repositories that show its offering (a product, a public tool, an
   accelerator), by repository URL. The runtime reads each one at its latest
-  commit: the file list and README. When the file list shows something worth
-  reading on the main branch (a product's own documentation, an architecture
-  note, a package description that names what it is built on), admit that
-  file by its URL (`https://github.com/ORG/REPO/blob/main/PATH`); the runtime
-  reads that one file at the latest commit. Keep it bounded: only files that
-  show what the competitor sells, how it is built, or what it depends on,
+  commit: the file list and every Markdown file (README first, within a size
+  limit), since firms often write down clients, teams, and plans in Markdown.
+  When the file list shows another file worth reading on the main branch (a
+  package description that names what it is built on, a configuration that
+  names a platform), admit that file by its URL
+  (`https://github.com/ORG/REPO/blob/main/PATH`); the runtime reads that one
+  file at the latest commit. Keep it bounded: only files that show what the
+  competitor sells, how it is built, whom it works for, or what it depends on,
   never whole directories of code. Do not clone, read history or other
   branches, look up its people or their handles, query GH Archive, or admit
   adjacent firms' code; that depth is for the company itself
