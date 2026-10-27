@@ -410,8 +410,12 @@ vendors, AI labs moving into services).
 For direct competitors the worker also investigates public GitHub, as cheaply
 as possible, treating public sources as intentionally public:
 
-1. Find the firm's presence: an organization, its people's public accounts,
-   or both.
+1. Find the firm's presence by searching, never by guessing one exact name:
+   name variants in one GH Archive query, web search and GitHub's own search,
+   links on the firm's site and package registries, and its people's
+   profiles. Firms often have several organizations as well as employees'
+   accounts; collect them all and confirm each from its profile or
+   repositories.
 2. Find who is affiliated: one GH Archive query lists everyone who committed
    to or starred the firm's repositories; a profile naming the firm,
    organization membership, or repeated commits confirm a handle (a star or

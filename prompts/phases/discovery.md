@@ -40,6 +40,29 @@ company and for direct competitors alike:
   last archived commit, within the archive's request limit.
 - The Wayback Machine, for pages, when the network allows it.
 
+Finding GitHub organizations, for the company and for competitors: never
+guess one exact name. A firm's organization is often named differently from
+its brand (`distyl-ai`, `DistylAI`, `getdistyl`, an abbreviation, a product
+name, an acquired company's name), and many firms have several (product,
+open source, client work, workshops, an acquired company). Search, cheapest
+first, and collect every one:
+
+- one GH Archive query for name variants in organization and account names:
+  `SELECT splitByChar('/', repo_name)[1] AS org, count(), max(created_at) FROM
+  github_events WHERE repo_name ILIKE '%VARIANT%' GROUP BY org ORDER BY count()
+  DESC LIMIT 50` (with each variant: with and without "ai", hyphens, spaces,
+  abbreviations, product names);
+- web search (`FIRM github`, `site:github.com FIRM`) and GitHub's own search
+  in the headless browser (`https://github.com/search?q=FIRM&type=users`,
+  which lists organizations);
+- links on the firm's site, documentation, careers pages, and engineering
+  blog, and package registries (npm, PyPI, Docker Hub) that name the
+  publisher;
+- the organization listed on its people's GitHub profiles.
+
+Confirm an organization belongs to the firm from its profile (name, website,
+email domain) or its repositories, not from the name alone.
+
 Search for what that crawl cannot reach: other first-party hosts and
 subdomains, applicant tracking systems, documentation portals, public code,
 recorded talks and podcasts, customer and partner announcements, independent
@@ -93,10 +116,10 @@ Admit what answers a question, not everything that exists:
   plans); other code is not read. Run GH Archive queries on the ClickHouse
   playground (see public archives above) with `curl`; each is one cheap
   request.
-  1. Find the firm's GitHub presence: a link on its site, a search for its
-     name, or its people's profiles (from its team, about, and blog author
-     pages). Some firms have an organization, some work only from employees'
-     public accounts, and many have both.
+  1. Find the firm's GitHub presence by searching, never by guessing one exact
+     name (see finding GitHub organizations below). Some firms have an
+     organization, some work only from employees' public accounts, and many
+     have several organizations as well as employees' accounts.
   2. Find who is affiliated, cheapest first. One archive query lists everyone
      who acted on the firm's repositories and how: `SELECT actor_login,
      groupUniqArray(event_type), count() FROM github_events WHERE repo_name
