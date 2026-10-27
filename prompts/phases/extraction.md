@@ -19,3 +19,11 @@ disposition so the reducer can produce exactly one final disposition per
 canonical source.
 Report assigned sources, sources read, candidate count, zero-fact count,
 exceptions, output path, and validator result.
+
+For a repository, its README and other docs are evidence of one of two scopes:
+what the company offers in general (generic, reusable, described for any
+buyer) or the scope of one engagement (shaped to a named client's data,
+brand, systems, or deliverables). Say which in the fact's notes
+(`Scope: offering` or `Scope: engagement, <client>`), and record a client
+named only by a repository's or file's subject as a relationship with its
+mark.

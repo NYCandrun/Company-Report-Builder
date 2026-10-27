@@ -12,7 +12,14 @@ three parts that lays out the evidence so a reader can judge each entry.
    thin (a single mention, a name in one file). For each offering give what
    the buyer gets, packaging and pricing evidence, who has bought it (with
    relationship marks), and its fact IDs. Stated offerings come first, then
-   inferred, then leads below a dividing rule.
+   inferred, then leads below a dividing rule. Use repository and document
+   evidence by its scope: offering-level material (generic, reusable,
+   presented for any buyer) supports an offering; engagement-scoped material
+   (shaped to one client) supports what that engagement covered and, with
+   other engagements, a pattern of what is sold. Internal tools that look
+   like products (a factory, a marketplace) are offerings only when a source
+   offers them or names them as products; otherwise they are internal
+   practice, and a name match to a product is a thin inference.
 2. How the company works: operating model, staffing and delivery, sales
    motion, internal tools and practices, partners, and how work is packaged
    and reused.
