@@ -8,10 +8,11 @@ run rebuilding everything downstream.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
-from research_control.io import atomic_write_json, load_json, utc_now
+from research_control.io import atomic_write_json, atomic_write_text, load_json, utc_now
 
 SUPPLEMENT_LIST = "tools/lists/supplement-sources.json"
 SUPPLEMENT_FACTS = "tools/lists/supplement-facts.txt"
@@ -77,3 +78,103 @@ def defer_slices(root: Path, slice_ids: list[str], reason: str) -> dict[str, Any
         slices[slice_id] = {"sha256": digest, "reason": reason.strip(), "at": utc_now()}
     atomic_write_json(root / DEFERRED_SLICES, {"slices": dict(sorted(slices.items()))})
     return {"deferred": sorted(slices)}
+
+
+# A supplement is reconciled from a digest, not the fact store: one line per new
+# fact (ID, date, grade, source, claim, delivery status, relationship basis),
+# split by the synthesis file its question feeds, so each file's reconcile reads
+# only its share and opens full rows only for the facts it cites.
+SUPPLEMENT_DIGESTS = "tools/digests/supplement"
+SUPPLEMENT_PARTS = "tools/outputs/worker-parts/supplement"
+SYNTHESIS_TARGETS = (
+    (("competitor",), "competitors"),
+    (("product", "architecture", "dependenc", "technolog", "stack"), "product-map"),
+    (("buyer", "offer", "pricing", "service", "sales"), "offering"),
+    (("customer", "proof", "partner", "account", "engagement", "client"), "customers-proof"),
+    (("position", "messag", "brand"), "messaging-timeline"),
+    (("people", "org", "talent", "team", "scale", "financ", "hiring"), "organization"),
+    (("direction", "launch", "acquisition", "roadmap", "context"), "direction"),
+)
+DELIVERY_STATUS = re.compile(r"\b(Shipped|Built, unmerged|Promised)\b")
+RELATIONSHIP_BASIS = re.compile(r"Relationship basis:\s*(Stated|Inferred|Lead[^.;|]*)")
+
+
+def synthesis_target(fact_file: str) -> str:
+    """The synthesis file a fact table's question feeds."""
+    name = Path(fact_file).stem.casefold()
+    return next((target for words, target in SYNTHESIS_TARGETS if any(word in name for word in words)), "open-questions")
+
+
+def write_supplement_digests(root: Path, fact_ids: list[str]) -> dict[str, int]:
+    from research_control.validators.facts import load_fact_tables
+
+    wanted = set(fact_ids)
+    lines: dict[str, list[str]] = {}
+    for path in sorted((root / "02-facts").glob("*.md")):
+        for row in load_fact_tables([path]):
+            if row.get("fact_id") not in wanted:
+                continue
+            # Notes are not a named column of the fact table; marks are read from the whole row.
+            notes = " ".join(value for key, value in row.items() if not key.startswith("_") and key != "claim")
+            marks = [match.group(1) for match in (DELIVERY_STATUS.search(notes),) if match]
+            marks += [f"relationship {match.group(1).strip()}" for match in (RELATIONSHIP_BASIS.search(notes),) if match]
+            if "My inference" in row.get("claim", ""):
+                marks.append("inference")
+            line = (f"- {row['fact_id']} · {row.get('source_date', '')[:10]} · {row.get('grade', '')} · "
+                    f"{row.get('source_id', '')} · {row.get('claim', '').strip()}")
+            lines.setdefault(synthesis_target(path.name), []).append(line + (f" [{'; '.join(marks)}]" if marks else ""))
+    directory = root / SUPPLEMENT_DIGESTS
+    if directory.is_dir():
+        for stale in directory.glob("*.md"):
+            stale.unlink()
+    for target, rows in lines.items():
+        atomic_write_text(directory / f"{target}.md", (
+            f"# New facts for 05-synthesis/{target}.md ({len(rows)})\n\n"
+            "One line per fact: ID · source date · grade · source ID · claim [delivery status; relationship basis].\n"
+            "Open a fact's full row (quote, location, notes) by searching 02-facts/ for its ID.\n\n"
+            + "\n".join(rows) + "\n"
+        ))
+    return {target: len(rows) for target, rows in lines.items()}
+
+
+def reduce_supplement(root: Path, identifier: str) -> dict[str, Any]:
+    """Write this pass's section of the reconciliation report: each listed fact's
+    decision from the reconcile parts, or where it is cited, or left uncited."""
+    import json
+
+    listed = [line.strip() for line in (root / SUPPLEMENT_FACTS).read_text(encoding="utf-8").splitlines() if line.strip()]
+    decisions: dict[str, dict[str, Any]] = {}
+    for path in sorted((root / SUPPLEMENT_PARTS).glob(f"{identifier}.*.jsonl")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                row = json.loads(line)
+                decisions.setdefault(str(row.get("fact_id", "")), row)
+    cited: dict[str, list[str]] = {}
+    for path in sorted((root / "05-synthesis").glob("*.md")):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for fact_id in listed:
+            if re.search(rf"\b{re.escape(fact_id)}\b", text):
+                cited.setdefault(fact_id, []).append(path.name)
+    rows: list[str] = []
+    counts = {"cited": 0, "left uncited": 0}
+    for fact_id in listed:
+        decision = decisions.get(fact_id)
+        where = ", ".join(cited.get(fact_id, []))
+        if decision or where:
+            counts["cited"] += 1
+            kind = str((decision or {}).get("decision", "cited"))
+            why = str((decision or {}).get("why", "")).replace("|", "/")
+            rows.append(f"| {fact_id} | {kind} | {where or (decision or {}).get('file', '')} | {why} |")
+        else:
+            counts["left uncited"] += 1
+            rows.append(f"| {fact_id} | left uncited | | adds nothing a reader of its synthesis file needs (digest reviewed) |")
+    report = root / SUPPLEMENT_REPORT
+    existing = report.read_text(encoding="utf-8") if report.is_file() else "# Supplement reconciliation\n"
+    marker = f"## Pass {identifier}"
+    existing = re.split(rf"\n{re.escape(marker)}\b", existing, maxsplit=1)[0].rstrip("\n")
+    section = [
+        "", f"{marker} ({utc_now()[:10]}: {len(listed)} facts; {counts['cited']} cited, {counts['left uncited']} left uncited)", "",
+        "| Fact ID | Decision | File | Why |", "|---|---|---|---|", *rows,
+    ]
+    atomic_write_text(report, existing + "\n" + "\n".join(section) + "\n")
+    return {"listed": len(listed), **counts}

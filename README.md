@@ -114,6 +114,13 @@ example a repository's branches and pull requests), list it with
 its capture alone with `work rerun capture.source.src-… --only --reason WHY`,
 then rerun `capture.reduce-captures` the same way. Facts already filed stand;
 the new text is extracted, appended at filing, and reconciled into synthesis.
+Reconciliation reads a digest, not the fact store: the runtime writes one line
+per new fact (ID, date, grade, source, claim, delivery status, relationship
+basis) under `tools/digests/supplement/`, split by the synthesis file its
+question feeds. One reconcile per synthesis file reads its share and opens full
+rows only for facts it cites; the catalogue is then revised from the synthesis
+files, and the runtime writes the reconciliation report, recording every fact
+no reconcile cited as left uncited.
 When a token budget will not cover every new slice, choose the slices worth
 reading and leave the rest out with
 `work defer-slices SRC-…:part-NNNN … --reason WHY`; the next `run` retires their

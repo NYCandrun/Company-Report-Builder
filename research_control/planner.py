@@ -10,7 +10,10 @@ from typing import Any
 
 from research_control.discovery import ALTERNATES_PART, BLOCKED_SOURCES_LIST, DISCOVERY_CHANNELS, MEDIA_CHANNELS, DiscoveryEngine
 from research_control import verification
-from research_control.supplement import add_supplement, deferred_slices, supplement_added_at, SUPPLEMENT_FACTS, SUPPLEMENT_REPORT, base_source, supplement_sources
+from research_control.supplement import (
+    SUPPLEMENT_DIGESTS, SUPPLEMENT_FACTS, SUPPLEMENT_PARTS, SUPPLEMENT_REPORT, add_supplement, base_source, deferred_slices,
+    supplement_added_at, supplement_sources, write_supplement_digests,
+)
 from research_control.media import is_media_url
 from research_control.io import atomic_write_jsonl, atomic_write_text, load_json, load_jsonl, workflow
 from research_control.validators.facts import load_fact_tables
@@ -177,8 +180,12 @@ class AdaptivePlanner:
         if not sources or not synthesis or not all(task["state"] in SATISFIED_STATES for task in synthesis):
             return created
         identifier = sha256("\n".join(sorted(sources)).encode("utf-8")).hexdigest()[:12]
-        task_id = f"initial_synthesis.supplement-{identifier}"
-        if not self.store.task(task_id):
+        base = f"initial_synthesis.supplement-{identifier}"
+        reducer_id = f"{base}.reduce"
+        if self.store.task(f"{base}") and not self.store.task(reducer_id):
+            # Planned before reconciles were split by synthesis file: that task stands.
+            return created
+        if not self.store.task(reducer_id):
             # Facts from supplemented sources that the synthesis does not cite yet.
             cited: set[str] = set()
             for path in sorted((self.root / "05-synthesis").glob("*.md")):
@@ -193,28 +200,70 @@ class AdaptivePlanner:
                 and row["fact_id"] not in cited and row["fact_id"] not in decided
             ]
             atomic_write_text(self.root / SUPPLEMENT_FACTS, "".join(f"{fact_id}\n" for fact_id in new_facts))
+            write_supplement_digests(self.root, new_facts)
+        cores = ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"]
+        metadata = {"supplement_sources": sorted(sources)}
+        reconciles: list[str] = []
+        for digest in sorted((self.root / SUPPLEMENT_DIGESTS).glob("*.md")):
+            # One reconcile per synthesis file, reading only that file's share of the new facts.
+            target = digest.stem
+            task_id = f"{base}.{target}"
+            reconciles.append(task_id)
+            self._add(
+                WorkItem(
+                    task_id=task_id,
+                    phase="initial_synthesis",
+                    task_type="synthesis",
+                    inputs=[
+                        {"id": "supplement_digest", "path": str(digest.relative_to(self.root)), "required": True},
+                        {"id": "synthesis_file", "path": f"05-synthesis/{target}.md", "required": False},
+                        {"id": "fact_store", "path": "02-facts/*.md", "required": True},
+                    ],
+                    outputs=[f"05-synthesis/{target}.md", f"{SUPPLEMENT_PARTS}/{identifier}.{target}.jsonl"],
+                    prompt_files=[*cores, "prompts/phases/synthesis-supplement.md"],
+                    depends_on=[task["task_id"] for task in synthesis],
+                    validators=["synthesis_fact_ids", "synthesis_writing_rules"],
+                    priority=50,
+                    independent=True,
+                    exclusive_inputs=False,
+                    output_mode="revise",
+                    metadata={**metadata, "supplement_target": target},
+                ),
+                created,
+            )
+        catalogue_id = f"{base}.inference-catalogue"
         self._add(
             WorkItem(
-                task_id=task_id,
+                task_id=catalogue_id,
                 phase="initial_synthesis",
                 task_type="synthesis",
                 inputs=[
-                    {"id": "supplement_facts", "path": SUPPLEMENT_FACTS, "required": True},
+                    {"id": "synthesis_files", "path": "05-synthesis/*.md", "required": True},
                     {"id": "fact_store", "path": "02-facts/*.md", "required": True},
                 ],
-                outputs=["05-synthesis/*.md", SUPPLEMENT_REPORT],
-                prompt_files=[
-                    "prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md",
-                    "prompts/phases/synthesis-supplement.md",
-                ],
-                depends_on=[task["task_id"] for task in synthesis],
-                schema_files=[],
+                outputs=["05-synthesis/inference-catalogue.md"],
+                prompt_files=[*cores, "prompts/phases/inference-catalogue.md"],
+                depends_on=reconciles or [task["task_id"] for task in synthesis],
                 validators=["synthesis_fact_ids", "synthesis_writing_rules"],
                 priority=50,
                 independent=True,
                 exclusive_inputs=False,
                 output_mode="revise",
-                metadata={"supplement_sources": sorted(sources)},
+                metadata=metadata,
+            ),
+            created,
+        )
+        self._add(
+            WorkItem(
+                task_id=reducer_id,
+                phase="initial_synthesis",
+                task_type="supplement_reducer",
+                inputs=[{"id": "supplement_facts", "path": SUPPLEMENT_FACTS, "required": True}],
+                outputs=[SUPPLEMENT_REPORT],
+                prompt_files=["prompts/core/runtime.md"],
+                depends_on=[*reconciles, catalogue_id],
+                priority=50,
+                metadata={**metadata, "single_writer": True, "executor": "runtime", "identifier": identifier},
             ),
             created,
         )

@@ -1,7 +1,10 @@
 TASK TYPE: COMPANY CATALOGUE, BUILT FROM THE SYNTHESIS AND THE FACT STORE
 
-Read the evidence, writing, and runtime cores, the other synthesis files, and
-the fact store. Write `05-synthesis/inference-catalogue.md`, a catalogue in
+Read the evidence, writing, and runtime cores and the other synthesis files.
+They cite the evidence by fact ID: open a fact's full row only when you need
+its quote, date, or notes, by searching `02-facts/` for its ID, rather than
+reading the fact store whole. Write `05-synthesis/inference-catalogue.md` (or
+revise it, if it exists, for what the synthesis files now say), a catalogue in
 four parts that lays out the evidence so a reader can judge each entry.
 
 1. What the company sells: each offering (services, engagement types,

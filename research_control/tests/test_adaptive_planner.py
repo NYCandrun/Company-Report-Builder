@@ -471,3 +471,51 @@ def _write_receipt(root: Path, store: RuntimeStore, channel: str) -> None:
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SupplementReconcileTests(unittest.TestCase):
+    def test_supplement_is_reconciled_per_synthesis_file_from_a_digest(self) -> None:
+        from research_control.automatic import HANDLERS
+        from research_control.io import atomic_write_text
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            copy_template(root)
+            state = initialize(root, "https://example.com")
+            save_state(root, state)
+            header = "| Fact ID | Claim | Verbatim quote | Source ID | Location | Source date | Grade | Topics | About | Said by | Notes |\n|---|---|---|---|---|---|---|---|---|---|---|\n"
+            atomic_write_text(root / "02-facts/q01-product-architecture.md", header
+                + "| PRD-001 | Old fact. | q | SRC-1 | l | 2026-01-01 | P | Q1 | Tribe | Tribe | |\n"
+                + "| PRD-002 | Scorer added. | q2 | SRC-1 | l | 2026-05-01 | P | Q1 | Tribe | Tribe | Shipped. |\n")
+            atomic_write_text(root / "02-facts/q13-accounts-engagements.md", header
+                + "| ACC-001 | Phase 2 pitched. | q3 | SRC-1 | l | 2026-06-01 | I | Q13 | Tribe | Tribe | Relationship basis: Stated |\n")
+            atomic_write_text(root / "05-synthesis/product-map.md", "# Product map\n\nA tool [PRD-001].\n")
+            atomic_write_json(root / "tools/lists/supplement-sources.json", {"sources": {"SRC-1": "recaptured"}})
+            with RuntimeStore(root) as store:
+                store.initialize(run_id=state["run_id"], company_url=state["company_url"])
+                store.add_task(WorkItem(
+                    task_id="initial_synthesis.synthesize", phase="initial_synthesis", task_type="synthesis",
+                    inputs=[], outputs=["05-synthesis/product-map.md"], prompt_files=["p.md"],
+                ))
+                store.claim("w", task_id="initial_synthesis.synthesize")
+                store.start("initial_synthesis.synthesize", "w")
+                store.complete("initial_synthesis.synthesize", "w")
+                created = AdaptivePlanner(root, store)._plan_supplement()
+                base = next(task_id for task_id in created if task_id.endswith(".reduce")).removesuffix(".reduce")
+                self.assertIn(f"{base}.product-map", created)
+                self.assertIn(f"{base}.customers-proof", created)
+                self.assertIn(f"{base}.inference-catalogue", created)
+                digest = (root / "tools/digests/supplement/product-map.md").read_text(encoding="utf-8")
+                self.assertIn("PRD-002 · 2026-05-01 · P · SRC-1 · Scorer added. [Shipped]", digest)
+                self.assertNotIn("PRD-001", digest)
+                self.assertIn("[relationship Stated]", (root / "tools/digests/supplement/customers-proof.md").read_text(encoding="utf-8"))
+                # The report is written by the runtime: worker decisions, then the rest left uncited.
+                identifier = base.rsplit("-", 1)[1]
+                atomic_write_jsonl(root / f"tools/outputs/worker-parts/supplement/{identifier}.product-map.jsonl", [
+                    {"fact_id": "PRD-002", "decision": "adds", "passage": "Scorer", "why": "built and shipped"},
+                ])
+                result = HANDLERS["supplement_reducer"](root, store, store.task(f"{base}.reduce"))
+                self.assertEqual({"listed": 2, "cited": 1, "left uncited": 1}, result)
+                report = (root / "06-checks/supplement-reconciliation.md").read_text(encoding="utf-8")
+                self.assertIn("| PRD-002 | adds |", report)
+                self.assertIn("| ACC-001 | left uncited |", report)
