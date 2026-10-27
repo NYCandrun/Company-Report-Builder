@@ -10,11 +10,22 @@ from typing import Any
 
 from research_control.discovery import ALTERNATES_PART, BLOCKED_SOURCES_LIST, DISCOVERY_CHANNELS, MEDIA_CHANNELS, DiscoveryEngine
 from research_control import verification
-from research_control.supplement import SUPPLEMENT_FACTS, SUPPLEMENT_REPORT, base_source, supplement_sources
+from research_control.supplement import add_supplement, supplement_added_at, SUPPLEMENT_FACTS, SUPPLEMENT_REPORT, base_source, supplement_sources
 from research_control.media import is_media_url
 from research_control.io import atomic_write_jsonl, atomic_write_text, load_json, load_jsonl, workflow
 from research_control.validators.facts import load_fact_tables
-from research_control.triage import TRIAGE_DECISIONS, TRIAGE_EXCERPT_CHARACTERS, TRIAGE_INDEX, TRIAGE_PENDING, triage_included, triage_rows
+from research_control.triage import (
+    RETRIAGE_DECISIONS,
+    RETRIAGE_REQUEST,
+    TRIAGE_DECISIONS,
+    TRIAGE_EXCERPT_CHARACTERS,
+    TRIAGE_INDEX,
+    TRIAGE_PENDING,
+    retriage_relevant,
+    retriage_request,
+    triage_included,
+    triage_rows,
+)
 from research_control.orchestration import TASK_SCHEMAS, current_phase, load_state
 from research_control.runtime import ACTIVE_STATES, DISCOVERY_TERMINAL, FINAL_STATES, SATISFIED_STATES, UNCAPTURED_RELEVANCE, RuntimeStore, WorkItem
 
@@ -550,6 +561,47 @@ class AdaptivePlanner:
             return created
         if any(task["state"] not in SATISFIED_STATES for task in more):
             return created
+        request = retriage_request(self.root)
+        if request:
+            # Questions added after triage: every captured source is decided again
+            # against them before extraction is planned.
+            retriage_id = f"facts.retriage.{request['id']}"
+            retriage = self.store.task(retriage_id)
+            if not retriage or retriage["state"] not in SATISFIED_STATES:
+                self._add(
+                    WorkItem(
+                        task_id=retriage_id,
+                        phase="facts",
+                        task_type="retriage",
+                        inputs=[
+                            {"id": "scope_map", "path": "00-scope.md", "required": True},
+                            {"id": "retriage_request", "path": RETRIAGE_REQUEST, "required": True},
+                            {"id": "triage_index", "path": TRIAGE_INDEX, "required": True},
+                            {"id": "triage_decisions", "path": TRIAGE_DECISIONS, "required": True},
+                        ],
+                        outputs=[RETRIAGE_DECISIONS],
+                        prompt_files=["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/phases/triage.md"],
+                        depends_on=[triage_id],
+                        schema_files=[],
+                        validators=["retriage"],
+                        priority=5,
+                        independent=True,
+                        exclusive_inputs=True,
+                        output_mode="revise",
+                        metadata={"questions": list(request.get("questions", [])), "request": request["id"]},
+                    ),
+                    created,
+                )
+                return created
+            already = {str(row["id"]) for row in triage_rows(self.root) if row.get("decision") == "include"}
+            again = sorted(retriage_relevant(self.root) & already)
+            if again:
+                # Extracted before the questions existed: extract again for them.
+                add_supplement(
+                    self.root, again,
+                    f"extracted again for the questions added after triage ({', '.join(request.get('questions', []))})",
+                    at=str(request.get("requested_at", "")),
+                )
         slices = self._source_slices(included=triage_included(self.root))
         kept, uncovered = self._unchanged_batches(slices)
         batches = self._pack_slices(uncovered)
@@ -866,6 +918,7 @@ class AdaptivePlanner:
         """
         current = {item["id"]: item for item in slices}
         supplemented = set(supplement_sources(self.root))
+        listed_at = supplement_added_at(self.root)
         kept: list[str] = []
         covered: set[str] = set()
         tasks = [
@@ -893,7 +946,12 @@ class AdaptivePlanner:
                     break
             if inputs and holds:
                 kept.append(task["task_id"])
-                covered.update(item["id"] for item in inputs if same(item))
+                # A batch planned before its source was (re)listed for supplement
+                # keeps its facts but does not cover the text for the new pass.
+                covered.update(
+                    item["id"] for item in inputs
+                    if same(item) and str(task["created_at"]) >= listed_at.get(base_source(item.get("id", "")), "")
+                )
         return kept, [item for item in slices if item["id"] not in covered]
 
     def _pack_slices(self, slices: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:

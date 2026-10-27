@@ -124,6 +124,21 @@ packets. In Claude Code, use isolated subagents. If no subagent facility exists,
 execute the same packets in separate contexts sequentially. Never improvise a
 different task graph because a host lacks a dispatch API.
 
+## Adding a research question mid-run
+
+When the research needs a question the scope did not ask, add it with
+`python3 -m research_control --root runs/<slug> scope add-question --id Q13
+--title TITLE --text TEXT --channels CHANNELS --reason WHY`. It appends the
+question to `00-scope.md`, records the change in the run history, and requests
+a re-triage: `run` plans `facts.retriage.<id>`, a standard-tier packet that
+decides every captured source again against the added questions only, from
+the triage index. A relevant source that was excluded is extracted; one that
+was already extracted is listed for supplement and its text extracted again
+for the new questions, keeping the facts already filed. Earlier decisions
+never shrink. This costs one pass over the index plus the relevant sources,
+instead of re-extracting the corpus and rebuilding every fact ID, citation,
+and verdict downstream.
+
 ## Keeping the evidence
 
 A run folder is ignored by the template's git. `python3 -m research_control

@@ -17,7 +17,7 @@ from research_control.validators.extraction import validate_part as validate_ext
 from research_control.automatic import RUNTIME_WORKER, run_automatic
 from research_control.media import is_media_url
 from research_control.planner import AdaptivePlanner
-from research_control.triage import validate_triage
+from research_control.triage import validate_retriage, validate_triage
 from research_control.runtime import ACTIVE_STATES, DISCOVERY_TERMINAL, SATISFIED_STATES, RuntimeStore
 
 
@@ -246,6 +246,10 @@ def _validate_semantic_receipt(root: Path, store: RuntimeStore, task: dict[str, 
         failures = validate_triage(root)
         if failures:
             raise ValueError(f"{task['task_id']}: triage is invalid: {'; '.join(failures[:10])}")
+    if task["task_type"] == "retriage":
+        failures = validate_retriage(root)
+        if failures:
+            raise ValueError(f"{task['task_id']}: re-triage is invalid: {'; '.join(failures[:10])}")
     if task["task_type"] == "capture":
         path = root / task["metadata"]["receipt"]
         if not path.is_file():

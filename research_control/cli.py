@@ -269,6 +269,16 @@ def _parser() -> argparse.ArgumentParser:
     )
     work_restore.add_argument("task_id")
     work_restore.add_argument("--reason", required=True)
+    scope_parser = subparsers.add_parser("scope", help="orchestrator: change the research questions mid-run")
+    scope_sub = scope_parser.add_subparsers(dest="scope_command", required=True)
+    scope_add = scope_sub.add_parser(
+        "add-question", help="add a research question; every captured source is re-triaged against it"
+    )
+    scope_add.add_argument("--id", required=True, help="new question ID, e.g. Q13")
+    scope_add.add_argument("--title", required=True)
+    scope_add.add_argument("--text", required=True)
+    scope_add.add_argument("--channels", default="")
+    scope_add.add_argument("--reason", required=True)
     archive_parser = subparsers.add_parser(
         "archive", help="orchestrator: commit the run's sources and outputs to its run-data branch on the remote"
     )
@@ -417,6 +427,14 @@ def main() -> None:
             return
         if args.command == "supplement":
             _print_json(add_supplement(root, args.source_id, args.reason))
+            return
+        if args.command == "scope":
+            from research_control.orchestration import append_history
+            from research_control.triage import add_scope_question
+
+            request = add_scope_question(root, args.id, args.title, args.text, args.channels, args.reason)
+            append_history(root, "scope-question-added", f"{args.id}: {args.title} ({args.reason}); re-triage {request['id']}")
+            _print_json(request)
             return
         if args.command == "archive":
             from research_control.archive import archive

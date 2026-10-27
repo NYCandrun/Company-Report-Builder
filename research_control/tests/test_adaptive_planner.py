@@ -16,7 +16,7 @@ from research_control.provision import provision_run
 from research_control.reducers import reduce_capture_parts, reduce_discovery
 from research_control.runtime import RuntimeStore
 from research_control.routing import model_route
-from research_control.triage import validate_triage
+from research_control.triage import add_scope_question, validate_triage
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[2]
@@ -276,6 +276,12 @@ class AdaptivePlannerTests(unittest.TestCase):
                 extracted = {item["source_id"] for task in extraction_tasks for item in task["inputs"]}
                 self.assertNotIn(small, extracted)
 
+                # A question added mid-run plans a re-triage of every captured source.
+                request = add_scope_question(root, "Q99", "Accounts", "How have accounts moved?", "", "fixture")
+                AdaptivePlanner(root, store).reconcile()
+                retriage = store.task(f"facts.retriage.{request['id']}")
+                self.assertEqual(("retriage", "ready"), (retriage["task_type"], retriage["state"]))
+
 
 class SupplementBatchTests(unittest.TestCase):
     def test_supplement_keeps_finished_batches_and_replaces_unfinished_ones(self) -> None:
@@ -305,6 +311,17 @@ class SupplementBatchTests(unittest.TestCase):
                 # the unfinished batch over changed text is not kept.
                 self.assertEqual(["facts.extract.done"], kept)
                 self.assertEqual({"SRC-1", "SRC-2"}, {item["id"] for item in uncovered})
+                # Unchanged text is covered by a finished batch, unless the source was
+                # listed again after that batch was planned (a new question or rules).
+                unchanged = [old, {**stopped, "sha256": "new"}]
+                kept, uncovered = AdaptivePlanner(root, store)._unchanged_batches(unchanged)
+                self.assertNotIn("SRC-1", {item["id"] for item in uncovered})
+                atomic_write_json(root / "tools/lists/supplement-sources.json", {
+                    "sources": {"SRC-1": "again for Q13"}, "added_at": {"SRC-1": "2999-01-01T00:00:00Z"},
+                })
+                kept, uncovered = AdaptivePlanner(root, store)._unchanged_batches(unchanged)
+                self.assertEqual(["facts.extract.done"], kept)
+                self.assertIn("SRC-1", {item["id"] for item in uncovered})
 
 
 class AlternateCopiesTests(unittest.TestCase):
