@@ -8,23 +8,28 @@ sources, batches, or workers to use.
 
 ## Run it
 
-From a clean copy of this repository:
+From the template checkout, provision an isolated run directory and start it:
 
 ```bash
 python3 -m research_control preflight
-python3 -m research_control run --url "COMPANY_URL"
+python3 -m research_control new --url "COMPANY_URL"
 ```
 
-`run` initializes or resumes the durable scheduler, completes automatic
-controls, plans the current phase, and writes ready packets under
-`tools/outputs/task-packets/`. Continue executing the returned packets and
-rerunning:
+`new` copies the policy, prompts, and control engine into `runs/<company-slug>/`
+(ignored by the template's git) and starts the run there. The template itself
+never holds run output. Every later command runs from inside the run
+directory, so the run uses one consistent engine snapshot:
 
 ```bash
+cd runs/<company-slug>
 python3 -m research_control run
 ```
 
-until it returns `release_ready`. Then run:
+`run` resumes the durable scheduler, executes deterministic work itself (site
+crawl, sitemap audit, page/PDF/media capture, reducers), plans the current
+phase, and writes ready agent packets under `tools/outputs/task-packets/`.
+Execute the returned packets and rerun `run` until it returns `release_ready`.
+Then run:
 
 ```bash
 python3 -m research_control release
@@ -32,13 +37,27 @@ python3 -m research_control release
 
 Do not stop at a plan, packet list, draft, or progress summary. Completion
 requires a passing `07-final-report/release-manifest.json` bound to the exact
-final artifact hashes.
+final artifact hashes. Inspect a run at any time with
+`python3 -m research_control status`.
 
-If a run already exists, omit `--url`. Inspect it at any time with:
+`run --plan-only` plans and writes packets without executing runtime work. Use
+it when another `run` process is already executing (for example a long capture
+with transcription), so two processes never run the same deterministic work.
+
+### Changing the framework while a run is in flight
+
+Fix the template, then refresh the run's snapshot from the template checkout:
 
 ```bash
-python3 -m research_control status
+python3 -m research_control --root runs/<company-slug> sync-engine
 ```
+
+`sync-engine` copies the policy, prompts, and engine into the run and appends
+an `engine-synced` entry to the run's `RUN_HISTORY.md` with the template commit
+and short hashes of the constitution, workflow, prompts, and engine. Every
+capture receipt records the same fingerprint, so each source shows which rules
+were in force when it was captured. Changed inputs and validators invalidate
+dependent work through the normal hash checks.
 
 ## Execute task packets
 
@@ -78,59 +97,104 @@ explicitly.
 Use a genuinely separate agent context and unique worker ID for every packet
 marked `independent: true`. Parallelize all ready independent packets when the
 host permits. The scheduler enforces global and per-host concurrency. Workers
-write isolated parts; reducer packets are the sole writers of canonical shared
-files.
+write isolated parts; reducers are the sole writers of canonical shared files.
+
+Work happens only under a held lease. Discovery commands that change a
+channel's record (`discovery add`, `close`, `exclude`, `receipt`) refuse to run
+unless that channel's discovery task is claimed and started. When a closed
+channel needs more work, the orchestrator reopens it with
+`python3 -m research_control discovery reopen --channel CHANNEL --evidence WHY`
+and reruns `run`, which re-queues the channel's task for a worker to claim.
+
+Runtime-owned tasks (marked `executor: runtime`) never become packets and
+cannot be completed by a worker; `run` executes them under the reserved worker
+identity `runtime-executor`.
 
 The packets are host-neutral. In Codex, use subagents for ready independent
 packets. In Claude Code, use isolated subagents. If no subagent facility exists,
 execute the same packets in separate contexts sequentially. Never improvise a
 different task graph because a host lacks a dispatch API.
 
-## Adaptive discovery
+## Question-bounded discovery
 
-Discovery has no source-count target. It begins with the supplied URL, expands
-the first-party link frontier, and examines these evidence channels:
+Discovery has no source-count target in either direction. Scope numbers the
+research questions (`Q1`, `Q2`, ...), starting from the brief's required
+sections, and every later stage is bounded by them.
 
-- company site and sitemaps;
-- newsroom, blog, resources, help, and documentation;
-- careers and recruiting systems;
-- video, podcasts, and social accounts;
-- public repositories and packages;
-- relevant independent reporting and analysis.
+There is one discovery task per channel, ten in all:
 
-Each applicable channel continues through materially different discovery
-passes until repeated passes add no new relevant sources. A channel may instead
-end as `not_applicable`, `blocked`, or `incomplete`, but only with evidence.
-All channels need terminal accounting, but only `saturated` and
-`not_applicable` count as complete coverage. A blocked channel remains a visible
-limitation, while `incomplete` prevents the discovery reducer from passing.
-Neither state may be relabeled because an arbitrary number of URLs was found.
+| Channel | Who does it |
+|---|---|
+| `company_site` | runtime: crawls the company host to a fixed point |
+| `sitemaps` | runtime: audits every declared sitemap against the catalog |
+| `newsroom_blog`, `docs_help`, `careers`, `code_packages` | one agent worker each, after the crawl, for what the crawl could not reach |
+| `video`, `podcasts`, `social`, `independent_web` | one agent worker each, in parallel with the crawl |
+
+A search channel closes as `sufficient` when its admitted sources answer the
+named questions (the evidence must cite the question IDs), or as `saturated`
+after two materially different passes in a row add nothing. A channel may also
+close as `not_applicable`, `blocked`, or `incomplete`, with evidence. Only
+`saturated`, `sufficient`, and `not_applicable` count as complete coverage;
+`incomplete` prevents the discovery reducer from passing.
+
+Video is in scope at every length, including Shorts, clips, and social video
+drops: every video on the company's own channels and every video or podcast in
+which its founders, executives, or named leaders appear. URLs on login-walled
+platforms are kept as uncaptured leads, except videos admitted on the video
+channel, which capture tries to transcribe. Competitor sources are admitted only
+when they answer a named question, never a competitor's docs or blog wholesale.
 
 The configured page, byte, depth, elapsed-time, concurrency, and retry limits
 are circuit breakers. Reaching one produces an explicit incomplete or blocked
 state; it never manufactures completion.
 
-Useful discovery commands are embedded in discovery packets:
+Worker discovery commands (they require the channel's task to be claimed):
 
 ```bash
-python3 -m research_control discovery crawl
 python3 -m research_control discovery add --channel CHANNEL --url URL \
   --evidence "SEARCH OR SURFACE CHECKED"
 python3 -m research_control discovery close --channel CHANNEL \
-  --state not_applicable --evidence "WHY"
+  --state sufficient --evidence "Q2: ...; Q5: ..."
 python3 -m research_control discovery receipt --channel CHANNEL
 ```
 
-The runtime canonicalizes and deduplicates URLs. Ordinary public pages can be
-captured into isolated parts with:
+## Capture and transcripts
+
+The runtime captures every admitted source itself and writes a terminal receipt:
+`captured` with a canonical UTF-8 text derivative, or `blocked` with the
+concrete reason.
+
+- Web pages: HTTP capture with rendered-order text extraction; pages built by
+  JavaScript fall back to a headless browser when the host has one.
+- PDFs: `pdftotext` with page markers.
+- Video and audio: a timestamped `transcript.txt`. YouTube tries published
+  captions, then yt-dlp captions with the default, `web_embedded`, and
+  `android_vr` player clients, then the audio through yt-dlp, then audio
+  through a public Invidious instance, each transcribed locally with Whisper.
+  Other media is downloaded and transcribed with Whisper. YouTube requests are
+  spaced (`RESEARCH_CONTROL_YT_SPACING`, default 20 s); Invidious instances are
+  set with `RESEARCH_CONTROL_INVIDIOUS`. Machine transcripts never establish
+  who is speaking.
+
+YouTube availability from cloud networks varies by the hour. Re-queue media
+whose transcript failed with:
 
 ```bash
-python3 -m research_control source capture --source-id SOURCE_ID
+python3 -m research_control media retry
+python3 -m research_control run
 ```
 
-Use the host's browser, PDF, OCR, caption, transcription, repository, or media
-tools for formats that need them. Respect rate limits and record inaccessible
-evidence.
+Quotes are checked against every text derivative of a source (page text, PDF
+text, transcript).
+
+## Extraction triage
+
+Capture is cheap, so the corpus can hold more pages than the brief can use.
+Before extraction, one triage worker gives every captured source one decision,
+`include` or `exclude`, naming the research questions it answers. Only
+included sources are read for facts. Excluded sources keep their capture and
+provenance and receive an `excluded` extraction disposition. Exclusion is never
+a way to drop contradicting evidence.
 
 Research discovery and brand discovery remain separate agent responsibilities,
 but share a run-local transport cache and URL lead ledger in the scheduler.
@@ -159,8 +223,11 @@ state and emits an append-only audit stream at
 `tools/outputs/runtime-events.jsonl`. It creates work only after the necessary
 scope or corpus information exists.
 
-- Discovery work expands until channel saturation.
-- One isolated capture task is created per relevant canonical source.
+- Discovery work runs per channel until each closes against the research
+  questions or saturates.
+- One capture task is created per relevant canonical source and executed by
+  the runtime.
+- Triage selects captured sources for extraction by research question.
 - Captured text is assembled into canonical extracts.
 - Extraction work is packed by estimated token volume, and oversized sources
   are split into explicit stable slices.
@@ -183,11 +250,13 @@ succeeded -> stale -> ready
 
 Task counts therefore vary with the company and evidence actually found.
 
-At the start of capture, the scheduler also launches one independent brand-guide
-packet. It inspects the company's public visual system while discovery and
-source capture continue, so the work normally overlaps the longest research
-stage instead of becoming a serial phase. The brand packet is presentation-only:
-it cannot add facts to the company record or architecture model.
+At the start of capture, the scheduler also dispatches the brand-guide packet
+(`final.brand-guide`, marked `dispatch: early`). It belongs to the final phase
+and gates only that phase: the brief writer and diagram builder depend on it,
+but no research gate waits for it, so it runs alongside discovery, capture,
+extraction, synthesis, verification, and review. The brand packet is
+presentation-only: it cannot add facts to the company record or architecture
+model.
 
 ## Research and release contract
 
@@ -200,8 +269,10 @@ Read these in order when starting a run:
 The controlled phases remain:
 
 ```text
-bootstrap -> scope -> adaptive discovery and capture + concurrent brand guide -> adaptive extraction
--> fact filing -> initial synthesis -> cited-fact verification
+bootstrap -> scope (numbered research questions)
+-> per-channel discovery and runtime capture  (brand guide starts here, runs alongside)
+-> extraction triage -> adaptive extraction -> fact filing
+-> initial synthesis -> cited-fact verification
 -> corrected synthesis -> independent skeptical review -> final brief
 -> gated architecture modeling -> branded four-diagram build
 -> language, citation, and complete visual review -> fixes and re-review
@@ -252,6 +323,7 @@ If release cannot pass, report the concrete failed control and leave the run
 resumable.
 
 The control runtime uses only Python's standard library. CSS-capable PDF tools,
-PDF rasterization, browser rendering, OCR, and transcription are used when the
-host provides them and are reported by `preflight` when absent. Framework
+PDF rasterization, headless browser rendering, `yt-dlp`, `faster-whisper`
+(with `ffmpeg`), OCR, and transcription are used when the host provides them
+and are reported by `preflight` when absent. Framework
 regression suites run in repository CI, not inside individual company runs.

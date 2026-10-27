@@ -6,10 +6,12 @@ from pathlib import Path
 
 from research_control.discovery import DISCOVERY_CHANNELS, DiscoveryEngine
 from research_control.automatic import RUNTIME_WORKER
+from research_control.cli import _require_discovery_lease
 from research_control.dispatch import emit_ready_packets
 from research_control.io import atomic_write_json, atomic_write_jsonl, workflow
 from research_control.orchestration import initialize, load_state, save_state
-from research_control.planner import DISCOVERY_GROUPS, AdaptivePlanner
+from research_control.planner import RUNTIME_DISCOVERY_CHANNELS, AdaptivePlanner, discovery_task_id
+from research_control.runtime import WorkItem
 from research_control.provision import provision_run
 from research_control.reducers import reduce_capture_parts, reduce_discovery
 from research_control.runtime import RuntimeStore
@@ -57,15 +59,17 @@ class AdaptivePlannerTests(unittest.TestCase):
                 store.initialize(run_id=state["run_id"], company_url=state["company_url"])
                 engine = DiscoveryEngine(root, store)
                 AdaptivePlanner(root, store).reconcile()
-                task_id = "capture.discover.first-party-site"
+                task_id = "capture.discover.company-site"
                 self.assertEqual("runtime", store.task(task_id)["metadata"]["executor"])
-                for channel in ("company_site", "sitemaps"):
-                    for number in (1, 2):
-                        engine.add_candidates(
-                            channel, [], discovered_from=f"pass-{number}",
-                            evidence=f"empty {channel} pass {number}",
-                        )
-                    _write_receipt(root, store, channel)
+                self.assertEqual([task_id], store.task("capture.discover.sitemaps")["depends_on"])
+                self.assertEqual([task_id], store.task("capture.discover.careers")["depends_on"])
+                self.assertEqual([], store.task("capture.discover.video")["depends_on"])
+                for number in (1, 2):
+                    engine.add_candidates(
+                        "company_site", [], discovered_from=f"pass-{number}",
+                        evidence=f"empty company_site pass {number}",
+                    )
+                _write_receipt(root, store, "company_site")
                 store.claim(RUNTIME_WORKER, task_id=task_id)
                 store.start(task_id, RUNTIME_WORKER)
                 store.complete(task_id, RUNTIME_WORKER)
@@ -98,6 +102,51 @@ class AdaptivePlannerTests(unittest.TestCase):
                 closed = engine.close_channel("social", "sufficient", "Q6: official profile admitted; no other account exists")
                 self.assertEqual("sufficient", closed["state"])
 
+    def test_grouped_discovery_from_an_older_run_is_kept_until_its_channel_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            copy_template(root)
+            state = initialize(root, "https://example.com")
+            state["phases"]["bootstrap"]["status"] = "complete"
+            state["phases"]["scope"]["status"] = "complete"
+            state["phases"]["capture"]["status"] = "ready"
+            save_state(root, state)
+            with RuntimeStore(root) as store:
+                store.initialize(run_id=state["run_id"], company_url=state["company_url"])
+                engine = DiscoveryEngine(root, store)
+                engine.initialize()
+                grouped = ("video", "podcasts", "social")
+                receipts = [f"tools/outputs/worker-parts/discovery/{channel}.json" for channel in grouped]
+                store.add_task(WorkItem(
+                    task_id="capture.discover.media-social", phase="capture", task_type="source_discovery",
+                    inputs=[], outputs=receipts, prompt_files=["prompts/phases/discovery.md"],
+                    independent=True, exclusive_inputs=False,
+                    metadata={"channels": list(grouped), "receipts": receipts, "executor": "agent"},
+                ))
+                for channel in grouped:
+                    for number in (1, 2):
+                        engine.add_candidates(channel, [], discovered_from=f"p{number}", evidence=f"{channel} pass {number}")
+                    _write_receipt(root, store, channel)
+                store.claim("media-worker", task_id="capture.discover.media-social")
+                store.start("capture.discover.media-social", "media-worker")
+                store.complete("capture.discover.media-social", "media-worker")
+
+                AdaptivePlanner(root, store).reconcile()
+                for channel in grouped:
+                    self.assertIsNone(store.task(discovery_task_id(channel)))
+                self.assertIsNotNone(store.task("capture.discover.careers"))
+
+                with self.assertRaises(ValueError):
+                    _require_discovery_lease(store, "video")
+                engine.reopen_channel("video", "scope now includes Shorts and leader appearances")
+                AdaptivePlanner(root, store).reconcile()
+                self.assertEqual("ready", store.task("capture.discover.video")["state"])
+                self.assertIsNone(store.task("capture.discover.podcasts"))
+                self.assertEqual("succeeded", store.task("capture.discover.media-social")["state"])
+                store.claim("video-worker", task_id="capture.discover.video")
+                store.start("capture.discover.video", "video-worker")
+                _require_discovery_lease(store, "video")
+
     def test_task_count_follows_discovered_corpus_and_content_volume(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -118,14 +167,15 @@ class AdaptivePlannerTests(unittest.TestCase):
                     discovered_from="homepage", evidence="fixture links", record_pass=False,
                 )
                 first_plan = AdaptivePlanner(root, store).reconcile()
-                self.assertEqual(len(DISCOVERY_GROUPS), first_plan["task_count"])
+                self.assertEqual(len(DISCOVERY_CHANNELS), first_plan["task_count"])
                 brand = store.task("final.brand-guide")
                 self.assertIsNotNone(brand)
                 self.assertTrue(brand["independent"])
                 self.assertEqual("early", brand["metadata"]["dispatch"])
                 dispatch = emit_ready_packets(root, store, "capture")
                 self.assertIn("final.brand-guide", [item["task_id"] for item in dispatch["packets"]])
-                self.assertNotIn("capture.discover.first-party-site", [item["task_id"] for item in dispatch["packets"]])
+                self.assertNotIn("capture.discover.company-site", [item["task_id"] for item in dispatch["packets"]])
+                self.assertIn("capture.discover.video", [item["task_id"] for item in dispatch["packets"]])
 
                 for channel in DISCOVERY_CHANNELS:
                     for number in (1, 2):
@@ -133,11 +183,10 @@ class AdaptivePlannerTests(unittest.TestCase):
                             channel, [], discovered_from=f"{channel}-pass-{number}",
                             evidence=f"fixture fixed point for {channel}",
                         )
-                for group in DISCOVERY_GROUPS:
-                    task_id = f"capture.discover.{group}"
-                    for channel in store.task(task_id)["metadata"]["channels"]:
-                        _write_receipt(root, store, channel)
-                    worker = RUNTIME_WORKER if group == "first-party-site" else f"discover-{group}"
+                for channel in DISCOVERY_CHANNELS:
+                    task_id = discovery_task_id(channel)
+                    _write_receipt(root, store, channel)
+                    worker = RUNTIME_WORKER if channel in RUNTIME_DISCOVERY_CHANNELS else f"discover-{channel}"
                     store.claim(worker, task_id=task_id)
                     store.start(task_id, worker)
                     store.complete(task_id, worker)

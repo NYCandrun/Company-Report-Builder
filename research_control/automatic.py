@@ -15,8 +15,9 @@ from typing import Any, Callable
 
 from research_control.capture import auto_capture_source
 from research_control.discovery import DiscoveryEngine
-from research_control.io import atomic_write_json, workflow
+from research_control.io import atomic_write_json, load_json, workflow
 from research_control.media import is_media_url
+from research_control.provision import engine_fingerprint
 from research_control.reducers import reduce_capture_parts, reduce_discovery, reduce_extraction_parts
 from research_control.runtime import RuntimeStore
 
@@ -39,31 +40,41 @@ def _write_channel_receipt(root: Path, store: RuntimeStore, channel: str, relati
 
 
 def _first_party_discovery(root: Path, store: RuntimeStore, task: dict[str, Any]) -> dict[str, Any]:
+    """Crawl the company host and/or audit its sitemaps, then write channel receipts."""
+    channels = task["metadata"]["channels"]
     engine = DiscoveryEngine(root, store)
     engine.initialize()
-    seeded = engine.seed_sitemaps()
-    rounds: list[dict[str, Any]] = []
-    for _round in range(6):
-        while True:
-            crawl = engine.crawl_company_site()
-            if crawl["status"] in {"saturated", "incomplete", "blocked"}:
+    result: dict[str, Any] = {}
+    if "company_site" in channels:
+        result["seeded_sitemaps"] = engine.seed_sitemaps()
+        rounds: list[dict[str, Any]] = []
+        for _round in range(6):
+            while True:
+                crawl = engine.crawl_company_site()
+                if crawl["status"] in {"saturated", "incomplete", "blocked"}:
+                    break
+            rounds.append({"crawl": crawl["status"], "fetched": crawl["pages_fetched"]})
+            if crawl["status"] != "saturated":
                 break
-        rounds.append({"crawl": crawl["status"], "fetched": crawl["pages_fetched"]})
-        if crawl["status"] != "saturated":
-            break
-        cached = engine.audit_sitemaps(refetch=False)
-        fresh = engine.audit_sitemaps(refetch=True)
-        if not cached["new_source_ids"] and not fresh["new_source_ids"]:
-            break
-    sitemaps = store.discovery_channel("sitemaps") or {}
-    if sitemaps.get("state") == "open":
-        store.set_discovery_channel(
-            "sitemaps", "incomplete", "sitemap audit kept finding new URLs after the crawl round limit"
-        )
+            # Sitemap URLs the link crawl missed feed the next crawl round.
+            cached = engine.audit_sitemaps(refetch=False)
+            fresh = engine.audit_sitemaps(refetch=True)
+            if not cached["new_source_ids"] and not fresh["new_source_ids"]:
+                break
+        result["rounds"] = rounds
+    if "sitemaps" in channels:
+        for refetch in (False, True, False, True):
+            if (store.discovery_channel("sitemaps") or {}).get("state") != "open":
+                break
+            engine.audit_sitemaps(refetch=refetch)
+        if (store.discovery_channel("sitemaps") or {}).get("state") == "open":
+            store.set_discovery_channel(
+                "sitemaps", "incomplete", "sitemap audit kept finding new URLs; crawl the new branch first"
+            )
     engine.write_catalog()
-    for channel, receipt in zip(task["metadata"]["channels"], task["metadata"]["receipts"]):
+    for channel, receipt in zip(channels, task["metadata"]["receipts"]):
         _write_channel_receipt(root, store, channel, receipt)
-    return {"seeded_sitemaps": seeded, "rounds": rounds}
+    return result
 
 
 def _capture(root: Path, store: RuntimeStore, task: dict[str, Any]) -> dict[str, Any]:
@@ -72,9 +83,15 @@ def _capture(root: Path, store: RuntimeStore, task: dict[str, Any]) -> dict[str,
         raise KeyError(f"unknown source: {task['metadata']['source_id']}")
     grade = "S" if source["channel"] == "independent_web" else "P"
     media = source["channel"] in {"video", "podcasts"} or is_media_url(source["canonical_url"])
-    return auto_capture_source(
+    receipt = auto_capture_source(
         root, url=source["canonical_url"], source_id=source["source_id"], grade=grade, store=store, media=media,
     )
+    # Record which policy, prompts, and engine were in force for this capture.
+    path = root / task["metadata"]["receipt"]
+    stored = load_json(path)
+    stored["policy"] = engine_fingerprint(root)
+    atomic_write_json(path, stored)
+    return receipt
 
 
 HANDLERS: dict[str, Callable[[Path, RuntimeStore, dict[str, Any]], Any]] = {

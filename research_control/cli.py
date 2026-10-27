@@ -29,6 +29,7 @@ from research_control.orchestration import (
     start_task,
     status_summary,
 )
+from research_control.planner import discovery_task_id
 from research_control.provision import RUNS_DIRECTORY, provision_run, run_slug, sync_engine
 from research_control.publication import render
 from research_control.reducers import reduce_capture_parts, reduce_discovery, reduce_extraction_parts
@@ -53,6 +54,23 @@ def _refresh_release_evidence(root: Path) -> None:
         report, _path = check_phase(root, phase["id"], update_state=False)
         if report["status"] != PASS:
             raise ValueError(f"phase evidence is not releasable: {phase['id']}={report['status']}")
+
+
+# Discovery commands that change a channel's record are worker actions and need a
+# held lease; crawl, reopen, and retry are controller actions.
+WORKER_DISCOVERY_COMMANDS = {"add", "close", "exclude", "receipt"}
+
+
+def _require_discovery_lease(store: Any, channel: str) -> None:
+    covering = [
+        task for task in store.tasks(phase="capture")
+        if task["task_type"] == "source_discovery" and channel in (task["metadata"].get("channels") or [])
+    ]
+    if not any(task["state"] in {"leased", "running"} for task in covering):
+        raise ValueError(
+            f"no claimed discovery task covers {channel}; claim and start {discovery_task_id(channel)} first "
+            "(if it is not ready, the orchestrator must reopen the channel and rerun `run`)"
+        )
 
 
 def _web_fetch(args: argparse.Namespace, cache: SharedWebCache) -> None:
@@ -195,6 +213,7 @@ def _parser() -> argparse.ArgumentParser:
     init.add_argument("--url", required=True)
     run = subparsers.add_parser("run", help="initialize or advance the adaptive research orchestrator")
     run.add_argument("--url")
+    run.add_argument("--plan-only", action="store_true", help="plan and write packets without running runtime-owned work")
     subparsers.add_parser("next", help="write and list permitted task packets")
     subparsers.add_parser("status", help="show resumable run state")
 
@@ -327,7 +346,7 @@ def main() -> None:
             relative = os.path.relpath(run_root, Path.cwd())
             _print_json({
                 "run_root": str(run_root),
-                "next": f"python3 -m research_control --root {relative} run",
+                "next": f"cd {relative} && python3 -m research_control run",
                 "advance": result,
             })
             return
@@ -340,7 +359,7 @@ def main() -> None:
             _print_json({"status": "initialized", "run_id": state["run_id"], "company_url": state["company_url"], "next": "python3 -m research_control check --phase bootstrap"})
             return
         if args.command == "run":
-            _print_json(advance(root, args.url))
+            _print_json(advance(root, args.url, automatic=not args.plan_only))
             return
         if args.command == "next":
             result = next_packets(root)
@@ -396,6 +415,8 @@ def main() -> None:
             with open_runtime(root) as store:
                 engine = DiscoveryEngine(root, store)
                 engine.initialize()
+                if args.discovery_command in WORKER_DISCOVERY_COMMANDS:
+                    _require_discovery_lease(store, args.channel)
                 if args.discovery_command == "crawl":
                     passes = []
                     while True:

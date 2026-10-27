@@ -1,7 +1,9 @@
 # TASK TYPE: SOURCE DISCOVERY
 
-Discover the public evidence the company brief needs from the assigned channels
-(see the `channels` input). There is no source, page, query, or result-count
+Discover the public evidence the company brief needs from the assigned channel
+(see the `channels` input). Claim and start this task before running any
+discovery command: `discovery add`, `close`, `exclude`, and `receipt` refuse to
+change a channel whose task is not claimed. There is no source, page, query, or result-count
 target in either direction. Discovery serves the numbered research questions
 (`Q1`, `Q2`, ...) in `00-scope.md`; read them before searching.
 
@@ -73,6 +75,6 @@ python3 -m research_control discovery close \
 Safety limits are circuit breakers. If one is reached, record `incomplete`.
 Never use a number of sources as completion evidence.
 
-Finally run `python3 -m research_control discovery receipt --channel CHANNEL`
-for every assigned channel. The task is complete only when each receipt exists
-and agrees with the scheduler's terminal channel state.
+Finally run `python3 -m research_control discovery receipt --channel CHANNEL`.
+The task is complete only when the receipt exists and agrees with the
+scheduler's terminal channel state.

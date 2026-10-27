@@ -7,8 +7,10 @@ started with, so the run is reproducible and the template stays clean.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import shutil
+import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -17,6 +19,30 @@ TEMPLATE_FILES = ("README.md", "RESEARCH_CONSTITUTION.md", "WORKFLOW.yaml", "pyp
 TEMPLATE_DIRECTORIES = ("prompts", "research_control", "tools")
 IGNORED = shutil.ignore_patterns("__pycache__", "*.pyc", "outputs", "tests")
 RUNS_DIRECTORY = "runs"
+
+
+def _digest(paths: list[Path], base: Path) -> str:
+    digest = hashlib.sha256()
+    for path in sorted(paths, key=lambda value: value.as_posix()):
+        digest.update(path.relative_to(base).as_posix().encode())
+        digest.update(b"\0")
+        digest.update(hashlib.sha256(path.read_bytes()).hexdigest().encode())
+    return digest.hexdigest()[:16]
+
+
+def engine_fingerprint(root: Path) -> dict[str, str]:
+    """Short hashes of the policy, workflow, prompts, and engine a run is using."""
+    root = root.resolve()
+
+    def files(pattern: str) -> list[Path]:
+        return [path for path in root.glob(pattern) if path.is_file() and "__pycache__" not in path.parts]
+
+    return {
+        "constitution": _digest(files("RESEARCH_CONSTITUTION.md"), root),
+        "workflow": _digest(files("WORKFLOW.yaml"), root),
+        "prompts": _digest(files("prompts/**/*.md"), root),
+        "engine": _digest(files("research_control/**/*.py"), root),
+    }
 
 
 def run_slug(company_url: str) -> str:
@@ -60,4 +86,14 @@ def sync_engine(template_root: Path, run_root: Path) -> list[str]:
         shutil.copy2(template_root / name, run_root / name)
     for name in TEMPLATE_DIRECTORIES:
         shutil.copytree(template_root / name, run_root / name, ignore=IGNORED, dirs_exist_ok=True)
+    from research_control.orchestration import append_history
+
+    commit = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"], cwd=template_root, text=True, capture_output=True
+    ).stdout.strip() or "unknown"
+    fingerprint = engine_fingerprint(run_root)
+    append_history(
+        run_root, "engine-synced",
+        f"template_commit={commit} " + " ".join(f"{key}={value}" for key, value in fingerprint.items()),
+    )
     return [*TEMPLATE_FILES, *TEMPLATE_DIRECTORIES]

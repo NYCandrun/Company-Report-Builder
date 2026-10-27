@@ -16,19 +16,16 @@ from research_control.runtime import DISCOVERY_TERMINAL, UNCAPTURED_RELEVANCE, R
 
 
 COMPLETION_RULE = "first-party fixed point plus question sufficiency or saturation; never a source count"
-# The runtime crawls the first-party site itself; search channels are grouped so
-# one agent context covers related surfaces.
-RUNTIME_DISCOVERY_GROUP = "first-party-site"
-DISCOVERY_GROUPS: dict[str, tuple[str, ...]] = {
-    RUNTIME_DISCOVERY_GROUP: ("company_site", "sitemaps"),
-    "first-party-surfaces": ("newsroom_blog", "docs_help", "careers", "code_packages"),
-    "media-social": ("video", "podcasts", "social"),
-    "independent-web": ("independent_web",),
-}
-# Groups that complete first-party coverage start after the runtime crawl, so
-# they search for what the crawl could not reach rather than repeat it.
-FIRST_PARTY_FOLLOW_UP = {"first-party-surfaces"}
-assert sorted(channel for group in DISCOVERY_GROUPS.values() for channel in group) == sorted(DISCOVERY_CHANNELS)
+# One discovery task per channel. The runtime itself crawls the company site and
+# audits its sitemaps; the other eight channels each get their own agent worker.
+RUNTIME_DISCOVERY_CHANNELS = {"company_site", "sitemaps"}
+# Channels that complete first-party coverage start after the runtime crawl, so
+# their workers search for what the crawl could not reach rather than repeat it.
+FIRST_PARTY_FOLLOW_UP = {"newsroom_blog", "docs_help", "careers", "code_packages"}
+
+
+def discovery_task_id(channel: str) -> str:
+    return f"capture.discover.{channel.replace('_', '-')}"
 
 
 def _slug(value: str) -> str:
@@ -122,6 +119,20 @@ class AdaptivePlanner:
             metadata=dict(metadata if metadata is not None else definition.get("metadata", {"planner": "static-profile"})),
         )
 
+    def _legacy_discovery_cover(self, channel: str, current: dict[str, Any]) -> str | None:
+        """Return a finished grouped discovery task whose receipt still matches ``channel``."""
+        for task in self.store.tasks(phase="capture"):
+            channels = task["metadata"].get("channels") or []
+            if task["task_type"] != "source_discovery" or len(channels) < 2 or channel not in channels:
+                continue
+            if task["state"] != "succeeded":
+                continue
+            receipt_path = self.root / task["metadata"]["receipts"][channels.index(channel)]
+            receipt = load_json(receipt_path) if receipt_path.is_file() else {}
+            if receipt.get("status") == current.get("state") and receipt.get("evidence") == current.get("completion_evidence"):
+                return task["task_id"]
+        return None
+
     def _plan_capture(self) -> list[str]:
         created: list[str] = []
         state = load_state(self.root)
@@ -130,13 +141,23 @@ class AdaptivePlanner:
         self._add(self._plan_profile_task("final", "brand-guide"), created)
         engine = DiscoveryEngine(self.root, self.store)
         engine.initialize()
+        channels = self.store.discovery_channels()
+        by_channel = {item["channel"]: item for item in channels}
         discovery_ids: list[str] = []
-        runtime_group_id = f"capture.discover.{RUNTIME_DISCOVERY_GROUP}"
-        for group, channels in DISCOVERY_GROUPS.items():
-            task_id = f"capture.discover.{group}"
+        for channel in DISCOVERY_CHANNELS:
+            task_id = discovery_task_id(channel)
+            legacy_id = self._legacy_discovery_cover(channel, by_channel.get(channel, {}))
+            if legacy_id and not self.store.task(task_id):
+                # A run started before discovery was split per channel keeps the
+                # grouped task's finished work until that channel changes.
+                discovery_ids.append(legacy_id)
+                continue
             discovery_ids.append(task_id)
-            receipts = [f"tools/outputs/worker-parts/discovery/{_slug(channel)}.json" for channel in channels]
-            automatic = group == RUNTIME_DISCOVERY_GROUP
+            receipt = f"tools/outputs/worker-parts/discovery/{_slug(channel)}.json"
+            automatic = channel in RUNTIME_DISCOVERY_CHANNELS
+            # company_site is planned first, so discovery_ids[0] is whichever task covers it.
+            follows_crawl = channel == "sitemaps" or channel in FIRST_PARTY_FOLLOW_UP
+            depends_on = [discovery_ids[0]] if follows_crawl else []
             self._add(
                 WorkItem(
                     task_id=task_id,
@@ -144,12 +165,12 @@ class AdaptivePlanner:
                     task_type="source_discovery",
                     inputs=[
                         {"id": "company_url", "value": state["company_url"]},
-                        {"id": "channels", "value": list(channels)},
+                        {"id": "channels", "value": [channel]},
                         {"id": "scope_map", "path": "00-scope.md"},
                     ],
-                    outputs=receipts,
+                    outputs=[receipt],
                     prompt_files=["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/phases/discovery.md"],
-                    depends_on=[] if automatic or group not in FIRST_PARTY_FOLLOW_UP else [runtime_group_id],
+                    depends_on=depends_on,
                     schema_files=["research_control/schemas/discovery-pass.schema.json"],
                     host_key=state["company_host"] if automatic else "",
                     priority=10 if automatic else 20,
@@ -157,27 +178,24 @@ class AdaptivePlanner:
                     exclusive_inputs=False,
                     max_attempts=8,
                     metadata={
-                        "channels": list(channels),
-                        "receipts": receipts,
+                        "channels": [channel],
+                        "receipts": [receipt],
                         "executor": "runtime" if automatic else "agent",
                     },
                 ),
                 created,
             )
 
-        channels = self.store.discovery_channels()
-        by_channel = {item["channel"]: item for item in channels}
         for task_id in discovery_ids:
             task = self.store.task(task_id)
-            if not task or task["state"] != "succeeded":
+            if not task or task["state"] != "succeeded" or len(task["metadata"]["channels"]) != 1:
                 continue
-            for channel, receipt_relative in zip(task["metadata"]["channels"], task["metadata"]["receipts"]):
-                receipt_path = self.root / receipt_relative
-                receipt = load_json(receipt_path) if receipt_path.is_file() else {}
-                current = by_channel.get(channel, {})
-                if receipt.get("status") != current.get("state") or receipt.get("evidence") != current.get("completion_evidence"):
-                    self.store.mark_stale(task_id, f"discovery channel {channel} changed after the worker receipt")
-                    break
+            channel, receipt_relative = task["metadata"]["channels"][0], task["metadata"]["receipts"][0]
+            receipt_path = self.root / receipt_relative
+            receipt = load_json(receipt_path) if receipt_path.is_file() else {}
+            current = by_channel.get(channel, {})
+            if receipt.get("status") != current.get("state") or receipt.get("evidence") != current.get("completion_evidence"):
+                self.store.mark_stale(task_id, f"discovery channel {channel} changed after the worker receipt")
         discovery_tasks = [self.store.task(task_id) for task_id in discovery_ids]
         discovery_done = bool(channels) and all(item["state"] in DISCOVERY_TERMINAL for item in channels)
         workers_done = all(task and task["state"] == "succeeded" for task in discovery_tasks)

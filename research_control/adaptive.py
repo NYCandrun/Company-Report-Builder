@@ -30,8 +30,13 @@ def open_runtime(root: Path) -> RuntimeStore:
     return store
 
 
-def advance(root: Path, company_url: str | None = None) -> dict[str, Any]:
-    """Advance automatically until worker work, a failed gate, or release."""
+def advance(root: Path, company_url: str | None = None, *, automatic: bool = True) -> dict[str, Any]:
+    """Advance automatically until worker work, a failed gate, or release.
+
+    With ``automatic=False`` the orchestrator plans and writes agent packets but
+    does not execute runtime-owned work (for example while another `run`
+    process is already capturing).
+    """
     state_path = root / "tools/outputs/run-state.json"
     if not state_path.is_file():
         if not company_url:
@@ -64,12 +69,14 @@ def advance(root: Path, company_url: str | None = None) -> dict[str, Any]:
 
             planned = AdaptivePlanner(root, store).reconcile()
             order = phase_order(root)
-            automatic = run_automatic(
-                root, store, order[: order.index(phase) + 1],
-                lambda current_store, task, worker: _complete(root, current_store, task, worker),
-                lambda: AdaptivePlanner(root, store).reconcile(),
-            )
-            if automatic["executed"] or automatic["failed"]:
+            executed = {"executed": 0, "failed": [], "skipped": not automatic}
+            if automatic:
+                executed = run_automatic(
+                    root, store, order[: order.index(phase) + 1],
+                    lambda current_store, task, worker: _complete(root, current_store, task, worker),
+                    lambda: AdaptivePlanner(root, store).reconcile(),
+                )
+            if executed["executed"] or executed["failed"]:
                 planned = AdaptivePlanner(root, store).reconcile()
             dispatch = emit_ready_packets(root, store, phase)
             if dispatch["ready_count"]:
@@ -77,7 +84,7 @@ def advance(root: Path, company_url: str | None = None) -> dict[str, Any]:
                     "status": "work_ready",
                     "phase": phase,
                     "planning": planned,
-                    "automatic": automatic,
+                    "automatic": executed,
                     "dispatch": dispatch,
                     "recovered": recovered,
                     "stale": stale,
