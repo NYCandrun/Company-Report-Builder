@@ -174,7 +174,10 @@ class AdaptivePlannerTests(unittest.TestCase):
                     discovered_from="homepage", evidence="fixture links", record_pass=False,
                 )
                 first_plan = AdaptivePlanner(root, store).reconcile()
-                self.assertEqual(len(DISCOVERY_CHANNELS), first_plan["task_count"])
+                # Capture starts while discovery is still open: 10 channel tasks + 3 sources.
+                self.assertEqual(len(DISCOVERY_CHANNELS) + 3, first_plan["task_count"])
+                early_captures = [task for task in store.tasks(phase="capture") if task["task_type"] == "capture"]
+                self.assertTrue(all(task["state"] == "ready" and not task["depends_on"] for task in early_captures))
                 brand = store.task("final.brand-guide")
                 self.assertIsNotNone(brand)
                 self.assertTrue(brand["independent"])
@@ -235,6 +238,7 @@ class AdaptivePlannerTests(unittest.TestCase):
                     store.complete(task["task_id"], RUNTIME_WORKER)
 
                 AdaptivePlanner(root, store).reconcile()
+                self.assertIn("capture.reduce-discovery", store.task("capture.reduce-captures")["depends_on"])
                 reduce_capture_parts(root, store)
                 store.claim(RUNTIME_WORKER, task_id="capture.reduce-captures")
                 store.start("capture.reduce-captures", RUNTIME_WORKER)

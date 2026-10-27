@@ -385,6 +385,17 @@ class RuntimeStore:
                 (utc_now(), task_id),
             )
 
+    def remove_dependency(self, task_id: str, depends_on: str) -> bool:
+        """Drop a dependency edge that the plan no longer requires."""
+        with self.connection:
+            removed = self.connection.execute(
+                "DELETE FROM dependencies WHERE task_id=? AND depends_on=?", (task_id, depends_on)
+            ).rowcount
+        if removed:
+            self.event("dependency_removed", task_id, {"depends_on": depends_on})
+            self.refresh_ready()
+        return bool(removed)
+
     def _task_from_row(self, row: sqlite3.Row) -> dict[str, Any]:
         result = dict(row)
         result.update(

@@ -240,8 +240,11 @@ scope or corpus information exists.
 
 - Discovery work runs per channel until each closes against the research
   questions or saturates.
-- One capture task is created per relevant canonical source and executed by
-  the runtime.
+- One capture task is created per relevant canonical source as soon as it is
+  admitted, and the runtime captures it while discovery continues. Only the
+  capture reducer, which writes the final manifest, waits for discovery to
+  close. Phase gating applies to work whose input would be incomplete without
+  the earlier step, not to work that can simply grow as new inputs arrive.
 - Triage selects captured sources for extraction by research question.
 - Captured text is assembled into canonical extracts.
 - Extraction work is packed by estimated token volume, and oversized sources

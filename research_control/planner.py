@@ -259,44 +259,49 @@ class AdaptivePlanner:
                 if task_id not in barrier["depends_on"]:
                     self.store.add_dependency(barrier_id, task_id)
             barrier = self.store.task(barrier_id)
+        # Capture starts as soon as a source is admitted; it does not wait for
+        # discovery to close. Only the capture reducer, which writes the final
+        # manifest, depends on the complete discovery snapshot.
         capture_ids: list[str] = []
-        if barrier and barrier["state"] == "succeeded":
-            for source in self.store.sources():
-                if source["relevance"] in UNCAPTURED_RELEVANCE:
-                    continue
-                if source["status"] == "blocked":
-                    continue
-                task_id = f"capture.source.{source['source_id'].casefold()}"
-                capture_ids.append(task_id)
-                directory = f"01-sources/captures/{source['source_id']}"
-                receipt = f"tools/outputs/worker-parts/capture/{source['source_id']}.json"
-                self._add(
-                    WorkItem(
-                        task_id=task_id,
-                        phase="capture",
-                        task_type="capture",
-                        inputs=[{
-                            "id": source["source_id"],
-                            "source_id": source["source_id"],
-                            "url": source["canonical_url"],
-                            "channel": source["channel"],
-                            "source_kind": source["source_kind"],
-                        }],
-                        outputs=[directory, receipt],
-                        prompt_files=["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/phases/capture-source.md"],
-                        depends_on=[barrier_id],
-                        schema_files=["research_control/schemas/source.schema.json", "research_control/schemas/disposition.schema.json"],
-                        validators=["capture_receipt", "canonical_content"],
-                        host_key=source["host_key"],
-                        priority=40,
-                        independent=False,
-                        metadata={"source_id": source["source_id"], "receipt": receipt, "executor": "runtime"},
-                    ),
-                    created,
-                )
+        for source in self.store.sources():
+            if source["relevance"] in UNCAPTURED_RELEVANCE:
+                continue
+            if source["status"] == "blocked":
+                continue
+            task_id = f"capture.source.{source['source_id'].casefold()}"
+            capture_ids.append(task_id)
+            directory = f"01-sources/captures/{source['source_id']}"
+            receipt = f"tools/outputs/worker-parts/capture/{source['source_id']}.json"
+            self._add(
+                WorkItem(
+                    task_id=task_id,
+                    phase="capture",
+                    task_type="capture",
+                    inputs=[{
+                        "id": source["source_id"],
+                        "source_id": source["source_id"],
+                        "url": source["canonical_url"],
+                        "channel": source["channel"],
+                        "source_kind": source["source_kind"],
+                    }],
+                    outputs=[directory, receipt],
+                    prompt_files=["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/phases/capture-source.md"],
+                    schema_files=["research_control/schemas/source.schema.json", "research_control/schemas/disposition.schema.json"],
+                    validators=["capture_receipt", "canonical_content"],
+                    host_key=source["host_key"],
+                    priority=40,
+                    independent=False,
+                    metadata={"source_id": source["source_id"], "receipt": receipt, "executor": "runtime"},
+                ),
+                created,
+            )
+            # Runs planned before capture overlapped discovery gated each
+            # capture on the snapshot; release that edge on unstarted work.
+            self.store.remove_dependency(task_id, barrier_id)
 
         capture_tasks = [self.store.task(task_id) for task_id in capture_ids]
-        if capture_ids and all(task and task["state"] == "succeeded" for task in capture_tasks):
+        snapshot_done = bool(barrier) and barrier["state"] == "succeeded"
+        if snapshot_done and capture_ids and all(task and task["state"] == "succeeded" for task in capture_tasks):
             self._add(
                 WorkItem(
                     task_id="capture.reduce-captures",
@@ -312,7 +317,7 @@ class AdaptivePlanner:
                         "tools/outputs/capture-dispositions.jsonl",
                     ],
                     prompt_files=["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/phases/capture-reducer.md"],
-                    depends_on=capture_ids,
+                    depends_on=[barrier_id, *capture_ids],
                     schema_files=["research_control/schemas/source.schema.json", "research_control/schemas/disposition.schema.json"],
                     validators=["source_records", "source_dates", "manifest_files", "capture_workers"],
                     priority=50,
