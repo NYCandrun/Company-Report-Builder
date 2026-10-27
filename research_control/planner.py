@@ -8,8 +8,9 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-from research_control.discovery import ALTERNATES_PART, BLOCKED_SOURCES_LIST, DISCOVERY_CHANNELS, DiscoveryEngine
-from research_control.io import atomic_write_jsonl, atomic_write_text, load_json, workflow
+from research_control.discovery import ALTERNATES_PART, BLOCKED_SOURCES_LIST, DISCOVERY_CHANNELS, MEDIA_CHANNELS, DiscoveryEngine
+from research_control.media import is_media_url
+from research_control.io import atomic_write_jsonl, atomic_write_text, load_json, load_jsonl, workflow
 from research_control.triage import TRIAGE_DECISIONS, TRIAGE_EXCERPT_CHARACTERS, TRIAGE_INDEX, triage_included
 from research_control.orchestration import TASK_SCHEMAS, current_phase, load_state
 from research_control.runtime import ACTIVE_STATES, DISCOVERY_TERMINAL, FINAL_STATES, SATISFIED_STATES, UNCAPTURED_RELEVANCE, RuntimeStore, WorkItem
@@ -25,6 +26,19 @@ FIRST_PARTY_FOLLOW_UP = {"newsroom_blog", "docs_help", "careers", "code_packages
 
 
 ALTERNATES_TASK = "capture.alternate-copies"
+
+
+def alternates_task_id(number: int) -> str:
+    return ALTERNATES_TASK if number == 1 else f"{ALTERNATES_TASK}.{number}"
+
+
+def blocked_sources_list(number: int) -> str:
+    return BLOCKED_SOURCES_LIST if number == 1 else BLOCKED_SOURCES_LIST.replace(".jsonl", f"-{number}.jsonl")
+
+
+def _is_media_capture(task: dict[str, Any]) -> bool:
+    source = (task.get("inputs") or [{}])[0]
+    return source.get("channel") in MEDIA_CHANNELS or is_media_url(str(source.get("url", "")))
 
 
 def discovery_task_id(channel: str) -> str:
@@ -305,36 +319,46 @@ class AdaptivePlanner:
         capture_tasks = [self.store.task(task_id) for task_id in capture_ids]
         snapshot_done = bool(barrier) and barrier["state"] == "succeeded"
         captures_done = bool(capture_ids) and all(task and task["state"] == "succeeded" for task in capture_tasks)
-        alternates = self.store.task(ALTERNATES_TASK)
-        if snapshot_done and captures_done and not alternates:
-            blocked = self._blocked_sources()
-            if blocked:
-                # One pass per run: blocked sources get a search for public
-                # copies of the same content; alternates of alternates do not.
-                atomic_write_jsonl(self.root / BLOCKED_SOURCES_LIST, blocked)
+        # Page captures finish long before transcription does, so the first
+        # alternate-copies pass starts once every non-media capture is done; a
+        # later pass covers sources that become blocked after it was planned.
+        text_done = bool(capture_ids) and all(
+            task and (task["state"] == "succeeded" or _is_media_capture(task)) for task in capture_tasks
+        )
+        passes = self._alternate_passes()
+        passes_done = all(task["state"] in SATISFIED_STATES for task in passes)
+        if snapshot_done and passes_done and (text_done or captures_done):
+            uncovered = self._uncovered_blocked()
+            if uncovered:
+                number = len(passes) + 1
+                task_id = alternates_task_id(number)
+                blocked_list = blocked_sources_list(number)
+                atomic_write_jsonl(self.root / blocked_list, uncovered)
                 self._add(
                     WorkItem(
-                        task_id=ALTERNATES_TASK,
+                        task_id=task_id,
                         phase="capture",
                         task_type="alternate_copies",
                         inputs=[
-                            {"id": "blocked_sources", "path": BLOCKED_SOURCES_LIST, "required": True},
+                            {"id": "blocked_sources", "path": blocked_list, "required": True},
                             {"id": "scope_map", "path": "00-scope.md", "required": True},
                         ],
                         outputs=[ALTERNATES_PART],
                         prompt_files=["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/phases/alternate-copies.md"],
-                        depends_on=[barrier_id],
+                        depends_on=[barrier_id, *(task["task_id"] for task in passes)],
                         schema_files=[],
                         validators=["alternate_accounting"],
                         priority=45,
                         independent=True,
                         exclusive_inputs=True,
-                        metadata={"channels": list(DISCOVERY_CHANNELS), "executor": "agent"},
+                        metadata={"channels": list(DISCOVERY_CHANNELS), "executor": "agent", "pass": number},
                     ),
                     created,
                 )
-                alternates = self.store.task(ALTERNATES_TASK)
-        alternates_done = alternates is None or alternates["state"] == "succeeded"
+                passes = self._alternate_passes()
+        alternates_done = all(task["state"] in SATISFIED_STATES for task in passes) and not (
+            captures_done and self._uncovered_blocked()
+        )
         if snapshot_done and captures_done and alternates_done:
             self._add(
                 WorkItem(
@@ -351,7 +375,7 @@ class AdaptivePlanner:
                         "tools/outputs/capture-dispositions.jsonl",
                     ],
                     prompt_files=["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/phases/capture-reducer.md"],
-                    depends_on=[barrier_id, *([ALTERNATES_TASK] if alternates else []), *capture_ids],
+                    depends_on=[barrier_id, *(task["task_id"] for task in passes), *capture_ids],
                     schema_files=["research_control/schemas/source.schema.json", "research_control/schemas/disposition.schema.json"],
                     validators=["source_records", "source_dates", "manifest_files", "capture_workers"],
                     priority=50,
@@ -469,6 +493,18 @@ class AdaptivePlanner:
                 created,
             )
         return created
+
+    def _alternate_passes(self) -> list[dict[str, Any]]:
+        passes: list[dict[str, Any]] = []
+        while task := self.store.task(alternates_task_id(len(passes) + 1)):
+            passes.append(task)
+        return passes
+
+    def _uncovered_blocked(self) -> list[dict[str, Any]]:
+        """Blocked sources that no alternate-copies pass has recorded an outcome for."""
+        part = self.root / ALTERNATES_PART
+        handled = {row["source_id"] for row in load_jsonl(part)} if part.is_file() else set()
+        return [row for row in self._blocked_sources() if row["source_id"] not in handled]
 
     def _blocked_sources(self) -> list[dict[str, Any]]:
         """Blocked captures that are not themselves alternates, with their reasons."""

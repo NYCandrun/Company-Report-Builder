@@ -204,7 +204,8 @@ def _validate_semantic_receipt(root: Path, store: RuntimeStore, task: dict[str, 
             if not str(receipt.get("evidence", "")).strip():
                 raise ValueError(f"{task['task_id']}: {channel} receipt lacks completion evidence")
     if task["task_type"] == "alternate_copies":
-        blocked = {row["source_id"] for row in load_jsonl(root / BLOCKED_SOURCES_LIST)}
+        listed = next((item["path"] for item in task["inputs"] if item.get("id") == "blocked_sources"), BLOCKED_SOURCES_LIST)
+        blocked = {row["source_id"] for row in load_jsonl(root / listed)}
         part = root / ALTERNATES_PART
         handled = {row["source_id"] for row in load_jsonl(part)} if part.is_file() else set()
         missing = sorted(blocked - handled)

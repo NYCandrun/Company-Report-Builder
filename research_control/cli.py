@@ -438,9 +438,11 @@ def main() -> None:
                 if args.discovery_command in WORKER_DISCOVERY_COMMANDS:
                     _require_discovery_lease(store, args.channel)
                 if args.discovery_command == "alternate":
-                    alternates = store.task(ALTERNATES_TASK)
-                    if not alternates or alternates["state"] not in {"leased", "running"}:
-                        raise ValueError(f"claim and start {ALTERNATES_TASK} before recording alternates")
+                    if not any(
+                        task["task_type"] == "alternate_copies"
+                        for task in store.tasks(phase="capture", states=["leased", "running"])
+                    ):
+                        raise ValueError(f"claim and start an {ALTERNATES_TASK} task before recording alternates")
                     if bool(args.url) == bool(args.none):
                         raise ValueError("pass exactly one of --url or --none")
                 if args.discovery_command == "crawl":

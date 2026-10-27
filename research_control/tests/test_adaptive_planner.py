@@ -8,7 +8,7 @@ from research_control.discovery import DISCOVERY_CHANNELS, DiscoveryEngine
 from research_control.automatic import RUNTIME_WORKER
 from research_control.cli import _require_discovery_lease
 from research_control.dispatch import emit_ready_packets
-from research_control.io import atomic_write_json, atomic_write_jsonl, workflow
+from research_control.io import atomic_write_json, atomic_write_jsonl, load_jsonl, workflow
 from research_control.orchestration import initialize, load_state, save_state
 from research_control.planner import RUNTIME_DISCOVERY_CHANNELS, AdaptivePlanner, discovery_task_id
 from research_control.runtime import WorkItem
@@ -274,7 +274,7 @@ class AdaptivePlannerTests(unittest.TestCase):
 
 
 class AlternateCopiesTests(unittest.TestCase):
-    def test_blocked_capture_gets_one_alternate_pass_before_the_manifest(self) -> None:
+    def test_blocked_captures_get_alternate_passes_before_the_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             copy_template(root)
@@ -289,6 +289,10 @@ class AlternateCopiesTests(unittest.TestCase):
                 engine.initialize()
                 engine.add_candidates(
                     "company_site", ["https://example.com/press"], discovered_from="homepage",
+                    evidence="fixture", record_pass=False,
+                )
+                engine.add_candidates(
+                    "video", ["https://www.youtube.com/watch?v=abcdefghijk"], discovered_from="channel",
                     evidence="fixture", record_pass=False,
                 )
                 AdaptivePlanner(root, store).reconcile()
@@ -306,12 +310,13 @@ class AlternateCopiesTests(unittest.TestCase):
                 store.start("capture.reduce-discovery", RUNTIME_WORKER)
                 store.complete("capture.reduce-discovery", RUNTIME_WORKER)
                 captures = [task for task in store.tasks(phase="capture") if task["task_type"] == "capture"]
-                for index, task in enumerate(captures):
+                video = next(task for task in captures if "youtube" in task["inputs"][0]["url"])
+
+                def finish(task: dict, status: str) -> None:
                     source_id = task["metadata"]["source_id"]
                     directory_path = root / "01-sources/captures" / source_id
                     directory_path.mkdir(parents=True, exist_ok=True)
                     (directory_path / "content.txt").write_text("text\n", encoding="utf-8")
-                    status = "blocked" if store.source(source_id)["canonical_url"].endswith("/press") else "captured"
                     atomic_write_json(root / task["metadata"]["receipt"], {
                         "source_id": source_id, "status": status, "reason": "HTTP Error 403: Forbidden",
                         "canonical_text_ready": status == "captured",
@@ -325,7 +330,14 @@ class AlternateCopiesTests(unittest.TestCase):
                     store.claim(RUNTIME_WORKER, task_id=task["task_id"])
                     store.start(task["task_id"], RUNTIME_WORKER)
                     store.complete(task["task_id"], RUNTIME_WORKER)
+
+                for task in captures:
+                    if task is video:
+                        continue
+                    url = store.source(task["metadata"]["source_id"])["canonical_url"]
+                    finish(task, "blocked" if url.endswith("/press") else "captured")
                 AdaptivePlanner(root, store).reconcile()
+                # The first pass starts while the video is still transcribing.
                 alternates = store.task("capture.alternate-copies")
                 self.assertIsNotNone(alternates)
                 self.assertIsNone(store.task("capture.reduce-captures"))
@@ -341,6 +353,19 @@ class AlternateCopiesTests(unittest.TestCase):
                 alternate_capture = store.task(f"capture.source.{row['alternate_source_id'].casefold()}")
                 self.assertIsNotNone(alternate_capture)
                 self.assertEqual("ready", alternate_capture["state"])
+
+                # The video ends blocked after the first pass: a second pass covers it.
+                finish(video, "blocked")
+                finish(alternate_capture, "captured")
+                store.claim("w-alt", task_id="capture.alternate-copies")
+                store.start("capture.alternate-copies", "w-alt")
+                store.complete("capture.alternate-copies", "w-alt")
+                AdaptivePlanner(root, store).reconcile()
+                second = store.task("capture.alternate-copies.2")
+                self.assertIsNotNone(second)
+                listed = [row["source_id"] for row in load_jsonl(root / "tools/lists/blocked-sources-2.jsonl")]
+                self.assertEqual([video["metadata"]["source_id"]], listed)
+                self.assertIsNone(store.task("capture.reduce-captures"))
 
 
 def _write_receipt(root: Path, store: RuntimeStore, channel: str) -> None:

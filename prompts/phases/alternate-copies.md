@@ -1,6 +1,6 @@
 # TASK TYPE: ALTERNATE COPIES OF BLOCKED SOURCES
 
-Every source in `tools/lists/blocked-sources.jsonl` was admitted as evidence,
+Every source in this task's `blocked_sources` input list was admitted as evidence,
 but the runtime could not capture it: the site refused automated requests
 (HTTP 403), the page is gone (HTTP 404), or another access failure, each with
 its recorded reason. Your job is to find a publicly reachable copy of the
@@ -25,7 +25,7 @@ Not alternates: pages that only summarize, quote from, or comment on the
 original; search-result pages; cache mirrors; paywall-removal services.
 
 Verify each candidate is publicly reachable before recording it (for example
-`python3 -m research_control web fetch --url URL --consumer capture.alternate-copies --purpose research_discovery`,
+`python3 -m research_control web fetch --url URL --consumer TASK_ID --purpose research_discovery`,
 which reports the HTTP status). Check the source catalog
 (`tools/outputs/discovery/sources.jsonl`, read only) first: an equivalent copy
 may already be cataloged, and you can record it by its URL.
@@ -41,6 +41,6 @@ python3 -m research_control discovery alternate --source-id SRC-... \
 
 A recorded alternate joins the original's channel without reopening it, and
 the runtime captures it automatically. The task is complete only when every
-listed source has at least one recorded outcome. Return the number of sources
+source in its list has at least one recorded outcome. Return the number of sources
 with an alternate, the number with none, and any that need a different access
 method.

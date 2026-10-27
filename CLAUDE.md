@@ -14,9 +14,10 @@ every ready packet until exact-artifact release passes.
   commands for a task it has not claimed. To add work to a closed channel,
   reopen it with `discovery reopen` and rerun `run` so the scheduler re-queues
   the task.
-- Blocked captures are not the end of the line: the scheduler plans one
-  alternate-copies pass after capture, and its worker records a public copy of
-  the same content, or that none exists, for every blocked source.
+- Blocked captures are not the end of the line: the scheduler plans an
+  alternate-copies pass once page captures finish (and a later pass for anything
+  blocked after it), and its worker records a public copy of the same content,
+  or that none exists, for every blocked source in its list.
 - Do not invent source, page, batch, or worker quotas. Discovery channels close
   as `sufficient` against the numbered research questions or as `saturated`;
   triage then bounds extraction by those questions.
