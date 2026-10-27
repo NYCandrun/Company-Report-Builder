@@ -108,7 +108,8 @@ def _where(link: dict[str, Any], part: tuple[str, str, str] | None) -> tuple[str
     return (detail, float(lines.group(1)) if lines else 0.0) if detail else None
 
 
-PLATFORM_SUFFIX = re.compile(r"\s*(?:[-|·]\s*)?(?:YouTube|Apple Podcasts|Spotify|LinkedIn|GitHub)\s*$", re.I)
+# A page title that is only the platform's name ("Instagram") is no title at all.
+PLATFORM_SUFFIX = re.compile(r"\s*(?:[-|·]\s*)?(?:YouTube|Apple Podcasts|Spotify|LinkedIn|GitHub|Instagram|TikTok|Facebook|Vimeo)\s*$", re.I)
 
 
 def _clean_title(title: str) -> str:
