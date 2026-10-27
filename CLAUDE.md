@@ -25,3 +25,21 @@ every ready packet until exact-artifact release passes.
 - When the framework changes mid-run, change the template, commit, and run
   `python3 -m research_control --root runs/<slug> sync-engine` from the template
   checkout so the change is recorded in the run history.
+
+## Model routing
+
+Every packet names an advisory tier (`model_route` in its JSON). Claude Code can
+select a model and effort per subagent, so apply the route on every dispatch:
+
+| Tier | Model class | Subagent model | Effort |
+|---|---|---|---|
+| `strong` | `strongest_available` | `fable` (Claude Fable 5.1) | `high` |
+| `standard` | `balanced_capable` | `sonnet` (Claude Sonnet 5.5) | `medium` |
+| `economy` | `faster_capable` | `haiku` (Claude Haiku 5.5) | `low` |
+
+Pass the tier's model and effort when launching the worker, and have the worker
+record them on completion with
+`work succeed TASK_ID --worker-id ID --model MODEL_ID --effort EFFORT`, using the
+full model ID (`claude-fable-5-1`, `claude-sonnet-5-5`, `claude-haiku-5-5`). If
+the host refuses a model, fall back to the available model and record the model
+that actually ran; routing never blocks a task or relaxes a gate.

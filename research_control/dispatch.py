@@ -99,7 +99,7 @@ def write_packet(root: Path, task: dict[str, Any]) -> dict[str, Any]:
         f"1. Claim: `python3 -m research_control work claim {task['task_id']} --worker-id WORKER_ID`",
         f"2. Start: `python3 -m research_control work start {task['task_id']} --worker-id WORKER_ID`",
         f"3. Heartbeat during long work: `python3 -m research_control work heartbeat {task['task_id']} --worker-id WORKER_ID`",
-        f"4. Succeed only after outputs exist: `python3 -m research_control work succeed {task['task_id']} --worker-id WORKER_ID`",
+        f"4. Succeed only after outputs exist: `python3 -m research_control work succeed {task['task_id']} --worker-id WORKER_ID --model MODEL_ID --effort EFFORT` (the model and effort that actually ran)",
         f"5. On failure: `python3 -m research_control work fail {task['task_id']} --worker-id WORKER_ID --reason REASON`",
         "",
         "Do not edit scheduler state, canonical shared files not named above, or another worker's part.",
