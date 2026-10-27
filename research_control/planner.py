@@ -78,6 +78,57 @@ def _batch_id(items: list[dict[str, Any]]) -> str:
     return sha256(signature.encode("utf-8")).hexdigest()[:12]
 
 
+# Where a source may be cut: a repository capture's file, commit, branch, or
+# conversation header, a transcript's timestamp, or a blank line between
+# paragraphs. Cutting only there, at boundaries chosen by their own text, means
+# a recapture that inserts or changes one part leaves every other slice
+# byte-identical, so finished extraction of them is kept.
+SECTION_START = re.compile(r"^(?:--- |=== |\[\d{1,2}:\d{2}:\d{2}\])", re.M)
+
+
+def _fixed_cuts(content: str, target: int) -> list[int]:
+    cuts, start = [0], 0
+    while start < len(content):
+        end = min(start + target, len(content))
+        if end < len(content):
+            boundary = content.rfind("\n\n", start, end)
+            if boundary > start + target // 2:
+                end = boundary + 2
+        cuts.append(end)
+        start = end
+    return cuts
+
+
+def _content_cuts(content: str, minimum: int, maximum: int) -> list[int]:
+    """Cut points at section boundaries chosen by the text at the boundary, so the
+    same text is cut the same way wherever it sits; a section larger than the
+    maximum is cut at line ends."""
+    starts = sorted({match.start() for match in SECTION_START.finditer(content)}
+                    | {match.end() for match in re.finditer(r"\n\n+", content)})
+    cuts, last = [0], 0
+
+    def split_long(until: int) -> None:
+        nonlocal last
+        while until - last > maximum:
+            cut = content.rfind("\n", last + minimum, last + maximum)
+            cut = cut + 1 if cut > last else last + maximum
+            cuts.append(cut)
+            last = cut
+
+    for position in starts:
+        if position <= last or position >= len(content):
+            continue
+        split_long(position)
+        anchor = sha256(content[position:position + 64].encode("utf-8")).digest()[0] % 4 == 0
+        if position - last >= minimum and (anchor or position - last >= maximum):
+            cuts.append(position)
+            last = position
+    split_long(len(content))
+    if cuts[-1] != len(content):
+        cuts.append(len(content))
+    return cuts
+
+
 class AdaptivePlanner:
     """Reconcile desired work with durable scheduler state.
 
@@ -663,8 +714,8 @@ class AdaptivePlanner:
             {**item, "pass": listed_at[base_source(item["id"])]} if base_source(item["id"]) in listed_at else item
             for item in uncovered
         ]
-        deferred = deferred_slices(self.root)
-        uncovered = [item for item in uncovered if deferred.get(item["id"], {}).get("sha256") != item.get("sha256")]
+        deferred_text = {str(value.get("sha256")) for value in deferred_slices(self.root).values()}
+        uncovered = [item for item in uncovered if item.get("sha256") not in deferred_text]
         batches = self._pack_slices(uncovered)
         extraction_ids: list[str] = list(kept)
         for batch in batches:
@@ -700,7 +751,8 @@ class AdaptivePlanner:
         current = set(extraction_ids)
         for task in self.store.tasks(phase="facts"):
             if task["task_type"] == "extraction" and task["task_id"] not in current and task["state"] not in ACTIVE_STATES:
-                held = [deferred[item["id"]]["reason"] for item in task["inputs"] if item.get("id") in deferred]
+                reasons = {str(value.get("sha256")): value.get("reason", "") for value in deferred_slices(self.root).values()}
+                held = [reasons[item["sha256"]] for item in task["inputs"] if item.get("sha256") in reasons]
                 reason = f"deferred: {held[0]}" if held and len(held) == len(task["inputs"]) else "replaced by a batch over the current source slices"
                 self.store.supersede(task["task_id"], reason)
         reducer_id = "facts.reduce-extraction"
@@ -918,6 +970,14 @@ class AdaptivePlanner:
         with manifest.open(encoding="utf-8-sig", newline="") as handle:
             rows = list(csv.DictReader(handle))
         slices: list[dict[str, Any]] = []
+        # Runs whose sources were cut at fixed sizes keep that cutting, so finished
+        # extraction is not redone; new runs cut at section boundaries.
+        legacy = any(
+            task["task_type"] == "extraction" and any(
+                ":part-" in str(item.get("id", "")) and item.get("cut") != "sections" for item in task["inputs"]
+            )
+            for task in self.store.tasks(phase="facts")
+        )
         for row in rows:
             source_id = row.get("id", "").strip()
             if included is not None and source_id not in included:
@@ -950,27 +1010,25 @@ class AdaptivePlanner:
                     "sha256": sha256(content.encode("utf-8")).hexdigest(),
                 })
                 continue
-            char_start = 0
-            part = 1
-            target_characters = self.target_extraction_tokens * 4
-            while char_start < len(content):
-                char_end = min(char_start + target_characters, len(content))
-                if char_end < len(content):
-                    boundary = content.rfind("\n\n", char_start, char_end)
-                    if boundary > char_start + target_characters // 2:
-                        char_end = boundary + 2
-                slice_path = self.root / "tools/extracts/slices" / f"{source_id}.part-{part:04d}.txt"
-                atomic_write_text(slice_path, content[char_start:char_end])
+            if legacy:
+                cuts = _fixed_cuts(content, self.target_extraction_tokens * 4)
+            else:
+                cuts = _content_cuts(content, int(self.target_extraction_tokens * 4 * 0.6), self.max_extraction_tokens * 4)
+            for part, (char_start, char_end) in enumerate(zip(cuts, cuts[1:]), 1):
+                text = content[char_start:char_end]
+                digest = sha256(text.encode("utf-8")).hexdigest()
+                name = f"{source_id}.part-{part:04d}.txt" if legacy else f"{source_id}.{digest[:12]}.txt"
+                slice_path = self.root / "tools/extracts/slices" / name
+                if not slice_path.is_file() or legacy:
+                    atomic_write_text(slice_path, text)
                 start = char_start // 4
                 end = max(start + 1, char_end // 4)
                 slices.append({
                     "id": f"{source_id}:part-{part:04d}", "source_id": source_id,
                     "path": str(slice_path.relative_to(self.root)), "source_paths": paths,
                     "estimated_tokens": end - start, "token_start": start, "token_end": end,
-                    "sha256": sha256(content[char_start:char_end].encode("utf-8")).hexdigest(),
+                    "sha256": digest, **({} if legacy else {"cut": "sections"}),
                 })
-                char_start = char_end
-                part += 1
         return slices
 
     def _unchanged_batches(self, slices: list[dict[str, Any]]) -> tuple[list[str], list[dict[str, Any]]]:
@@ -995,10 +1053,20 @@ class AdaptivePlanner:
         # Finished batches first, oldest first, so completed work keeps its slices.
         tasks.sort(key=lambda task: (task["state"] != "succeeded", task["created_at"], task["task_id"]))
 
-        def same(item: dict[str, Any]) -> bool:
+        by_content = {(item["source_id"], item["sha256"]): item for item in slices}
+        deferred_text = {str(value.get("sha256")) for value in deferred.values()}
+
+        def match(item: dict[str, Any]) -> dict[str, Any] | None:
+            """The current slice a batch's item read: the same text, wherever it now sits."""
             now = current.get(item.get("id"))
-            return bool(now) and all(item.get(key) == now.get(key) for key in ("path", "token_start", "token_end")) \
-                and item.get("sha256", now["sha256"]) == now["sha256"]
+            if now and all(item.get(key) == now.get(key) for key in ("path", "token_start", "token_end")) \
+                    and item.get("sha256", now["sha256"]) == now["sha256"]:
+                return now
+            source = str(item.get("source_id") or base_source(item.get("id", "")))
+            return by_content.get((source, str(item.get("sha256", ""))))
+
+        def same(item: dict[str, Any]) -> bool:
+            return match(item) is not None
 
         for task in tasks:
             inputs = task["inputs"]
@@ -1014,12 +1082,12 @@ class AdaptivePlanner:
                     # replaced by the new pass rather than run beside it.
                     holds = False
                     break
-                if task["state"] != "succeeded" and item.get("sha256") \
-                        and deferred.get(item.get("id", ""), {}).get("sha256") == item["sha256"]:
+                if task["state"] != "succeeded" and item.get("sha256") and item["sha256"] in deferred_text:
                     # A slice the orchestrator deferred is not extracted; its pending batch goes.
                     holds = False
                     break
-                if not same(item) or item["id"] in covered:
+                matched = match(item)
+                if matched is None or matched["id"] in covered:
                     holds = False
                     break
             if inputs and holds:
@@ -1027,7 +1095,7 @@ class AdaptivePlanner:
                 # A batch planned before its source was (re)listed for supplement
                 # keeps its facts but does not cover the text for the new pass.
                 covered.update(
-                    item["id"] for item in inputs
+                    match(item)["id"] for item in inputs
                     if same(item) and str(task["created_at"]) >= listed_at.get(base_source(item.get("id", "")), "")
                 )
         return kept, [item for item in slices if item["id"] not in covered]

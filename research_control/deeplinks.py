@@ -36,9 +36,10 @@ LINKS_REPORT = "06-checks/fact-links.md"
 ELLIPSIS = re.compile(r"\s*(?:\.\.\.|…|\[\.\.\.\]|\[…\])\s*")
 TIMESTAMP = re.compile(r"^\[(\d{1,2}):(\d{2}):(\d{2})\]\s*")
 FILE_HEADER = re.compile(
-    r"^--- FILE: (.+?)(?: \(PDF, (\d+) pages, as text\))?(?: \((HTML, as text|data sample[^)]*)\))?(?: \(\d+ lines\))? ---$"
+    r"^--- FILE: (.+?)(?: \(PDF, (\d+) pages, as text\))?(?: \((HTML, as text|tests, names only|data sample[^)]*)\))?(?: \(\d+ lines[^)]*\))? ---$"
 )
 PDF_PAGE = re.compile(r"^--- page (\d+) ---$")
+SURVIVED = re.compile(r"^\+\[(\d+) added lines? still in the current file\]$")
 COMMIT_HEADER = re.compile(r"^=== COMMIT ([0-9a-f]{7,40}) ")
 UNMERGED_HEADER = re.compile(r"^=== UNMERGED: (.+?) \(\d+ commits")
 CONVERSATION_HEADER = re.compile(r"^=== (?:PULL REQUEST|ISSUE) #\d+: .* \((https://github\.com/\S+)\) ===$")
@@ -200,7 +201,11 @@ def _diff_anchor(url: str, lines: list[str], start: int, index: int, label: str)
         if match:
             new_line = int(match.group(1)) - 1
             continue
-        if new_line is not None and not current.startswith("-"):
+        survived = SURVIVED.match(current)
+        if new_line is not None and survived:
+            # Added lines still in the current file are counted in one marker line.
+            new_line += int(survived.group(1))
+        elif new_line is not None and not current.startswith("-"):
             new_line += 1
     if not path:
         return url, label

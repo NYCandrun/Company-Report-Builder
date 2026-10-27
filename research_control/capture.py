@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+from collections import Counter
 import ipaddress
 import json
 import os
@@ -974,7 +975,14 @@ def _data_sample(path: str, text: str) -> tuple[str, str]:
     return sample + "\n", label
 
 
-def _repository_text(checkout: Path, listed: list[str]) -> list[str]:
+def _file_header(path: str, text: str, blame: "_Blame | None") -> str:
+    """`--- FILE: path (N lines; written 1-40 abc1234 2026-04-25; ...) ---` for a file read as is."""
+    count = text.count(chr(10)) + 1
+    written = blame.ranges(path) if blame is not None and "(" not in path else ""
+    return f"--- FILE: {path} ({count} lines{'; written ' + written if written else ''}) ---"
+
+
+def _repository_text(checkout: Path, listed: list[str], blame: "_Blame | None" = None) -> list[str]:
     """File contents in priority order within the budget, with every omission listed.
 
     A file over the per-file limit waits for a second pass and is included if the
@@ -1013,6 +1021,9 @@ def _repository_text(checkout: Path, listed: list[str]) -> list[str]:
         else:
             text = data.decode("utf-8", errors="replace")
         text = _drop_blobs(text)
+        if _is_test(path) and "(" not in path:
+            text = _test_outline(text)
+            path = f"{path} (tests, names only)"
         if len(text) > REPOSITORY_FILE_LIMIT and Path(path).suffix.casefold() in DATA_SUFFIXES:
             text, label = _data_sample(path, text)
             path = f"{path} ({label})"
@@ -1023,16 +1034,144 @@ def _repository_text(checkout: Path, listed: list[str]) -> list[str]:
             omitted.append(f"{path} (capture budget reached)")
             continue
         used += len(text)
-        lines += ["", f"--- FILE: {path} ({text.count(chr(10)) + 1} lines) ---", text.rstrip("\n")]
+        lines += ["", _file_header(path, text, blame), text.rstrip("\n")]
     for path, text in deferred:
         if used + len(text) > REPOSITORY_TEXT_BUDGET:
             omitted.append(f"{path} ({len(text)} characters, over the remaining capture budget)")
             continue
         used += len(text)
-        lines += ["", f"--- FILE: {path} ({text.count(chr(10)) + 1} lines) ---", text.rstrip("\n")]
+        lines += ["", _file_header(path, text, blame), text.rstrip("\n")]
     if omitted:
         lines += ["", f"--- FILES NOT INCLUDED ({len(omitted)}) ---", *omitted]
     return lines
+
+
+# Tests are evidence of what is verified, and their names say it: a test file
+# is read as its test names and docstrings, and its diffs are left out of the
+# change history and unmerged work (the file list still names them).
+TEST_PATH = re.compile(
+    r"(^|/)(tests?|__tests__|spec|specs)/|(^|/)test_[^/]+\.py$|_test\.(py|go|rb)$|\.(test|spec)\.[jt]sx?$|Test\.java$"
+)
+TEST_LINE = re.compile(
+    r"^\s*((async\s+)?def\s+test\w*|class\s+Test\w*|func\s+Test\w+|(it|test|describe)\s*\(|@Test\b|public void test\w*)"
+)
+DOC_START = ('"""', "'''", "//", "#", "/*")
+TEST_EXCLUDES = [
+    ":(exclude,glob)**/tests/**", ":(exclude,glob)**/test/**", ":(exclude,glob)**/__tests__/**",
+    ":(exclude,glob)**/test_*.py", ":(exclude,glob)**/*_test.py", ":(exclude,glob)**/*_test.go",
+    ":(exclude,glob)**/*.test.*", ":(exclude,glob)**/*.spec.*",
+]
+
+
+def _is_test(path: str) -> bool:
+    return bool(TEST_PATH.search(path))
+
+
+def _test_outline(text: str) -> str:
+    """Each test's name line and the first line of its docstring or comment."""
+    lines = text.splitlines()
+    kept: list[str] = []
+    for index, line in enumerate(lines):
+        if TEST_LINE.match(line):
+            kept.append(line.rstrip())
+            following = lines[index + 1].strip() if index + 1 < len(lines) else ""
+            if following.startswith(DOC_START):
+                kept.append("    " + following[:200])
+    return "\n".join(kept) + "\n"
+
+
+class _Blame:
+    """Which commit wrote each line of the current files, read once per file.
+
+    Used to leave out of the change history the added lines that are still in
+    the current file (it is captured whole), and to date the current files'
+    lines by the commit that introduced them. Blame stops after a time budget;
+    past it, history keeps every line and files carry no dates, which loses
+    nothing but the saving.
+    """
+
+    BUDGET_SECONDS = 900
+
+    def __init__(self, checkout: Path) -> None:
+        self.checkout = checkout
+        self.cache: dict[str, list[tuple[str, str]]] = {}
+        self.dates: dict[str, str] = {}
+        self.spent = 0.0
+
+    def lines(self, path: str) -> list[tuple[str, str]]:
+        if path in self.cache:
+            return self.cache[path]
+        result: list[tuple[str, str]] = []
+        if self.spent < self.BUDGET_SECONDS:
+            started = time.monotonic()
+            try:
+                output = _git(["blame", "--porcelain", "HEAD", "--", path], cwd=self.checkout, timeout=300)
+            except Exception:
+                output = ""
+            self.spent += time.monotonic() - started
+            sha = ""
+            for line in output.splitlines():
+                if line.startswith("\t"):
+                    result.append((sha, line[1:]))
+                    continue
+                head = line.split(" ")
+                if len(head) >= 3 and len(head[0]) == 40 and head[1].isdigit() and head[2].isdigit():
+                    sha = head[0]
+                elif head[0] == "committer-time" and sha and sha not in self.dates:
+                    self.dates[sha] = time.strftime("%Y-%m-%d", time.gmtime(int(head[1])))
+        self.cache[path] = result
+        return result
+
+    def survivors(self, path: str, sha: str) -> Counter[str]:
+        return Counter(text for owner, text in self.lines(path) if owner == sha)
+
+    def ranges(self, path: str, limit: int = 40) -> str:
+        """`1-40 abc1234 2026-04-25; 41-80 ...`: line ranges by the commit that wrote them."""
+        spans: list[list[Any]] = []
+        for number, (sha, _) in enumerate(self.lines(path), 1):
+            if spans and spans[-1][2] == sha:
+                spans[-1][1] = number
+            else:
+                spans.append([number, number, sha])
+        if not spans:
+            return ""
+        text = "; ".join(f"{start}-{end} {sha[:7]} {self.dates.get(sha, '')}".strip() for start, end, sha in spans[:limit])
+        return text + (f"; {len(spans) - limit} more ranges" if len(spans) > limit else "")
+
+
+DIFF_FILE_HEADER = re.compile(r"^diff --git a/(.+?) b/(.+)$")
+
+
+def _drop_surviving(patch: str, sha: str, blame: "_Blame | None") -> str:
+    """Replace a commit's added lines that are still in the current file with a count;
+    removed lines and added lines later changed stay, so nothing overwritten is lost."""
+    if blame is None or not patch:
+        return patch
+    output: list[str] = []
+    survivors: Counter[str] = Counter()
+    dropped = 0
+
+    def flush() -> None:
+        nonlocal dropped
+        if dropped:
+            output.append(f"+[{dropped} added line{'s' if dropped != 1 else ''} still in the current file]")
+            dropped = 0
+
+    for line in patch.split("\n"):
+        header = DIFF_FILE_HEADER.match(line)
+        if header:
+            flush()
+            survivors = blame.survivors(header.group(2), sha) if not _is_test(header.group(2)) else Counter()
+            output.append(line)
+            continue
+        if line.startswith("+") and not line.startswith("+++") and survivors[line[1:]] > 0:
+            survivors[line[1:]] -= 1
+            dropped += 1
+            continue
+        flush()
+        output.append(line)
+    flush()
+    return "\n".join(output)
 
 
 # History and work that is not on the default branch: the commit log, every
@@ -1073,14 +1212,17 @@ def _drop_blobs(text: str) -> str:
     return BASE64_RUN.sub(lambda match: f"{match.group(1) or ''}[{len(match.group(2))} base64 characters not shown]", text)
 
 
-def _patch_by_file(checkout: Path, command: list[str], paths: list[str], room: int) -> tuple[str, list[str]]:
+def _patch_by_file(checkout: Path, command: list[str], paths: list[str], room: int,
+                   transform: Any = None) -> tuple[str, list[str]]:
     """A large change's diff one file at a time within the room left; the rest named."""
     parts: list[str] = []
     left_out: list[str] = []
     for path in paths:
-        if not path or Path(path).name in SKIPPED_FILES:
+        if not path or Path(path).name in SKIPPED_FILES or _is_test(path):
             continue
         patch = _drop_blobs(_git([*command, "--", path], cwd=checkout, timeout=120).replace("\0", "")).rstrip("\n")
+        if transform is not None:
+            patch = transform(patch)
         if len(patch) > PATCH_FILE_LIMIT or len(patch) > room:
             left_out.append(f"{path} ({len(patch)} characters)")
             continue
@@ -1090,7 +1232,7 @@ def _patch_by_file(checkout: Path, command: list[str], paths: list[str], room: i
     return "\n".join(parts), left_out
 
 
-def _change_history(checkout: Path, scope: str = "") -> list[str]:
+def _change_history(checkout: Path, scope: str = "", blame: _Blame | None = None) -> list[str]:
     """Every human commit's changes on the default branch, oldest first.
 
     Earlier versions of files are evidence too: an account book's stages over
@@ -1102,7 +1244,7 @@ def _change_history(checkout: Path, scope: str = "") -> list[str]:
     kept: list[list[str]] = []
     omitted: list[str] = []
     used = 0
-    excludes = [f":(exclude,glob)**/{name}" for name in sorted(SKIPPED_FILES)]
+    excludes = [f":(exclude,glob)**/{name}" for name in sorted(SKIPPED_FILES)] + TEST_EXCLUDES
     for row in rows:
         sha, day, author, email, subject = (row.split("\t") + [""] * 5)[:5]
         if any(marker in f"{author} {email}".casefold() for marker in BOT_MARKERS):
@@ -1110,11 +1252,15 @@ def _change_history(checkout: Path, scope: str = "") -> list[str]:
         if used >= CHANGE_HISTORY_BUDGET:
             omitted.append(f"{day} {sha[:7]} {subject} (history budget reached)")
             continue
-        patch = _drop_blobs(_git(["show", "--no-color", "--format=", sha, "--", scope or ".", *excludes], cwd=checkout, timeout=300))
+        patch = _drop_surviving(
+            _drop_blobs(_git(["show", "--no-color", "--format=", sha, "--", scope or ".", *excludes], cwd=checkout, timeout=300)),
+            sha, blame,
+        )
         if len(patch) > CHANGE_COMMIT_LIMIT or used + len(patch) > CHANGE_HISTORY_BUDGET:
             stat = _git(["show", "--format=", "--stat=200", sha, "--", scope or ".", *excludes], cwd=checkout).rstrip()
             paths = _git(["show", "--format=", "--name-only", sha, "--", scope or ".", *excludes], cwd=checkout).splitlines()
-            parts, left_out = _patch_by_file(checkout, ["show", "--no-color", "--format=", sha], paths, CHANGE_HISTORY_BUDGET - used - len(stat))
+            parts, left_out = _patch_by_file(checkout, ["show", "--no-color", "--format=", sha], paths, CHANGE_HISTORY_BUDGET - used - len(stat),
+                                             lambda text: _drop_surviving(text, sha, blame))
             block = [f"=== COMMIT {sha[:7]} {day} {subject} (diff of {len(patch)} characters, included file by file) ===", stat]
             if parts:
                 block += ["", parts]
@@ -1128,7 +1274,9 @@ def _change_history(checkout: Path, scope: str = "") -> list[str]:
     if not kept:
         return []
     lines = ["", f"--- CHANGE HISTORY OF THE DEFAULT BRANCH ({len(kept)} commits with their changes, oldest first) ---",
-             "Each commit shows what changed that day: removed lines (-) are earlier versions that were overwritten."]
+             "Each commit shows what changed that day: removed lines (-) are earlier versions that were overwritten. "
+             "Added lines still in the current file are counted, not repeated: the file's text above has them, "
+             "and its header dates each line range by the commit that wrote it. Test diffs are left out."]
     for block in reversed(kept):
         lines += ["", *block]
     if omitted:
@@ -1184,7 +1332,7 @@ def _unmerged_work(checkout: Path, scope: str = "", merged: frozenset[int] = fro
             continue
         lines += ["", f"=== UNMERGED: {', '.join(names)} ({len(log)} commits, {first} to {last}) ===", *log, "", diff]
         changed = _git(["diff", "--name-only", "--diff-filter=AM", "HEAD..." + ref, "--", scope or "."], cwd=checkout).splitlines()
-        patch_paths = [path for path in changed if Path(path).name not in SKIPPED_FILES]
+        patch_paths = [path for path in changed if Path(path).name not in SKIPPED_FILES and not _is_test(path)]
         if not patch_paths:
             continue
         patch = _drop_blobs(_git(["diff", "--no-color", "HEAD..." + ref, "--", *patch_paths], cwd=checkout, timeout=120))
@@ -1400,19 +1548,21 @@ def _github_capture(root: Path, *, url: str, source_id: str, grade: str) -> dict
         "",
     ]
     target = checkout / relative if relative else checkout
+    blame = _Blame(checkout)
     if target.is_file():
-        lines += [f"--- FILE: {relative} ---", target.read_text(encoding="utf-8", errors="replace")[:200_000]]
+        text = target.read_text(encoding="utf-8", errors="replace")[:200_000]
+        lines += [_file_header(relative, text, blame), text]
     elif target.is_dir():
         listed = _git(["ls-files", "--", relative or "."], cwd=checkout).splitlines()
         lines += [f"--- FILE TREE ({len(listed)} files{', under ' + relative if relative else ''}) ---", *listed[:500]]
         if len(listed) > 500:
             lines.append(f"... {len(listed) - 500} more files")
-        lines += _repository_text(checkout, listed)
+        lines += _repository_text(checkout, listed, blame)
     # A path inside a repository gets that path's history, unmerged work, and
     # the pull requests that changed it; a whole repository gets all of them.
     if target.exists():
         lines += _commit_history(checkout, relative)
-        lines += _change_history(checkout, relative)
+        lines += _change_history(checkout, relative, blame)
         conversations, merged = _github_conversations(checkout, owner, repo, relative)
         unmerged, unmerged_latest = _unmerged_work(checkout, relative, merged)
         fetch_error = checkout / ".git" / "work-refs-error"

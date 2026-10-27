@@ -519,3 +519,51 @@ class SupplementReconcileTests(unittest.TestCase):
                 report = (root / "06-checks/supplement-reconciliation.md").read_text(encoding="utf-8")
                 self.assertIn("| PRD-002 | adds |", report)
                 self.assertIn("| ACC-001 | left uncited |", report)
+
+
+class ContentCutTests(unittest.TestCase):
+    def test_an_inserted_section_changes_only_the_slices_around_it(self) -> None:
+        from research_control.planner import _content_cuts
+
+        sections = [f"--- FILE: src/module_{index}.py (40 lines) ---\n" + f"line {index}\n" * 300 for index in range(200)]
+        before = "\n".join(sections)
+        after = "\n".join(sections[:100] + ["--- FILE: src/new.py (40 lines) ---\n" + "new\n" * 900] + sections[100:])
+
+        def pieces(text: str) -> list[str]:
+            cuts = _content_cuts(text, 20_000, 60_000)
+            self.assertEqual((0, len(text)), (cuts[0], cuts[-1]))
+            self.assertTrue(all(0 < end - start <= 60_000 for start, end in zip(cuts, cuts[1:])))
+            return [text[start:end] for start, end in zip(cuts, cuts[1:])]
+
+        old, new = pieces(before), pieces(after)
+        changed = [piece for piece in new if piece not in set(old)]
+        # One or two slices hold the insertion; every other slice is byte-identical.
+        self.assertLessEqual(len(changed), 2)
+        self.assertGreater(len(new), 10)
+
+    def test_a_finished_batch_covers_its_text_wherever_it_now_sits(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            copy_template(root)
+            state = initialize(root, "https://example.com")
+            save_state(root, state)
+            read = {"id": "SRC-1:part-0003", "source_id": "SRC-1", "path": "s/a.txt", "token_start": 100,
+                    "token_end": 200, "sha256": "same-text", "cut": "sections"}
+            with RuntimeStore(root) as store:
+                store.initialize(run_id=state["run_id"], company_url=state["company_url"])
+                store.add_task(WorkItem(
+                    task_id="facts.extract.done", phase="facts", task_type="extraction", inputs=[read],
+                    outputs=["parts/done.jsonl"], prompt_files=["prompts/phases/extraction.md"],
+                ))
+                store.claim("w", task_id="facts.extract.done")
+                store.start("facts.extract.done", "w")
+                (root / "parts").mkdir()
+                (root / "parts/done.jsonl").write_text("{}\n", encoding="utf-8")
+                store.complete("facts.extract.done", "w")
+                # A file inserted earlier in the source moved the same text to part 4.
+                moved = {**read, "id": "SRC-1:part-0004", "path": "s/b.txt", "token_start": 900, "token_end": 1000}
+                fresh = {**read, "id": "SRC-1:part-0003", "path": "s/c.txt", "sha256": "inserted-text"}
+                kept, uncovered = AdaptivePlanner(root, store)._unchanged_batches([fresh, moved])
+                self.assertEqual(["facts.extract.done"], kept)
+                self.assertEqual(["SRC-1:part-0003"], [item["id"] for item in uncovered])
+                self.assertEqual("inserted-text", uncovered[0]["sha256"])

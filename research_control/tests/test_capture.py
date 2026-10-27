@@ -11,6 +11,7 @@ from pathlib import Path
 from research_control.capture import (
     REPOSITORY_FILE_LIMIT,
     TextExtractor,
+    _Blame,
     _blocked_receipt,
     _change_history,
     _clear_stale_block,
@@ -109,6 +110,25 @@ class RepositoryCaptureTests(unittest.TestCase):
             self.assertIn("+| Acme | Signed |", text)
             self.assertNotIn("pinned", text)
             self.assertNotIn("Beta", text)
+            # With blame, an added line still in the current file is counted, not repeated;
+            # what was overwritten stays, and the current file dates its lines by commit.
+            (repo / "accounts.md").write_text("| Acme | Signed |\n| Beta | Lead |\n| Gamma | Lost |\n", encoding="utf-8")
+            (repo / "tests").mkdir()
+            (repo / "tests/test_book.py").write_text(
+                'def test_acme_signed():\n    """Acme is signed."""\n    assert book()["Acme"] == "Signed"\n', encoding="utf-8")
+            _git(repo, "add", ".")
+            _git(repo, "commit", "-q", "-m", "Gamma lost", date="2026-06-01T12:00:00Z")
+            blame = _Blame(repo)
+            history = "\n".join(_change_history(repo, "", blame))
+            self.assertIn("-| Acme | Proposal |", history)
+            self.assertIn("+[1 added line still in the current file]", history)
+            self.assertNotIn("+| Acme | Signed |", history)
+            self.assertNotIn("Acme is signed", history)
+            files = "\n".join(_repository_text(repo, ["accounts.md", "tests/test_book.py"], blame))
+            self.assertRegex(files, r"--- FILE: accounts.md \(\d+ lines; written 1-1 [0-9a-f]{7} 2026-05-01; 2-2 [0-9a-f]{7} 2026-05-01; 3-3 [0-9a-f]{7} 2026-06-01\) ---")
+            self.assertIn("--- FILE: tests/test_book.py (tests, names only)", files)
+            self.assertIn('def test_acme_signed():\n    """Acme is signed."""', files)
+            self.assertNotIn("assert book()", files)
 
     def test_large_file_is_included_when_the_budget_has_room(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
