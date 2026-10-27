@@ -1538,6 +1538,20 @@ SHALLOW_SUFFIXES = (".md", ".mdx", ".markdown", ".csv", ".tsv")
 SKIPPED_DIRECTORIES = {"node_modules", "vendor", "third_party", ".venv", "dist", "build"}
 
 
+def _repository_about(owner: str, repo: str) -> tuple[str, list[str]]:
+    """A repository page's description and About section (topics, website), read in the
+    headless browser, since github.com refuses plain requests and git does not carry them."""
+    try:
+        page = _github_page(f"https://github.com/{owner}/{repo}")
+    except Exception as error:  # the files are still read; the gap is stated
+        return "", [f"(the repository page could not be read: {str(error)[:160]})"]
+    title = re.match(r"GitHub - [^:]+: (.*?) · GitHub$", str(page.get("title", "")))
+    text = str(page.get("text", ""))
+    start = text.find("\nAbout\n")
+    block = text[start + 1:].split("Report repository")[0] if start >= 0 else ""
+    return (title.group(1).strip() if title else ""), [line.strip() for line in block.splitlines() if line.strip()][:40]
+
+
 def shallow_files(listed: list[str]) -> list[str]:
     """The files a shallow look reads: Markdown and CSV only, README first, then shallower
     paths before deeper ones, leaving out vendored and built directories."""
@@ -1571,11 +1585,14 @@ def _github_shallow_capture(root: Path, *, url: str, source_id: str, grade: str)
             time.sleep(delay)
     commit, committed = _git(["log", "-1", "--format=%H %cI"], cwd=target).split()
     listed = _git(["ls-files", "--", relative or "."], cwd=target).splitlines()
+    single_file = bool(relative) and (target / relative).is_file()
+    description, about = ("", []) if single_file else _repository_about(owner, repo)
     lines = [
         f"Repository: {owner}/{repo}", f"Source URL: {url}", f"Captured commit: {commit} (committed {committed})",
         "Method: shallow look at the latest commit ("
         + ("the one file named" if relative and (target / relative).is_file() else "file list, Markdown, and CSV files")
         + "; no history, branches, or authors)", "",
+        *(["--- ABOUT (the repository page: description, topics, website) ---", *about, ""] if about else []),
         f"--- FILE TREE ({len(listed)} files{', under ' + relative if relative else ''}) ---", *listed[:300],
         *([f"... {len(listed) - 300} more files"] if len(listed) > 300 else []),
     ]
@@ -1605,10 +1622,11 @@ def _github_shallow_capture(root: Path, *, url: str, source_id: str, grade: str)
     content = text_path.read_text(encoding="utf-8")
     relative_text = str(text_path.relative_to(root))
     source = {
-        "id": source_id, "grade": grade, "title": f"{owner}/{repo}" + (f": {relative}" if relative else ""),
+        "id": source_id, "grade": grade,
+        "title": f"{owner}/{repo}" + (f": {relative}" if relative else f": {description}" if description else ""),
         "publisher": f"GitHub ({owner})", "url": url, "date published": "", "date last modified": committed[:10],
         "date captured": datetime.now(timezone.utc).date().isoformat(), "local file": relative_text,
-        "method": "shallow git clone (latest commit only)",
+        "method": "shallow git clone (latest commit only) and the repository page",
         "notes": f"Latest commit {commit[:12]} ({committed[:10]}); file list and README only",
     }
     receipt = {

@@ -76,3 +76,15 @@ class DeepLinkTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RepositoryDescriptionLinkTests(unittest.TestCase):
+    def test_a_quote_from_a_repository_description_links_to_the_repository_page(self) -> None:
+        from research_control.deeplinks import _repository_link
+
+        lines = ["Repository: acme/agent", "Source URL: https://github.com/acme/agent", "Captured commit: abc1234 (committed x)",
+                 "", "--- ABOUT (the repository page: description, topics, website) ---", "About",
+                 "Agent runtime for regional banks", "", "--- FILE TREE (1 files) ---", "README.md"]
+        link, label = _repository_link(lines, 6, "Agent runtime for regional banks")
+        self.assertEqual("repository description", label)
+        self.assertTrue(link.startswith("https://github.com/acme/agent#:~:text=Agent"))

@@ -182,6 +182,8 @@ def _repository_link(lines: list[str], index: int, quote_text: str) -> tuple[str
             return text_fragment(match.group(1), quote_text), match.group(1).rsplit("/", 2)[-2] + " #" + match.group(1).rsplit("/", 1)[-1]
         if current.startswith("--- COMMIT HISTORY") and history:
             return f"{base}/commit/{history.group(1)}", f"commit {history.group(1)}"
+        if current.startswith("--- ABOUT"):
+            return text_fragment(base, quote_text), "repository description"
         if current.startswith("--- FILE TREE"):
             return f"{base}/tree/{commit}", f"file tree at {commit[:7]}"
     return base, "repository"

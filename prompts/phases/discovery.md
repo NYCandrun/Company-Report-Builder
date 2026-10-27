@@ -75,12 +75,25 @@ Admit what answers a question, not everything that exists:
      only when it is the competitor's work (a business record such as an org
      chart, account list, or plan; a tool or skill the firm uses or sells;
      client work), never a personal project.
-  The runtime reads each admitted repository at its latest commit: the file
-  list and its Markdown and CSV files (README first, within a size limit).
+  3. Deleted repositories, when it is easy: one query of GH Archive (the
+     public record of GitHub events) per competitor organization lists every
+     repository it ever had, for example `https://play.clickhouse.com/?user=play&query=`
+     followed by the URL-encoded `SELECT repo_name, min(created_at), max(created_at),
+     count() FROM github_events WHERE repo_name LIKE 'ORG/%' GROUP BY repo_name
+     FORMAT TSV`. For repositories that are no longer live (not in the
+     organization's current list), admit one query URL that returns what the
+     archive recorded about them (pull request and issue titles and bodies,
+     branch names, release names), and state the archive's date range. Never
+     admit archive results for a repository that is still live: its current
+     files are read directly.
+  The runtime reads each admitted repository at its latest commit: its
+  description and topics from the repository page, the file list, and its
+  Markdown and CSV files (README first, within a size limit).
   When the file list shows another single file that matters (a package
   description that names what a product is built on), admit that file by its
   URL (`https://github.com/ORG/REPO/blob/main/PATH`). Do not clone, read
-  history or other branches, query GH Archive, read whole directories of code,
+  history or other branches, query GH Archive beyond step 3, read whole
+  directories of code,
   or look at adjacent firms' code; that depth is for the company itself
   (`code_packages`). Record organizations and repositories, never personal
   details.
