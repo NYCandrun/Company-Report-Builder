@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -27,6 +28,7 @@ from research_control.orchestration import (
     start_task,
     status_summary,
 )
+from research_control.provision import RUNS_DIRECTORY, provision_run, run_slug, sync_engine
 from research_control.publication import render
 from research_control.reducers import reduce_capture_parts, reduce_discovery, reduce_extraction_parts
 from research_control.reporting import print_summary
@@ -65,6 +67,7 @@ def preflight(root: Path) -> int:
         "prompts/phases/capture-source.md",
         "prompts/phases/capture-reducer.md",
         "prompts/phases/extraction-reducer.md",
+        "prompts/phases/triage.md",
         "prompts/phases/brand-guide.md",
         "prompts/phases/diagram-modeling.md",
         "prompts/phases/diagram-building.md",
@@ -85,8 +88,8 @@ def preflight(root: Path) -> int:
         document = workflow(root / "WORKFLOW.yaml")
         profiles = document.get("execution_profiles", {})
         adaptive = document.get("adaptive_runtime", {})
-        if adaptive.get("completion_basis") != "channel_saturation_not_source_count":
-            failures.append("adaptive runtime must use channel saturation rather than a source count")
+        if adaptive.get("completion_basis") != "question_sufficiency_or_saturation_not_source_count":
+            failures.append("adaptive runtime must close discovery by question sufficiency or saturation, never a source count")
         scheduler = adaptive.get("scheduler", {})
         for setting in ("global_concurrency", "per_host_concurrency", "lease_seconds", "max_attempts"):
             if int(scheduler.get(setting, 0)) < 1:
@@ -146,6 +149,10 @@ def _parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("preflight", help="verify the copied template and local runtime")
+    new = subparsers.add_parser("new", help="provision an isolated run directory and initialize it")
+    new.add_argument("--url", required=True)
+    new.add_argument("--dir", help="run directory (default: runs/<company-host-slug>)")
+    subparsers.add_parser("sync-engine", help="refresh a run's engine, prompts, and policy from its template")
     init = subparsers.add_parser("init", help="initialize a URL-only research run")
     init.add_argument("--url", required=True)
     run = subparsers.add_parser("run", help="initialize or advance the adaptive research orchestrator")
@@ -210,7 +217,7 @@ def _parser() -> argparse.ArgumentParser:
     discovery_add.add_argument("--discovered-from", default="agent-search")
     discovery_close = discovery_sub.add_parser("close", help="close a channel with explicit evidence")
     discovery_close.add_argument("--channel", required=True, choices=DISCOVERY_CHANNELS)
-    discovery_close.add_argument("--state", required=True, choices=["saturated", "not_applicable", "blocked", "incomplete"])
+    discovery_close.add_argument("--state", required=True, choices=["saturated", "sufficient", "not_applicable", "blocked", "incomplete"])
     discovery_close.add_argument("--evidence", required=True)
     discovery_retry = discovery_sub.add_parser(
         "retry", help="return explicitly transport-blocked sources to the discovery frontier"
@@ -267,6 +274,21 @@ def main() -> None:
     try:
         if args.command == "preflight":
             raise SystemExit(preflight(root))
+        if args.command == "new":
+            run_root = Path(args.dir).resolve() if args.dir else root / RUNS_DIRECTORY / run_slug(args.url)
+            provision_run(root, run_root)
+            result = advance(run_root, args.url)
+            relative = os.path.relpath(run_root, Path.cwd())
+            _print_json({
+                "run_root": str(run_root),
+                "next": f"python3 -m research_control --root {relative} run",
+                "advance": result,
+            })
+            return
+        if args.command == "sync-engine":
+            template = Path(__file__).resolve().parents[1]
+            _print_json({"synced": sync_engine(template, root), "template": str(template), "run_root": str(root)})
+            return
         if args.command == "init":
             state = initialize(root, args.url)
             _print_json({"status": "initialized", "run_id": state["run_id"], "company_url": state["company_url"], "next": "python3 -m research_control check --phase bootstrap"})

@@ -1,5 +1,7 @@
 # TASK TYPE: CAPTURE REDUCER
 
+The runtime executes this deterministic task itself inside `python3 -m research_control run`; it is not dispatched to an agent. This text documents the contract it enforces.
+
 Act as the sole writer of the source manifest, capture dispositions, extraction
 scope, publication-date table, and coverage reports. Do not fetch new sources.
 

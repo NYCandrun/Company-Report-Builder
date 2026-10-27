@@ -9,10 +9,26 @@ from pathlib import Path
 from typing import Any
 
 from research_control.discovery import DISCOVERY_CHANNELS, DiscoveryEngine
-from research_control.brand_contract import BRAND_TASK_OUTPUTS
-from research_control.io import atomic_write_text, load_json, workflow
+from research_control.io import atomic_write_jsonl, atomic_write_text, load_json, workflow
+from research_control.triage import TRIAGE_DECISIONS, TRIAGE_EXCERPT_CHARACTERS, TRIAGE_INDEX, triage_included
 from research_control.orchestration import TASK_SCHEMAS, current_phase, load_state
-from research_control.runtime import DISCOVERY_TERMINAL, RuntimeStore, WorkItem
+from research_control.runtime import DISCOVERY_TERMINAL, UNCAPTURED_RELEVANCE, RuntimeStore, WorkItem
+
+
+COMPLETION_RULE = "first-party fixed point plus question sufficiency or saturation; never a source count"
+# The runtime crawls the first-party site itself; search channels are grouped so
+# one agent context covers related surfaces.
+RUNTIME_DISCOVERY_GROUP = "first-party-site"
+DISCOVERY_GROUPS: dict[str, tuple[str, ...]] = {
+    RUNTIME_DISCOVERY_GROUP: ("company_site", "sitemaps"),
+    "first-party-surfaces": ("newsroom_blog", "docs_help", "careers", "code_packages"),
+    "media-social": ("video", "podcasts", "social"),
+    "independent-web": ("independent_web",),
+}
+# Groups that complete first-party coverage start after the runtime crawl, so
+# they search for what the crawl could not reach rather than repeat it.
+FIRST_PARTY_FOLLOW_UP = {"first-party-surfaces"}
+assert sorted(channel for group in DISCOVERY_GROUPS.values() for channel in group) == sorted(DISCOVERY_CHANNELS)
 
 
 def _slug(value: str) -> str:
@@ -75,89 +91,76 @@ class AdaptivePlanner:
 
     def _plan_static(self, phase_id: str) -> list[str]:
         created: list[str] = []
-        phase = self._phase(phase_id)
-        profile = self.document.get("execution_profiles", {}).get(phase_id, {})
-        tasks = profile.get("tasks", [])
         # Definitions are topologically ordered in WORKFLOW.yaml.
-        for definition in tasks:
-            task_id = f"{phase_id}.{definition['id']}"
-            dependencies = [f"{phase_id}.{value}" for value in definition.get("depends_on", [])]
-            self._add(
-                WorkItem(
-                    task_id=task_id,
-                    phase=phase_id,
-                    task_type=definition["task_type"],
-                    inputs=list(definition.get("inputs", phase.get("inputs", []))),
-                    outputs=list(definition["outputs"]),
-                    prompt_files=[*definition.get("cores", []), definition["prompt"]],
-                    depends_on=dependencies,
-                    schema_files=TASK_SCHEMAS.get(definition["task_type"], []),
-                    validators=list(definition.get(
-                        "validators", [value["id"] for value in phase.get("validators", [])]
-                    )),
-                    independent=bool(definition.get("independent")),
-                    exclusive_inputs=bool(definition.get("exclusive_inputs", True)),
-                    output_mode=definition.get("output_mode", "create"),
-                    track_input_staleness=bool(definition.get("track_input_staleness")),
-                    metadata={"planner": "static-profile"},
-                ),
-                created,
-            )
+        for definition in self.document.get("execution_profiles", {}).get(phase_id, {}).get("tasks", []):
+            self._add(self._plan_profile_task(phase_id, definition["id"]), created)
         return created
+
+    def _plan_profile_task(self, phase_id: str, task_key: str, *, metadata: dict[str, Any] | None = None) -> WorkItem:
+        phase = self._phase(phase_id)
+        definition = next(
+            item for item in self.document["execution_profiles"][phase_id]["tasks"] if item["id"] == task_key
+        )
+        return WorkItem(
+            task_id=f"{phase_id}.{task_key}",
+            phase=phase_id,
+            task_type=definition["task_type"],
+            inputs=list(definition.get("inputs", phase.get("inputs", []))),
+            outputs=list(definition["outputs"]),
+            prompt_files=[*definition.get("cores", []), definition["prompt"]],
+            depends_on=[f"{phase_id}.{value}" for value in definition.get("depends_on", [])],
+            schema_files=TASK_SCHEMAS.get(definition["task_type"], []),
+            validators=list(definition.get(
+                "validators", [value["id"] for value in phase.get("validators", [])]
+            )),
+            host_key=str(definition.get("host_key", "")),
+            priority=int(definition.get("priority", 100)),
+            independent=bool(definition.get("independent")),
+            exclusive_inputs=bool(definition.get("exclusive_inputs", True)),
+            output_mode=definition.get("output_mode", "create"),
+            track_input_staleness=bool(definition.get("track_input_staleness")),
+            metadata=dict(metadata if metadata is not None else definition.get("metadata", {"planner": "static-profile"})),
+        )
 
     def _plan_capture(self) -> list[str]:
         created: list[str] = []
         state = load_state(self.root)
-        self._add(
-            WorkItem(
-                task_id="capture.brand-guide",
-                phase="capture",
-                task_type="brand_guide",
-                inputs=[
-                    {"id": "company_url", "value": state["company_url"]},
-                    {"id": "scope_map", "path": "00-scope.md", "required": True},
-                ],
-                outputs=list(BRAND_TASK_OUTPUTS),
-                prompt_files=["prompts/core/runtime.md", "prompts/phases/brand-guide.md"],
-                schema_files=[],
-                validators=["brand_capture_artifacts"],
-                host_key=state["company_host"],
-                priority=5,
-                independent=True,
-                exclusive_inputs=False,
-                track_input_staleness=True,
-                metadata={
-                    "schedule": "concurrent_with_discovery_and_capture",
-                    "factual_scope": "presentation_only",
-                },
-            ),
-            created,
-        )
+        # The brand guide belongs to the final phase but starts now, so it runs
+        # alongside research instead of holding any research gate.
+        self._add(self._plan_profile_task("final", "brand-guide"), created)
         engine = DiscoveryEngine(self.root, self.store)
         engine.initialize()
         discovery_ids: list[str] = []
-        for channel in DISCOVERY_CHANNELS:
-            task_id = f"capture.discover.{_slug(channel)}"
+        runtime_group_id = f"capture.discover.{RUNTIME_DISCOVERY_GROUP}"
+        for group, channels in DISCOVERY_GROUPS.items():
+            task_id = f"capture.discover.{group}"
             discovery_ids.append(task_id)
-            output = f"tools/outputs/worker-parts/discovery/{_slug(channel)}.json"
+            receipts = [f"tools/outputs/worker-parts/discovery/{_slug(channel)}.json" for channel in channels]
+            automatic = group == RUNTIME_DISCOVERY_GROUP
             self._add(
                 WorkItem(
                     task_id=task_id,
                     phase="capture",
                     task_type="source_discovery",
                     inputs=[
-                        {"id": "company_url", "value": load_state(self.root)["company_url"]},
-                        {"id": "channel", "value": channel},
+                        {"id": "company_url", "value": state["company_url"]},
+                        {"id": "channels", "value": list(channels)},
+                        {"id": "scope_map", "path": "00-scope.md"},
                     ],
-                    outputs=[output],
+                    outputs=receipts,
                     prompt_files=["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/phases/discovery.md"],
+                    depends_on=[] if automatic or group not in FIRST_PARTY_FOLLOW_UP else [runtime_group_id],
                     schema_files=["research_control/schemas/discovery-pass.schema.json"],
-                    host_key="" if channel != "company_site" else load_state(self.root)["company_host"],
-                    priority=10 if channel in {"company_site", "sitemaps"} else 20,
-                    independent=True,
+                    host_key=state["company_host"] if automatic else "",
+                    priority=10 if automatic else 20,
+                    independent=not automatic,
                     exclusive_inputs=False,
                     max_attempts=8,
-                    metadata={"channel": channel, "receipt": output},
+                    metadata={
+                        "channels": list(channels),
+                        "receipts": receipts,
+                        "executor": "runtime" if automatic else "agent",
+                    },
                 ),
                 created,
             )
@@ -168,11 +171,13 @@ class AdaptivePlanner:
             task = self.store.task(task_id)
             if not task or task["state"] != "succeeded":
                 continue
-            receipt_path = self.root / task["metadata"]["receipt"]
-            receipt = load_json(receipt_path) if receipt_path.is_file() else {}
-            current = by_channel.get(task["metadata"]["channel"], {})
-            if receipt.get("status") != current.get("state") or receipt.get("evidence") != current.get("completion_evidence"):
-                self.store.mark_stale(task_id, "discovery channel changed after the worker receipt")
+            for channel, receipt_relative in zip(task["metadata"]["channels"], task["metadata"]["receipts"]):
+                receipt_path = self.root / receipt_relative
+                receipt = load_json(receipt_path) if receipt_path.is_file() else {}
+                current = by_channel.get(channel, {})
+                if receipt.get("status") != current.get("state") or receipt.get("evidence") != current.get("completion_evidence"):
+                    self.store.mark_stale(task_id, f"discovery channel {channel} changed after the worker receipt")
+                    break
         discovery_tasks = [self.store.task(task_id) for task_id in discovery_ids]
         discovery_done = bool(channels) and all(item["state"] in DISCOVERY_TERMINAL for item in channels)
         workers_done = all(task and task["state"] == "succeeded" for task in discovery_tasks)
@@ -192,10 +197,10 @@ class AdaptivePlanner:
                     prompt_files=["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/phases/discovery-reducer.md"],
                     depends_on=discovery_ids,
                     schema_files=["research_control/schemas/discovery-pass.schema.json"],
-                    validators=["discovery_saturation"],
+                    validators=["discovery_completion"],
                     exclusive_inputs=True,
                     priority=30,
-                    metadata={"completion_rule": "channel_saturation_not_source_count"},
+                    metadata={"completion_rule": COMPLETION_RULE, "executor": "runtime"},
                 ),
                 created,
             )
@@ -204,7 +209,7 @@ class AdaptivePlanner:
         capture_ids: list[str] = []
         if barrier and barrier["state"] == "succeeded":
             for source in self.store.sources():
-                if source["relevance"] in {"excluded", "duplicate"}:
+                if source["relevance"] in UNCAPTURED_RELEVANCE:
                     continue
                 if source["status"] == "blocked":
                     continue
@@ -231,8 +236,8 @@ class AdaptivePlanner:
                         validators=["capture_receipt", "canonical_content"],
                         host_key=source["host_key"],
                         priority=40,
-                        independent=True,
-                        metadata={"source_id": source["source_id"], "receipt": receipt},
+                        independent=False,
+                        metadata={"source_id": source["source_id"], "receipt": receipt, "executor": "runtime"},
                     ),
                     created,
                 )
@@ -259,7 +264,7 @@ class AdaptivePlanner:
                     validators=["source_records", "source_dates", "manifest_files", "capture_workers"],
                     priority=50,
                     exclusive_inputs=True,
-                    metadata={"single_writer": True},
+                    metadata={"single_writer": True, "executor": "runtime"},
                 ),
                 created,
             )
@@ -267,7 +272,33 @@ class AdaptivePlanner:
 
     def _plan_facts(self) -> list[str]:
         created: list[str] = []
-        slices = self._source_slices()
+        triage_id = "facts.triage"
+        self._write_triage_index()
+        self._add(
+            WorkItem(
+                task_id=triage_id,
+                phase="facts",
+                task_type="triage",
+                inputs=[
+                    {"id": "scope_map", "path": "00-scope.md", "required": True},
+                    {"id": "triage_index", "path": TRIAGE_INDEX, "required": True},
+                    {"id": "source_manifest", "path": "01-sources/MANIFEST.csv", "required": True},
+                ],
+                outputs=[TRIAGE_DECISIONS],
+                prompt_files=["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/phases/triage.md"],
+                schema_files=["research_control/schemas/disposition.schema.json"],
+                validators=["extraction_triage"],
+                priority=5,
+                independent=True,
+                exclusive_inputs=True,
+                metadata={"selection_rule": "include a source only for the numbered research questions it can answer"},
+            ),
+            created,
+        )
+        triage = self.store.task(triage_id)
+        if not triage or triage["state"] != "succeeded":
+            return created
+        slices = self._source_slices(included=triage_included(self.root))
         batches = self._pack_slices(slices)
         extraction_ids: list[str] = []
         for batch in batches:
@@ -284,6 +315,7 @@ class AdaptivePlanner:
                     inputs=batch,
                     outputs=[candidate_part, disposition_part],
                     prompt_files=["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/phases/extraction.md"],
+                    depends_on=[triage_id],
                     schema_files=["research_control/schemas/disposition.schema.json"],
                     validators=["extraction_part"],
                     priority=10,
@@ -308,6 +340,7 @@ class AdaptivePlanner:
                     inputs=[
                         {"id": "candidate_parts", "path": "tools/outputs/worker-parts/extraction/*.candidates.jsonl"},
                         {"id": "disposition_parts", "path": "tools/outputs/worker-parts/extraction/*.dispositions.jsonl"},
+                        {"id": "triage_decisions", "path": TRIAGE_DECISIONS},
                     ],
                     outputs=["tools/candidates/all.jsonl", "tools/outputs/extraction-dispositions.jsonl"],
                     prompt_files=["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/phases/extraction-reducer.md"],
@@ -316,7 +349,7 @@ class AdaptivePlanner:
                     validators=["source_extraction"],
                     priority=20,
                     exclusive_inputs=True,
-                    metadata={"single_writer": True},
+                    metadata={"single_writer": True, "executor": "runtime"},
                 ),
                 created,
             )
@@ -345,7 +378,34 @@ class AdaptivePlanner:
             )
         return created
 
-    def _source_slices(self) -> list[dict[str, Any]]:
+    def _write_triage_index(self) -> None:
+        """Write a compact, deterministic index the triage worker reads instead of full sources."""
+        manifest = self.root / "01-sources/MANIFEST.csv"
+        if not manifest.is_file():
+            raise FileNotFoundError("facts planning requires 01-sources/MANIFEST.csv")
+        sources = {source["source_id"]: source for source in self.store.sources()}
+        with manifest.open(encoding="utf-8-sig", newline="") as handle:
+            rows = list(csv.DictReader(handle))
+        index: list[dict[str, Any]] = []
+        for row in rows:
+            source_id = row.get("id", "").strip()
+            paths = [value.strip() for value in row.get("local file", "").split(";") if value.strip()]
+            text_paths = [value for value in paths if value.endswith("content.txt") and (self.root / value).is_file()]
+            content = (self.root / text_paths[0]).read_text(encoding="utf-8", errors="replace") if text_paths else ""
+            excerpt = re.sub(r"\s+", " ", content)[:TRIAGE_EXCERPT_CHARACTERS].strip()
+            index.append({
+                "id": source_id,
+                "url": row.get("url", ""),
+                "title": row.get("title", ""),
+                "channel": sources.get(source_id, {}).get("channel", ""),
+                "grade": row.get("grade", ""),
+                "date_published": row.get("date published", ""),
+                "estimated_tokens": max(1, len(content) // 4),
+                "excerpt": excerpt,
+            })
+        atomic_write_jsonl(self.root / TRIAGE_INDEX, index)
+
+    def _source_slices(self, included: set[str] | None = None) -> list[dict[str, Any]]:
         sources = {source["source_id"]: source for source in self.store.sources()}
         manifest = self.root / "01-sources/MANIFEST.csv"
         if not manifest.is_file():
@@ -356,6 +416,8 @@ class AdaptivePlanner:
         slices: list[dict[str, Any]] = []
         for row in rows:
             source_id = row.get("id", "").strip()
+            if included is not None and source_id not in included:
+                continue
             paths = [value.strip() for value in row.get("local file", "").split(";") if value.strip()]
             text_paths = [
                 value for value in paths

@@ -16,7 +16,8 @@ from research_control.io import (
     load_jsonl,
     utc_now,
 )
-from research_control.runtime import DISCOVERY_TERMINAL, RuntimeStore
+from research_control.runtime import DISCOVERY_TERMINAL, UNCAPTURED_RELEVANCE, RuntimeStore
+from research_control.triage import excluded_dispositions
 
 
 def _json_parts(directory: Path) -> list[dict[str, Any]]:
@@ -63,7 +64,7 @@ def reduce_discovery(root: Path, store: RuntimeStore) -> dict[str, Any]:
     result = {
         "schema_version": "1.0.0",
         "status": "PASS_WITH_LIMITATIONS" if any(item["state"] == "blocked" for item in channels) else "PASS",
-        "completion_rule": "channel saturation, not a source-count quota",
+        "completion_rule": "first-party fixed point plus question sufficiency or saturation; never a source count",
         "channels": channels,
         "source_count": len(store.sources()),
         "receipt_count": len(parts),
@@ -85,7 +86,7 @@ def reduce_capture_parts(root: Path, store: RuntimeStore) -> dict[str, Any]:
         by_id[source_id] = part
     considered = [
         source for source in store.sources()
-        if source["relevance"] not in {"excluded", "duplicate"}
+        if source["relevance"] not in UNCAPTURED_RELEVANCE
     ]
     assigned = [source for source in considered if source["status"] != "blocked"]
     missing = [source["source_id"] for source in assigned if source["source_id"] not in by_id]
@@ -163,10 +164,13 @@ def reduce_capture_parts(root: Path, store: RuntimeStore) -> dict[str, Any]:
     else:
         blocked_lines.append("None.")
     atomic_write_text(root / "01-sources/BLOCKED.md", "\n".join(blocked_lines) + "\n")
+    leads = [source for source in store.sources() if source["relevance"] == "lead"]
     coverage = [
         "# Capture coverage", "",
-        "Source discovery used channel saturation rather than a source-count quota.", "",
+        "Discovery had no source-count quota. The runtime crawled the first-party site to a fixed point and "
+        "search channels closed as sufficient for named research questions or saturated.", "",
         f"- Discovered records considered: {len(considered)}",
+        f"- Login-walled platform URLs kept as uncaptured leads: {len(leads)}",
         f"- Captured with canonical text: {len(manifest_rows)}",
         f"- Blocked: {len(blocked)}",
         f"- Disposition records: {len(dispositions)}",
@@ -251,6 +255,8 @@ def reduce_extraction_parts(root: Path) -> dict[str, Any]:
             "evidence_paths": evidence,
             "output_ids": outputs,
         })
+    triaged_out = [row for row in excluded_dispositions(root) if row["input_id"] not in grouped]
+    aggregate.extend(triaged_out)
     atomic_write_jsonl(root / "tools/candidates/all.jsonl", candidates)
     atomic_write_jsonl(root / "tools/outputs/extraction-dispositions.jsonl", aggregate)
     return {
@@ -260,6 +266,7 @@ def reduce_extraction_parts(root: Path) -> dict[str, Any]:
         "candidates": len(candidates),
         "slice_dispositions": len(dispositions),
         "dispositions": len(aggregate),
+        "excluded_by_triage": len(triaged_out),
     }
 
 

@@ -1,5 +1,7 @@
 # TASK TYPE: EXTRACTION REDUCER
 
+The runtime executes this deterministic task itself inside `python3 -m research_control run`; it is not dispatched to an agent. This text documents the contract it enforces.
+
 Act as the single writer for canonical candidate and extraction-disposition
 stores. Do not create, remove, or reinterpret research claims.
 

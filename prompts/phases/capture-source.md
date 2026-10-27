@@ -1,5 +1,7 @@
 # TASK TYPE: ISOLATED SOURCE CAPTURE
 
+The runtime executes this deterministic task itself inside `python3 -m research_control run`; it is not dispatched to an agent. This text documents the contract it enforces.
+
 Capture only the source in the immutable task input. Write only its
 `01-sources/captures/SOURCE_ID/` directory and private capture receipt.
 

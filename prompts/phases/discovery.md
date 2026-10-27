@@ -1,21 +1,23 @@
 # TASK TYPE: SOURCE DISCOVERY
 
-Discover relevant public evidence for the assigned channel. There is no source,
-page, query, or result-count target. Continue until the channel reaches a
-documented fixed point: repeated materially different discovery passes produce
-no new relevant sources.
+Discover the public evidence the company brief needs from the assigned channels
+(see the `channels` input). There is no source, page, query, or result-count
+target in either direction. Discovery serves the numbered research questions
+(`Q1`, `Q2`, ...) in `00-scope.md`; read them before searching.
 
-Use the shared URL ledger and response cache opportunistically. At the start of
-a pass, `python3 -m research_control web list --purpose brand_discovery` may
-surface first-party leads already found by the concurrent brand worker. Treat
-them only as leads: independently apply this packet's relevance and channel
-rules before adding them through `discovery add`. The discovery commands
-automatically register admitted URLs, and the first-party crawler automatically
-reuses cached public bytes. Do not wait for brand work to finish.
+The runtime has already crawled the company host and its sitemaps to a fixed
+point. Check what is cataloged before searching:
 
-For `company_site`, run `python3 -m research_control discovery crawl`; it drains
-the first-party link frontier and repeats empty passes until saturated. For
-other channels, use the runtime's search, browser, repository, and media tools.
+```bash
+python3 -m research_control web list --purpose research_discovery
+```
+
+Search for what that crawl cannot reach: other first-party hosts and
+subdomains, applicant tracking systems, documentation portals, public code,
+recorded talks and podcasts, customer and partner announcements, independent
+reporting, and competitors' public positioning. Treat cached URLs and brand
+leads only as leads; apply this packet's relevance rules before admitting one.
+
 Record each pass with:
 
 ```bash
@@ -24,28 +26,43 @@ python3 -m research_control discovery add \
   --evidence "query, surface, result pages, and inclusion reasoning"
 ```
 
-An empty pass is recorded by omitting `--url`. Vary query families, company and
-product names, executive names, date ranges, and platform-native surfaces. A
-source already in the catalog is not new. Do not count mirrors, tracking URLs,
-irrelevant mentions, or search-result pages as sources.
+An empty pass is recorded by omitting `--url`. Vary query families, product
+names, executive names, date ranges, and platform-native surfaces. A source
+already in the catalog is not new. Do not admit mirrors, tracking URLs,
+irrelevant mentions, or search-result pages. When a pass finds a new
+first-party surface, admitting it is enough; the runtime captures it.
 
-When a pass finds a new first-party sitemap, documentation, blog, newsroom, or
-careers surface, run `python3 -m research_control discovery crawl` to drain the
-new first-party frontier. This can reopen a previously saturated company-site
-channel; the scheduler will invalidate and reissue that channel's stale receipt
-rather than losing the newly reachable branch.
+Admit what answers a question, not everything that exists:
 
-If a channel genuinely does not apply, or access is blocked, close it with
-specific evidence:
+- Competitors: admit the pages that establish a competitor's positioning,
+  packaging, pricing, or the specific capability being compared. Do not admit a
+  competitor's documentation or blog wholesale.
+- Social platforms that require login (LinkedIn, X, Facebook, Instagram,
+  Threads, TikTok) are recorded automatically as uncaptured leads. Admit the
+  official profiles and any post that a question depends on, and look for a
+  public copy (a press release, blog post, or transcript) of that content.
+- Video and podcasts: admit long-form company talks and interviews. Prefer a
+  publisher page with a transcript or substantive show notes.
+
+Close each assigned channel with one terminal state and specific evidence:
+
+- `sufficient`: the admitted sources answer the channel's share of the named
+  questions, and further search would add repetition rather than a new answer.
+  The evidence must name the question IDs and the sources or searches behind
+  each. Requires at least one recorded pass.
+- `saturated`: two materially different passes in a row added nothing.
+- `not_applicable`: the channel does not exist for this company, with the
+  searches that establish that.
+- `blocked`: access is prohibited or failing, with the concrete failure.
 
 ```bash
 python3 -m research_control discovery close \
-  --channel CHANNEL --state not_applicable --evidence "EVIDENCE"
+  --channel CHANNEL --state sufficient --evidence "Q2: ...; Q5: ...; further search ..."
 ```
 
-Safety limits are circuit breakers. If one is reached, record `incomplete`, not
-`saturated`. Never use a requested number of sources as completion evidence.
+Safety limits are circuit breakers. If one is reached, record `incomplete`.
+Never use a number of sources as completion evidence.
 
-Finally run `python3 -m research_control discovery receipt --channel CHANNEL`.
-The task is complete only when its private receipt exists and agrees with the
-scheduler's terminal channel state.
+Finally run `python3 -m research_control discovery receipt --channel CHANNEL`
+for every assigned channel. The task is complete only when each receipt exists
+and agrees with the scheduler's terminal channel state.

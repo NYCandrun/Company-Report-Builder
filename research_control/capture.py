@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import csv
 import ipaddress
+import json
 import re
+import shutil
 import socket
+import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -94,9 +97,23 @@ class TextExtractor(HTMLParser):
         return re.sub(r"\s+", " ", " ".join(self.title_parts)).strip()
 
 
+_ROBOTS_CACHE: dict[str, RobotFileParser | bool] = {}
+
+
 def _robots_allowed(url: str) -> bool:
     parsed = urlparse(url)
     robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
+    cached = _ROBOTS_CACHE.get(robots_url)
+    if cached is None:
+        cached = _load_robots(robots_url)
+        _ROBOTS_CACHE[robots_url] = cached
+    if isinstance(cached, bool):
+        return cached
+    return cached.can_fetch(USER_AGENT, url)
+
+
+def _load_robots(robots_url: str) -> RobotFileParser | bool:
+    """Return a parsed policy, or a blanket decision when no policy is readable."""
     _require_public_host(robots_url)
     parser = RobotFileParser()
     parser.set_url(robots_url)
@@ -119,7 +136,7 @@ def _robots_allowed(url: str) -> bool:
         # caller still performs one paced public request and records failures.
         return True
     parser.parse(body.decode("utf-8", errors="replace").splitlines())
-    return parser.can_fetch(USER_AGENT, url)
+    return parser
 
 
 def _require_public_host(url: str) -> None:
@@ -393,3 +410,173 @@ def capture_source_part(
     receipt_path = root / "tools/outputs/worker-parts/capture" / f"{source_id}.json"
     atomic_write_json(receipt_path, receipt)
     return {**receipt, "receipt": str(receipt_path.relative_to(root))}
+
+
+BROWSER_SCRIPT = r"""
+const { chromium } = require('playwright');
+(async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ userAgent: process.argv[2] });
+    await page.goto(process.argv[1], { waitUntil: 'networkidle', timeout: 45000 });
+    const title = await page.title();
+    const text = await page.evaluate(() => document.body ? document.body.innerText : '');
+    const html = await page.content();
+    process.stdout.write(JSON.stringify({ url: page.url(), title, text, html }));
+  } finally {
+    await browser.close();
+  }
+})().catch((error) => { process.stderr.write(String(error)); process.exit(1); });
+"""
+MIN_HTML_TEXT_CHARACTERS = 200
+
+
+def browser_available() -> bool:
+    if shutil.which("node") is None:
+        return False
+    probe = subprocess.run(
+        ["node", "-e", "require('playwright')"], text=True, capture_output=True, timeout=30
+    )
+    return probe.returncode == 0
+
+
+def _browser_render(url: str) -> dict[str, str]:
+    _require_public_host(url)
+    result = subprocess.run(
+        ["node", "-e", BROWSER_SCRIPT, url, USER_AGENT], text=True, capture_output=True, timeout=120
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"browser render failed: {result.stderr.strip()[:300]}")
+    return json.loads(result.stdout)
+
+
+def _pdf_text(pdf_path: Path, text_path: Path) -> int:
+    """Write a page-marked UTF-8 derivative; return the page count."""
+    if shutil.which("pdftotext") is None:
+        raise RuntimeError("pdftotext is unavailable for PDF text derivation")
+    result = subprocess.run(
+        ["pdftotext", "-layout", str(pdf_path), "-"], capture_output=True, timeout=180
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"pdftotext failed: {result.stderr.decode('utf-8', errors='replace')[:300]}")
+    pages = result.stdout.decode("utf-8", errors="replace").split("\f")
+    if pages and not pages[-1].strip():
+        pages = pages[:-1]
+    body = "".join(f"--- page {number} ---\n{page.rstrip()}\n\n" for number, page in enumerate(pages, 1))
+    atomic_write_text(text_path, body)
+    return len(pages)
+
+
+def _blocked_receipt(root: Path, source_id: str, url: str, reason: str) -> dict[str, Any]:
+    directory = root / "01-sources/captures" / source_id
+    directory.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(directory / "BLOCKED.txt", f"{url}\n{reason}\n")
+    receipt = {
+        "schema_version": "1.0.0",
+        "task_type": "capture",
+        "source_id": source_id,
+        "status": "blocked",
+        "reason": reason,
+        "access_method": "runtime public HTTP capture",
+        "local_paths": [str((directory / "BLOCKED.txt").relative_to(root))],
+        "canonical_text_ready": False,
+        "captured_at": utc_now(),
+        "disposition": {
+            "input_id": source_id,
+            "disposition": "blocked",
+            "reason": reason,
+            "evidence_paths": [str((directory / "BLOCKED.txt").relative_to(root))],
+            "output_ids": [],
+        },
+    }
+    receipt_path = root / "tools/outputs/worker-parts/capture" / f"{source_id}.json"
+    atomic_write_json(receipt_path, receipt)
+    return {**receipt, "receipt": str(receipt_path.relative_to(root))}
+
+
+def _finish_derivative(root: Path, receipt: dict[str, Any], text_path: Path, method: str, note: str) -> dict[str, Any]:
+    content = text_path.read_text(encoding="utf-8", errors="replace")
+    relative = str(text_path.relative_to(root))
+    paths = list(dict.fromkeys([*receipt["local_paths"], relative]))
+    receipt["local_paths"] = paths
+    receipt["source"]["local file"] = ";".join(paths)
+    receipt["source"]["method"] = method
+    receipt["source"]["notes"] = note
+    receipt["estimated_tokens"] = max(1, len(content) // 4)
+    receipt["canonical_text_ready"] = bool(content.strip())
+    receipt["status"] = "captured" if content.strip() else "blocked"
+    receipt["disposition"] = {
+        "input_id": receipt["source_id"],
+        "disposition": "completed" if content.strip() else "blocked",
+        "reason": "captured with canonical text" if content.strip() else f"{method} produced no text",
+        "evidence_paths": paths,
+        "output_ids": [receipt["source_id"]] if content.strip() else [],
+    }
+    if not content.strip():
+        receipt["reason"] = receipt["disposition"]["reason"]
+    receipt_path = root / "tools/outputs/worker-parts/capture" / f"{receipt['source_id']}.json"
+    atomic_write_json(receipt_path, {key: value for key, value in receipt.items() if key != "receipt"})
+    return {**receipt, "receipt": str(receipt_path.relative_to(root))}
+
+
+def auto_capture_source(
+    root: Path,
+    *,
+    url: str,
+    source_id: str,
+    grade: str,
+    store: RuntimeStore | None = None,
+    use_browser: bool | None = None,
+) -> dict[str, Any]:
+    """Capture an ordinary public page or PDF end to end without an agent.
+
+    Produces a terminal receipt: ``captured`` with a canonical text derivative,
+    or ``blocked`` with the concrete reason. Access restrictions are recorded,
+    never bypassed.
+    """
+    try:
+        receipt = capture_source_part(root, url=url, source_id=source_id, grade=grade, store=store)
+    except Exception as error:  # every source receives a terminal disposition
+        return _blocked_receipt(root, source_id, url, f"{type(error).__name__}: {error}")
+    directory = root / "01-sources/captures" / source_id
+    pdf_path = directory / "source.pdf"
+    if pdf_path.is_file():
+        try:
+            pages = _pdf_text(pdf_path, directory / "content.txt")
+        except Exception as error:
+            return _blocked_receipt(root, source_id, url, f"PDF text derivation failed: {error}")
+        return _finish_derivative(
+            root, receipt, directory / "content.txt",
+            "public HTTP capture (application/pdf) + pdftotext", f"{pages} PDF pages with page markers",
+        )
+    text_path = directory / "content.txt"
+    thin = (
+        receipt["status"] == "captured"
+        and text_path.is_file()
+        and len(text_path.read_text(encoding="utf-8", errors="replace").strip()) < MIN_HTML_TEXT_CHARACTERS
+    )
+    if thin or receipt["status"] != "captured":
+        if use_browser is None:
+            use_browser = browser_available()
+        if not use_browser:
+            if receipt["status"] == "captured":
+                return receipt
+            return _blocked_receipt(
+                root, source_id, url, "no canonical text from HTTP capture and no headless browser is available"
+            )
+        try:
+            rendered = _browser_render(url)
+        except Exception as error:
+            if receipt["status"] == "captured":
+                return receipt
+            return _blocked_receipt(root, source_id, url, f"browser render failed: {error}")
+        atomic_write_text(directory / "rendered.html", rendered.get("html", ""))
+        atomic_write_text(text_path, re.sub(r"\n{3,}", "\n\n", rendered.get("text", "")).strip() + "\n")
+        receipt["local_paths"] = list(dict.fromkeys([*receipt["local_paths"], str((directory / "rendered.html").relative_to(root))]))
+        if rendered.get("title") and receipt["source"]["title"] in {"", url}:
+            receipt["source"]["title"] = rendered["title"]
+        return _finish_derivative(
+            root, receipt, text_path, "public HTTP capture + headless browser text",
+            "JavaScript-rendered page; text taken from the rendered DOM",
+        )
+    return receipt

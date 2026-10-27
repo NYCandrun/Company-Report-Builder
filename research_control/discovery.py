@@ -1,8 +1,10 @@
-"""Adaptive, saturation-based source discovery.
+"""Adaptive, question-bounded source discovery.
 
-Discovery has no source quota.  It stops successfully only when each relevant
-channel reaches a documented fixed point.  Numeric limits in ``DiscoveryPolicy``
-are circuit breakers: hitting one produces ``incomplete``, never ``saturated``.
+Discovery has no source quota.  The first-party site is crawled to a fixed point
+by the runtime.  Search-driven channels stop when they are ``sufficient`` for the
+brief's numbered research questions, or ``saturated`` when repeated passes add
+nothing.  Numeric limits in ``DiscoveryPolicy`` are circuit breakers: hitting
+one produces ``incomplete``, never a complete state.
 """
 
 from __future__ import annotations
@@ -43,6 +45,13 @@ TRACKING_PARAMETERS = {
     "utm_campaign", "utm_content", "utm_medium", "utm_source", "utm_term",
 }
 SKIP_SCHEMES = {"mailto", "tel", "javascript", "data", "blob"}
+# Login-walled platforms: their URLs are kept as leads with provenance, but are
+# not assigned capture work because public capture cannot read them.
+LEAD_ONLY_HOSTS = (
+    "linkedin.com", "twitter.com", "x.com", "facebook.com", "instagram.com",
+    "threads.net", "tiktok.com",
+)
+QUESTION_ID = re.compile(r"\bQ\d+\b")
 SKIP_SUFFIXES = {
     ".7z", ".avi", ".css", ".dmg", ".eot", ".exe", ".gif", ".gz", ".ico",
     ".jpeg", ".jpg", ".mov", ".mp3", ".mp4", ".otf", ".png", ".rar", ".svg",
@@ -150,6 +159,18 @@ def classify_channel(url: str, company_host: str, anchor_text: str = "") -> str:
     if any(term in signal for term in ("/blog", "/news", "/press", "/resources", "/insights", "/webinars")):
         return "newsroom_blog"
     return "company_site" if _same_company_host(url, company_host) else "independent_web"
+
+
+def lead_only(url: str) -> bool:
+    host = host_key(url)
+    return any(host == name or host.endswith(f".{name}") for name in LEAD_ONLY_HOSTS)
+
+
+def candidate_relevance(url: str) -> str:
+    path = urlparse(url).path.casefold()
+    if "sitemap" in path and path.endswith(".xml"):
+        return "inventory"
+    return "lead" if lead_only(url) else "candidate"
 
 
 def source_kind(url: str) -> str:
@@ -299,7 +320,7 @@ class DiscoveryEngine:
                     host_key=host_key(canonical),
                     channel=selected_channel,
                     source_kind=source_kind(canonical),
-                    relevance="candidate",
+                    relevance=candidate_relevance(canonical),
                     discovered_from=discovered_from,
                     depth=depth,
                 )
@@ -323,6 +344,100 @@ class DiscoveryEngine:
             )
         self.write_catalog()
         return {"channel": channel, "new_source_ids": created, "rejected": rejected, "channel_state": channel_state}
+
+    def seed_sitemaps(self) -> dict[str, Any]:
+        """Admit robots-declared and conventional sitemaps as crawl inventories."""
+        parsed = urlparse(self.company_url)
+        base = f"{parsed.scheme}://{parsed.netloc}"
+        declared = [f"{base}/sitemap.xml"]
+        note = "robots.txt read"
+        try:
+            robots = self.fetcher(f"{base}/robots.txt", self.policy)
+            for line in robots.body.decode("utf-8", errors="replace").splitlines():
+                if line.strip().casefold().startswith("sitemap:"):
+                    declared.append(line.split(":", 1)[1].strip())
+        except Exception as error:  # an unreadable robots file only removes declared sitemaps
+            note = f"robots.txt unavailable: {error}"
+        created: list[str] = []
+        for value in dict.fromkeys(declared):
+            try:
+                canonical = canonicalize_url(value, self.company_url)
+            except ValueError:
+                continue
+            if not _same_company_host(canonical, self.company_host):
+                continue
+            source, was_created = self.store.add_source(
+                canonical_url=canonical,
+                original_url=value,
+                host_key=host_key(canonical),
+                channel="sitemaps",
+                source_kind="feed",
+                relevance="inventory",
+                discovered_from="robots.txt",
+                depth=1,
+                metadata={"discovered_via": "sitemap_seed"},
+            )
+            if was_created:
+                created.append(source["source_id"])
+        self.write_catalog()
+        return {"seeded": created, "note": note}
+
+    def audit_sitemaps(self, *, refetch: bool) -> dict[str, Any]:
+        """Record one sitemap fixed-point pass: every listed URL must be cataloged."""
+        known = {source["canonical_url"] for source in self.store.sources()}
+        inventories = [
+            source for source in self.store.sources()
+            if source["relevance"] == "inventory" and source["status"] == "discovered_fetched"
+        ]
+        added: list[str] = []
+        listed = 0
+        for inventory in inventories:
+            if refetch:
+                try:
+                    body = self.fetcher(inventory["canonical_url"], self.policy).body
+                except Exception:
+                    continue
+            else:
+                paths = inventory.get("local_paths") or []
+                if not paths or not (self.root / paths[0]).is_file():
+                    continue
+                body = (self.root / paths[0]).read_bytes()
+            for href in xml_links(body):
+                try:
+                    candidate = canonicalize_url(href, inventory["canonical_url"])
+                except ValueError:
+                    continue
+                if not discoverable_link(candidate) or not _same_company_host(candidate, self.company_host):
+                    continue
+                listed += 1
+                if candidate in known:
+                    continue
+                source, was_created = self.store.add_source(
+                    canonical_url=candidate,
+                    original_url=href,
+                    host_key=host_key(candidate),
+                    channel=classify_channel(candidate, self.company_host),
+                    source_kind=source_kind(candidate),
+                    relevance=candidate_relevance(candidate),
+                    discovered_from=inventory["source_id"],
+                    depth=int(inventory["depth"]) + 1,
+                    metadata={"discovered_via": "sitemap_audit"},
+                )
+                known.add(candidate)
+                if was_created:
+                    added.append(source["source_id"])
+        method = "fresh re-fetch" if refetch else "cached bytes"
+        channel = self.store.record_discovery_pass(
+            "sitemaps",
+            new_sources=len(added),
+            evidence=(
+                f"sitemap audit ({method}): {len(inventories)} inventories, {listed} listed company URLs, "
+                f"{len(added)} not previously cataloged"
+            ),
+            saturation_passes=self.policy.saturation_passes,
+        )
+        self.write_catalog()
+        return {"inventories": len(inventories), "listed": listed, "new_source_ids": added, "channel_state": channel}
 
     def crawl_company_site(self) -> dict[str, Any]:
         """Drain the first-party frontier once; repeat calls prove saturation."""
@@ -432,7 +547,7 @@ class DiscoveryEngine:
                             host_key=host_key(candidate),
                             channel=channel,
                             source_kind=source_kind(candidate),
-                            relevance="candidate",
+                            relevance=candidate_relevance(candidate),
                             discovered_from=source["source_id"],
                             depth=source["depth"] + 1,
                             metadata={"anchor_text": anchor},
@@ -461,7 +576,7 @@ class DiscoveryEngine:
                             host_key=host_key(candidate),
                             channel=channel,
                             source_kind=source_kind(candidate),
-                            relevance="candidate",
+                            relevance=candidate_relevance(candidate),
                             discovered_from=source["source_id"],
                             depth=source["depth"] + 1,
                             metadata={"discovered_via": "xml_feed_or_sitemap"},
@@ -496,7 +611,18 @@ class DiscoveryEngine:
 
     def close_channel(self, channel: str, state: str, evidence: str) -> dict[str, Any]:
         if state not in DISCOVERY_TERMINAL:
-            raise ValueError("channel may only be closed as saturated, not_applicable, blocked, or incomplete")
+            raise ValueError(
+                "channel may only be closed as saturated, sufficient, not_applicable, blocked, or incomplete"
+            )
+        if state == "sufficient":
+            current = self.store.discovery_channel(channel)
+            if not current or int(current["total_passes"]) < 1:
+                raise ValueError(f"{channel}: sufficiency requires at least one recorded discovery pass")
+            if not QUESTION_ID.search(evidence):
+                raise ValueError(
+                    f"{channel}: sufficiency evidence must name the research question IDs (Q1, Q2, ...) "
+                    "the channel's admitted sources answer and why further search would not change them"
+                )
         if state == "saturated":
             current = self.store.discovery_channel(channel)
             if not current or int(current["consecutive_empty_passes"]) < self.policy.saturation_passes:
@@ -632,7 +758,8 @@ class DiscoveryEngine:
         )
         lines = [
             "# Discovery coverage", "",
-            "Discovery is complete only at documented channel saturation; it has no source-count target.", "",
+            "Discovery has no source-count target. The runtime crawls the company site to a fixed point; "
+            "search channels close as `sufficient` for named research questions or `saturated`.", "",
             "| Channel | State | Passes | New sources | Evidence |", "|---|---|---:|---:|---|",
         ]
         for item in channels:

@@ -44,8 +44,10 @@ TASK_STATES = {
 ACTIVE_STATES = {"leased", "running", "validating"}
 SUCCESS_STATES = {"succeeded"}
 FINAL_STATES = {"succeeded", "failed", "blocked", "cancelled"}
-DISCOVERY_TERMINAL = {"saturated", "not_applicable", "blocked", "incomplete"}
-DISCOVERY_COMPLETE = {"saturated", "not_applicable"}
+DISCOVERY_TERMINAL = {"saturated", "sufficient", "not_applicable", "blocked", "incomplete"}
+DISCOVERY_COMPLETE = {"saturated", "sufficient", "not_applicable"}
+# Sources that are recorded with provenance but never assigned capture work.
+UNCAPTURED_RELEVANCE = {"excluded", "duplicate", "lead", "inventory"}
 
 
 def _json(value: Any) -> str:
@@ -535,7 +537,14 @@ class RuntimeStore:
         task_id: str | None = None,
         capabilities: Iterable[str] | None = None,
         phase: str | None = None,
+        bypass_limits: bool = False,
     ) -> dict[str, Any] | None:
+        """Lease ready work.
+
+        ``bypass_limits`` is reserved for the in-process runtime executor, which
+        runs one deterministic task at a time and paces its own requests; agent
+        workers always respect the global and per-host concurrency limits.
+        """
         if not worker_id.strip():
             raise ValueError("worker_id is required")
         self.recover_expired()
@@ -559,7 +568,7 @@ class RuntimeStore:
             active = self.connection.execute(
                 "SELECT COUNT(*) FROM tasks WHERE state IN ('leased','running','validating')"
             ).fetchone()[0]
-            if active >= global_limit:
+            if active >= global_limit and not bypass_limits:
                 return None
             rows = self.connection.execute(
                 f"SELECT task_id, host_key FROM tasks WHERE {' AND '.join(clauses)} "
@@ -568,7 +577,7 @@ class RuntimeStore:
             ).fetchall()
             selected: sqlite3.Row | None = None
             for row in rows:
-                if row["host_key"]:
+                if row["host_key"] and not bypass_limits:
                     host_active = self.connection.execute(
                         "SELECT COUNT(*) FROM tasks WHERE host_key=? AND state IN ('leased','running','validating')",
                         (row["host_key"],),

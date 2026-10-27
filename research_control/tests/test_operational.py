@@ -3,7 +3,6 @@ from __future__ import annotations
 import csv
 import json
 import os
-import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -26,6 +25,7 @@ from research_control.orchestration import (
     next_packets,
     start_task,
 )
+from research_control.provision import provision_run
 from research_control.publication import make_pdf, render
 
 
@@ -33,10 +33,7 @@ SOURCE_ROOT = Path(__file__).resolve().parents[2]
 
 
 def copy_template(target: Path) -> None:
-    for name in ("README.md", "RESEARCH_CONSTITUTION.md", "WORKFLOW.yaml", "pyproject.toml"):
-        shutil.copy2(SOURCE_ROOT / name, target / name)
-    for name in ("prompts", "research_control", "tools"):
-        shutil.copytree(SOURCE_ROOT / name, target / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "outputs"))
+    provision_run(SOURCE_ROOT, target)
 
 
 def text(root: Path, relative: str, value: str = "complete\n") -> None:
@@ -214,7 +211,7 @@ class OperationalRunTests(unittest.TestCase):
                 lambda: text(
                     root,
                     "00-scope.md",
-                    "# Scope\n\nCompany URL: https://acme.example\n\n## Inputs\nNo user inputs.\n\n## Source plan\nFirst-party and third-party evidence.\n\n## Competitors\nComparable workflow products.\n",
+                    "# Scope\n\nCompany URL: https://acme.example\n\n## Inputs\nNo user inputs.\n\n## Source plan\nFirst-party and third-party evidence.\n\n## Competitors\nComparable workflow products.\n\n## Research questions\n\n- Q1 product and architecture.\n- Q7 competitors.\n",
                 ) or jsonl(root, "tools/outputs/input-classification.jsonl", [{
                     "assignment_id": "scope.scope", "input_id": "__none__", "disposition": "completed_zero",
                     "reason": "no user inputs", "evidence_paths": ["00-scope.md"], "output_ids": [],
@@ -250,7 +247,6 @@ class OperationalRunTests(unittest.TestCase):
                 }])
 
             complete_task(root, "capture.capture", "capture-worker", write_capture)
-            complete_task(root, "capture.brand-guide", "brand-guide-worker", lambda: write_brand_guide(root))
             report, _ = check_phase(root, "capture")
             self.assertEqual(PASS, report["status"], report)
 
@@ -267,6 +263,9 @@ class OperationalRunTests(unittest.TestCase):
                     "output_ids": ["CAND-001"],
                 }])
 
+            complete_task(root, "facts.triage", "triage-worker", lambda: jsonl(root, "tools/lists/extraction-triage.jsonl", [{
+                "id": "SRC-001", "decision": "include", "questions": ["Q1"], "reason": "homepage product statement",
+            }]))
             complete_task(root, "facts.extract", "extract-worker", write_extraction)
 
             def write_facts() -> None:
@@ -376,6 +375,7 @@ class OperationalRunTests(unittest.TestCase):
                 atomic_write_json(root / "tools/outputs/citation-map-company-brief.json", citation_map)
                 atomic_write_json(root / "tools/outputs/exhibit-map.json", {"elements": [{"element_id": "portfolio", "fact_ids": ["ACME-001"], "evidence_bearing": True}]})
 
+            complete_task(root, "final.brand-guide", "brand-guide-worker", lambda: write_brand_guide(root))
             complete_task(root, "final.write-brief", "brief-writer", write_brief)
             complete_task(root, "final.model-diagrams", "diagram-modeler", lambda: write_diagram_models(root))
             complete_task(root, "final.build-diagrams", "diagram-builder", lambda: write_diagram_artifacts(root))

@@ -121,6 +121,12 @@ def append_history(root: Path, event: str, details: str) -> None:
 def _ensure_git(root: Path) -> None:
     if (root / ".git").exists():
         return
+    inside = subprocess.run(
+        ["git", "rev-parse", "--is-inside-work-tree"], cwd=root, text=True, capture_output=True
+    )
+    if inside.returncode == 0 and inside.stdout.strip() == "true":
+        # A run directory inside the template checkout is versioned by that repository.
+        return
     result = subprocess.run(["git", "init"], cwd=root, text=True, capture_output=True)
     if result.returncode != 0:
         raise RuntimeError(f"could not initialize git: {result.stderr.strip()}")

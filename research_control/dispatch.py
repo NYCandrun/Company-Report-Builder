@@ -21,6 +21,12 @@ def _prompt(root: Path, relative: str) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
+def store_company_url(root: Path) -> str:
+    from research_control.orchestration import load_state
+
+    return str(load_state(root)["company_url"])
+
+
 def write_packet(root: Path, task: dict[str, Any]) -> dict[str, Any]:
     route = model_route(root, task["task_type"])
     packet = {
@@ -53,6 +59,7 @@ def write_packet(root: Path, task: dict[str, Any]) -> dict[str, Any]:
         f"# TASK TYPE: {task['task_type'].upper()}",
         "",
         f"Task ID: `{task['task_id']}`",
+        f"Company URL: {store_company_url(root)}",
         f"Phase: `{task['phase']}`",
         f"Independent context required: `{'yes' if task['independent'] else 'no'}`",
         "",
@@ -110,8 +117,19 @@ def write_packet(root: Path, task: dict[str, Any]) -> dict[str, Any]:
 
 
 def emit_ready_packets(root: Path, store: RuntimeStore, phase: str | None = None) -> dict[str, Any]:
+    """Write packets for ready agent work.
+
+    Runtime-executed work never becomes a packet. Work marked ``dispatch: early``
+    is dispatched as soon as its own dependencies are met, whatever the current
+    phase, so long independent branches overlap the research path.
+    """
     store.refresh_ready()
-    tasks = store.tasks(phase=phase, states={"ready", "retryable"})
+    ready = store.tasks(states={"ready", "retryable"})
+    tasks = [
+        task for task in ready
+        if task["metadata"].get("executor") != "runtime"
+        and (phase is None or task["phase"] == phase or task["metadata"].get("dispatch") == "early")
+    ]
     packets = [write_packet(root, task) for task in tasks]
     manifest = {
         "schema_version": "1.0.0",

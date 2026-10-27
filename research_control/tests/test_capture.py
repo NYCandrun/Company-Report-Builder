@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from research_control.capture import USER_AGENT, _robots_allowed
+from research_control.capture import USER_AGENT, _ROBOTS_CACHE, _robots_allowed
 
 
 class _Response:
@@ -34,6 +34,7 @@ class _Opener:
 
 class RobotsPolicyTests(unittest.TestCase):
     def test_robots_request_uses_research_user_agent_and_parses_rules(self) -> None:
+        _ROBOTS_CACHE.clear()
         seen_agents: list[str | None] = []
         body = b"User-agent: *\nDisallow: /private\nAllow: /public\n"
         opener = _Opener(body, seen_agents)
@@ -43,7 +44,8 @@ class RobotsPolicyTests(unittest.TestCase):
         ):
             self.assertTrue(_robots_allowed("https://docs.example.com/public"))
             self.assertFalse(_robots_allowed("https://docs.example.com/private"))
-        self.assertEqual([USER_AGENT, USER_AGENT], seen_agents)
+        # The policy is fetched once per host and reused for later URLs.
+        self.assertEqual([USER_AGENT], seen_agents)
 
 
 if __name__ == "__main__":

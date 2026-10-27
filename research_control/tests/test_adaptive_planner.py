@@ -1,27 +1,27 @@
 from __future__ import annotations
 
-import shutil
 import tempfile
 import unittest
 from pathlib import Path
 
 from research_control.discovery import DISCOVERY_CHANNELS, DiscoveryEngine
-from research_control.io import atomic_write_json, workflow
+from research_control.automatic import RUNTIME_WORKER
+from research_control.dispatch import emit_ready_packets
+from research_control.io import atomic_write_json, atomic_write_jsonl, workflow
 from research_control.orchestration import initialize, load_state, save_state
-from research_control.planner import AdaptivePlanner
+from research_control.planner import DISCOVERY_GROUPS, AdaptivePlanner
+from research_control.provision import provision_run
 from research_control.reducers import reduce_capture_parts, reduce_discovery
 from research_control.runtime import RuntimeStore
 from research_control.routing import model_route
+from research_control.triage import validate_triage
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[2]
 
 
 def copy_template(target: Path) -> None:
-    for name in ("README.md", "RESEARCH_CONSTITUTION.md", "WORKFLOW.yaml", "pyproject.toml"):
-        shutil.copy2(SOURCE_ROOT / name, target / name)
-    for name in ("prompts", "research_control", "tools"):
-        shutil.copytree(SOURCE_ROOT / name, target / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "outputs"))
+    provision_run(SOURCE_ROOT, target)
 
 
 class AdaptivePlannerTests(unittest.TestCase):
@@ -57,21 +57,18 @@ class AdaptivePlannerTests(unittest.TestCase):
                 store.initialize(run_id=state["run_id"], company_url=state["company_url"])
                 engine = DiscoveryEngine(root, store)
                 AdaptivePlanner(root, store).reconcile()
-                for number in (1, 2):
-                    engine.add_candidates(
-                        "company_site", [], discovered_from=f"pass-{number}",
-                        evidence=f"empty company pass {number}",
-                    )
-                channel = store.discovery_channel("company_site")
-                receipt = root / "tools/outputs/worker-parts/discovery/company-site.json"
-                atomic_write_json(receipt, {
-                    "schema_version": "1.0.0", "channel": "company_site", "status": "saturated",
-                    "passes": 2, "new_sources": 0, "evidence": channel["completion_evidence"],
-                })
-                task_id = "capture.discover.company-site"
-                store.claim("company-discovery", task_id=task_id)
-                store.start(task_id, "company-discovery")
-                store.complete(task_id, "company-discovery")
+                task_id = "capture.discover.first-party-site"
+                self.assertEqual("runtime", store.task(task_id)["metadata"]["executor"])
+                for channel in ("company_site", "sitemaps"):
+                    for number in (1, 2):
+                        engine.add_candidates(
+                            channel, [], discovered_from=f"pass-{number}",
+                            evidence=f"empty {channel} pass {number}",
+                        )
+                    _write_receipt(root, store, channel)
+                store.claim(RUNTIME_WORKER, task_id=task_id)
+                store.start(task_id, RUNTIME_WORKER)
+                store.complete(task_id, RUNTIME_WORKER)
                 engine.add_candidates(
                     "company_site", ["https://example.com/new-branch"],
                     discovered_from="new sitemap", evidence="new sitemap branch",
@@ -79,6 +76,27 @@ class AdaptivePlannerTests(unittest.TestCase):
                 AdaptivePlanner(root, store).reconcile()
                 self.assertEqual("ready", store.task(task_id)["state"])
                 self.assertIsNone(store.task("capture.reduce-discovery"))
+
+    def test_login_walled_urls_are_leads_and_sufficiency_needs_question_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            copy_template(root)
+            state = initialize(root, "https://example.com")
+            with RuntimeStore(root) as store:
+                store.initialize(run_id=state["run_id"], company_url=state["company_url"])
+                engine = DiscoveryEngine(root, store)
+                engine.initialize()
+                result = engine.add_candidates(
+                    "social", ["https://www.linkedin.com/company/example", "https://example.com/sitemap.xml"],
+                    discovered_from="search", evidence="official profile",
+                )
+                relevance = {store.source(source_id)["canonical_url"]: store.source(source_id)["relevance"] for source_id in result["new_source_ids"]}
+                self.assertEqual("lead", relevance["https://www.linkedin.com/company/example"])
+                self.assertEqual("inventory", relevance["https://example.com/sitemap.xml"])
+                with self.assertRaises(ValueError):
+                    engine.close_channel("social", "sufficient", "enough sources")
+                closed = engine.close_channel("social", "sufficient", "Q6: official profile admitted; no other account exists")
+                self.assertEqual("sufficient", closed["state"])
 
     def test_task_count_follows_discovered_corpus_and_content_volume(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -89,6 +107,7 @@ class AdaptivePlannerTests(unittest.TestCase):
             state["phases"]["scope"]["status"] = "complete"
             state["phases"]["capture"]["status"] = "ready"
             save_state(root, state)
+            (root / "00-scope.md").write_text("# Scope\n\n## Research questions\n\n- Q1 product.\n- Q2 buyer.\n", encoding="utf-8")
 
             with RuntimeStore(root) as store:
                 store.initialize(run_id=state["run_id"], company_url=state["company_url"])
@@ -99,42 +118,40 @@ class AdaptivePlannerTests(unittest.TestCase):
                     discovered_from="homepage", evidence="fixture links", record_pass=False,
                 )
                 first_plan = AdaptivePlanner(root, store).reconcile()
-                self.assertEqual(len(DISCOVERY_CHANNELS) + 1, first_plan["task_count"])
-                brand = store.task("capture.brand-guide")
+                self.assertEqual(len(DISCOVERY_GROUPS), first_plan["task_count"])
+                brand = store.task("final.brand-guide")
                 self.assertIsNotNone(brand)
                 self.assertTrue(brand["independent"])
-                self.assertEqual("concurrent_with_discovery_and_capture", brand["metadata"]["schedule"])
+                self.assertEqual("early", brand["metadata"]["dispatch"])
+                dispatch = emit_ready_packets(root, store, "capture")
+                self.assertIn("final.brand-guide", [item["task_id"] for item in dispatch["packets"]])
+                self.assertNotIn("capture.discover.first-party-site", [item["task_id"] for item in dispatch["packets"]])
 
                 for channel in DISCOVERY_CHANNELS:
-                    engine.add_candidates(
-                        channel, [], discovered_from=f"{channel}-pass-1",
-                        evidence=f"fixture empty pass one for {channel}",
-                    )
-                    engine.add_candidates(
-                        channel, [], discovered_from=f"{channel}-pass-2",
-                        evidence=f"fixture fixed point for {channel}",
-                    )
-                    receipt_path = root / "tools/outputs/worker-parts/discovery" / f"{channel.replace('_', '-')}.json"
-                    receipt_path.parent.mkdir(parents=True, exist_ok=True)
-                    atomic_write_json(receipt_path, {
-                        "schema_version": "1.0.0", "channel": channel, "status": "saturated",
-                        "passes": 2, "new_sources": 0, "evidence": f"fixture fixed point for {channel}",
-                    })
-                    task_id = f"capture.discover.{channel.replace('_', '-')}"
-                    worker = f"discover-{channel}"
+                    for number in (1, 2):
+                        engine.add_candidates(
+                            channel, [], discovered_from=f"{channel}-pass-{number}",
+                            evidence=f"fixture fixed point for {channel}",
+                        )
+                for group in DISCOVERY_GROUPS:
+                    task_id = f"capture.discover.{group}"
+                    for channel in store.task(task_id)["metadata"]["channels"]:
+                        _write_receipt(root, store, channel)
+                    worker = RUNTIME_WORKER if group == "first-party-site" else f"discover-{group}"
                     store.claim(worker, task_id=task_id)
                     store.start(task_id, worker)
                     store.complete(task_id, worker)
 
                 AdaptivePlanner(root, store).reconcile()
                 reduce_discovery(root, store)
-                store.claim("discovery-reducer", task_id="capture.reduce-discovery")
-                store.start("capture.reduce-discovery", "discovery-reducer")
-                store.complete("capture.reduce-discovery", "discovery-reducer")
+                store.claim(RUNTIME_WORKER, task_id="capture.reduce-discovery")
+                store.start("capture.reduce-discovery", RUNTIME_WORKER)
+                store.complete("capture.reduce-discovery", RUNTIME_WORKER)
 
                 AdaptivePlanner(root, store).reconcile()
                 capture_tasks = [task for task in store.tasks(phase="capture") if task["task_type"] == "capture"]
                 self.assertEqual(3, len(capture_tasks))
+                self.assertTrue(all(task["metadata"]["executor"] == "runtime" for task in capture_tasks))
                 for index, task in enumerate(capture_tasks):
                     source_id = task["metadata"]["source_id"]
                     content_path = root / "01-sources/captures" / source_id / "content.txt"
@@ -157,27 +174,50 @@ class AdaptivePlannerTests(unittest.TestCase):
                         "disposition": {"input_id": source_id, "disposition": "completed", "reason": "fixture",
                                         "evidence_paths": [str(content_path.relative_to(root))], "output_ids": [source_id]},
                     })
-                    worker = f"capture-{index}"
-                    store.claim(worker, task_id=task["task_id"])
-                    store.start(task["task_id"], worker)
-                    store.complete(task["task_id"], worker)
+                    store.claim(RUNTIME_WORKER, task_id=task["task_id"])
+                    store.start(task["task_id"], RUNTIME_WORKER)
+                    store.complete(task["task_id"], RUNTIME_WORKER)
 
                 AdaptivePlanner(root, store).reconcile()
                 reduce_capture_parts(root, store)
-                store.claim("capture-reducer", task_id="capture.reduce-captures")
-                store.start("capture.reduce-captures", "capture-reducer")
-                store.complete("capture.reduce-captures", "capture-reducer")
+                store.claim(RUNTIME_WORKER, task_id="capture.reduce-captures")
+                store.start("capture.reduce-captures", RUNTIME_WORKER)
+                store.complete("capture.reduce-captures", RUNTIME_WORKER)
 
                 state = load_state(root)
                 state["phases"]["capture"]["status"] = "complete"
                 state["phases"]["facts"]["status"] = "ready"
                 save_state(root, state)
+                triage_plan = AdaptivePlanner(root, store).reconcile()
+                self.assertEqual(["facts.triage"], [task["task_id"] for task in store.tasks(phase="facts")])
+                self.assertEqual(1, triage_plan["task_count"])
+                small = capture_tasks[0]["metadata"]["source_id"]
+                rows = [
+                    {"id": task["metadata"]["source_id"], "decision": "include", "questions": ["Q1"], "reason": "fixture"}
+                    for task in capture_tasks[1:]
+                ] + [{"id": small, "decision": "exclude", "questions": [], "reason": "duplicate of the about page"}]
+                atomic_write_jsonl(root / "tools/lists/extraction-triage.jsonl", rows)
+                self.assertEqual([], validate_triage(root))
+                store.claim("triage-worker", task_id="facts.triage")
+                store.start("facts.triage", "triage-worker")
+                store.complete("facts.triage", "triage-worker")
+
                 facts_plan = AdaptivePlanner(root, store).reconcile()
                 extraction_tasks = [task for task in store.tasks(phase="facts") if task["task_type"] == "extraction"]
                 self.assertGreater(len(extraction_tasks), 1)
-                self.assertEqual(len(extraction_tasks), facts_plan["task_count"])
+                self.assertEqual(len(extraction_tasks) + 1, facts_plan["task_count"])
                 self.assertTrue(all(task["metadata"]["estimated_tokens"] <= 90_000 for task in extraction_tasks))
+                extracted = {item["source_id"] for task in extraction_tasks for item in task["inputs"]}
+                self.assertNotIn(small, extracted)
 
+
+def _write_receipt(root: Path, store: RuntimeStore, channel: str) -> None:
+    current = store.discovery_channel(channel)
+    atomic_write_json(root / "tools/outputs/worker-parts/discovery" / f"{channel.replace('_', '-')}.json", {
+        "schema_version": "1.0.0", "channel": channel, "status": current["state"],
+        "passes": current["total_passes"], "new_sources": current["total_new_sources"],
+        "evidence": current["completion_evidence"],
+    })
 
 if __name__ == "__main__":
     unittest.main()

@@ -186,6 +186,8 @@ def _validate_scope(root: Path) -> dict[str, Any]:
         for heading in ("source", "compet", "input"):
             if heading not in text.casefold():
                 failures.append(f"scope does not address {heading} coverage")
+        if not re.search(r"\bQ1\b", text):
+            failures.append("scope does not number its research questions (Q1, Q2, ...)")
     return _report(root, "scope_contract", ["00-scope.md", "tools/outputs/run-state.json"], 1, 0 if unknowns else 1, failures, unknowns)
 
 

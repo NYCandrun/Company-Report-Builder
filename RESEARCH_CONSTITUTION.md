@@ -36,8 +36,9 @@ The repository has three durable layers:
 3. Sense-making built only on the fact store, culminating in the company brief
    and an auditable four-diagram architecture package.
 
-A separate public-evidence brand branch runs concurrently with capture and
-produces the release brand guide. It may shape typography, color, spacing,
+A separate public-evidence brand branch starts with capture, runs alongside the
+research path, and produces the release brand guide. It gates only the final
+phase that consumes it, never a research gate. It may shape typography, color, spacing,
 diagram styling, and report presentation, but it never supplies company or
 architecture facts.
 
@@ -48,10 +49,11 @@ independently admit and record any material it uses under its own evidence
 contract. Neither branch waits for the other, and shared discovery never
 merges their responsibilities.
 
-The repository must be reproducible from the effective prompt, company URL,
+The run must be reproducible from the effective prompt, company URL,
 user-provided inputs, captured public sources, and dependencies created or
 declared during the run. Incidental local files or conventions are not valid
-dependencies.
+dependencies. Each run lives in its own directory with a snapshot of the policy,
+prompts, and control engine it ran with. A run never writes into the template.
 
 ## Scope
 
@@ -62,6 +64,16 @@ subdomains, docs, help, academy, developer resources, newsroom or blog,
 careers or ATS, status, public code, and package surfaces. Read every file in
 `00-inputs/` before scope is finalized.
 
+Scope numbers the research questions (`Q1`, `Q2`, ...), starting from the
+brief's required sections. These IDs bound the rest of the run. Search-driven
+discovery channels close as `sufficient` when their admitted sources answer the
+named questions, or as `saturated` when repeated passes add nothing. Extraction
+triage then gives every captured source one decision, include or exclude, by the
+questions it can answer. Excluded sources keep their capture and provenance and
+receive an `excluded` disposition; exclusion is never a way to drop
+contradicting evidence. The cost of reading, verifying, and reviewing evidence
+should track the brief's questions, not the size of a website.
+
 User direction establishes products in focus and important questions. If it is
 absent, cover products evenly and give the most depth to the flagship selected
 from company evidence. Every synthesis and brief-writing context must know the
@@ -69,14 +81,16 @@ flagship and why it was selected.
 
 The company-site sweep covers every discoverable company sitemap, including
 non-English docs and relevant microsites, for PDF and embedded-media discovery.
+The runtime performs this crawl and captures ordinary pages and PDFs itself.
 High-value pages are captured in full. Every company-hosted PDF is downloaded
 with a text copy and page boundaries. Every long-form company-channel or
 company-site video is in scope for transcription. YouTube Shorts are not.
 
 Competitor research covers five to eight justified competitors plus a watch
-list unless user direction says otherwise. Public competitor docs are captured
-only for the competing product in a suite, normally capped around 400 pages per
-competitor with exclusions logged. Competitor videos are out except those the
+list unless user direction says otherwise. Competitor sources are admitted only
+when they answer a named question: positioning, packaging, pricing, or the
+specific capability being compared. A competitor's documentation or blog is not
+captured wholesale. Competitor videos are out except those the
 company embeds. Already captured and verified evidence is never discarded only
 because later scope narrows.
 
@@ -108,6 +122,10 @@ bot-challenge bypasses. Follow `robots.txt`, back off when rate limited, and log
 failed access instead of routing around it. Try the Wayback Machine once. If
 the network path is blocked or repeatedly fails, stop that channel and use
 dated first-party sources for messaging history.
+
+URLs on login-walled platforms (LinkedIn, X, Facebook, Instagram, Threads,
+TikTok) are recorded as leads with provenance and are not captured. When a
+question depends on such content, look for a public copy of it.
 
 ## Evidence
 
@@ -354,8 +372,9 @@ The effective dependency order is:
 
 1. Bootstrap the repository, tools, state, and bounded task contracts.
 2. Map scope and public source channels.
-3. Capture and reconcile the source record while an independent brand-guide
-   worker inspects, builds, renders, and checks the public visual system.
+3. Capture and reconcile the source record. An independent brand-guide worker
+   starts here and inspects, builds, renders, and checks the public visual
+   system alongside steps 3 through 9; only step 10 waits for it.
 4. Extract, file, and mechanically validate facts.
 5. Produce initial synthesis from script-checked facts.
 6. Model-verify every fact cited by that synthesis.
@@ -427,7 +446,10 @@ disposition, visual page record, and exact artifact hash. It writes a release
 manifest only after success. Accepted exceptions are explicit, justified,
 evidence-backed, and cannot override mandatory failed controls.
 
-Deterministic code handles deterministic work. Models receive concise failing
+Deterministic code handles deterministic work. The runtime itself crawls the
+first-party site, captures ordinary pages and PDFs, and runs the single-writer
+reducers under the same lease, ledger, and hash contracts as agent work. Agents
+receive only work that needs judgment. Models receive concise failing
 IDs and relevant context, while full records stay on disk. Efficiency never
 removes semantic review, visual review, complete reconciliation, or final
 acceptance.

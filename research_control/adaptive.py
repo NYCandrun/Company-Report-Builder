@@ -10,8 +10,10 @@ from research_control.checks import check_phase, run_validator
 from research_control.dispatch import emit_ready_packets
 from research_control.io import load_json, workflow
 from research_control.orchestration import current_phase, initialize, load_state
+from research_control.automatic import RUNTIME_WORKER, run_automatic
 from research_control.planner import AdaptivePlanner
-from research_control.runtime import ACTIVE_STATES, RuntimeStore
+from research_control.triage import validate_triage
+from research_control.runtime import ACTIVE_STATES, DISCOVERY_TERMINAL, RuntimeStore
 
 
 def open_runtime(root: Path) -> RuntimeStore:
@@ -60,12 +62,20 @@ def advance(root: Path, company_url: str | None = None) -> dict[str, Any]:
                 continue
 
             planned = AdaptivePlanner(root, store).reconcile()
+            automatic = run_automatic(
+                root, store, phase,
+                lambda current_store, task, worker: _complete(root, current_store, task, worker),
+                lambda: AdaptivePlanner(root, store).reconcile(),
+            )
+            if automatic["executed"] or automatic["failed"]:
+                planned = AdaptivePlanner(root, store).reconcile()
             dispatch = emit_ready_packets(root, store, phase)
             if dispatch["ready_count"]:
                 return {
                     "status": "work_ready",
                     "phase": phase,
                     "planning": planned,
+                    "automatic": automatic,
                     "dispatch": dispatch,
                     "recovered": recovered,
                     "stale": stale,
@@ -111,31 +121,46 @@ def complete_work(
         task = store.task(task_id)
         if not task:
             raise KeyError(f"unknown task: {task_id}")
-        _validate_semantic_receipt(root, store, task)
-        result = store.complete(task_id, worker_id, telemetry=telemetry)
-        if task["task_type"] == "capture":
-            receipt = load_json(root / task["metadata"]["receipt"])
-            source_id = task["metadata"]["source_id"]
-            if receipt["status"] == "captured":
-                store.update_source(
-                    source_id,
-                    status="captured",
-                    local_paths=list(receipt.get("local_paths", [])),
-                    content_bytes=int(receipt.get("content_bytes", 0)),
-                    content_tokens=int(receipt.get("estimated_tokens", 0)),
-                    metadata={"capture_receipt": task["metadata"]["receipt"]},
-                )
-            else:
-                store.update_source(
-                    source_id,
-                    status="blocked",
-                    metadata={
-                        "capture_receipt": task["metadata"]["receipt"],
-                        "capture_reason": receipt.get("reason", receipt.get("disposition", {}).get("reason", "blocked")),
-                    },
-                )
+        if task["metadata"].get("executor") == "runtime" and worker_id != RUNTIME_WORKER:
+            raise ValueError(f"{task_id}: runtime-executed work is completed by `research_control run`, not a worker")
+        result = _complete(root, store, task, worker_id, telemetry=telemetry)
         AdaptivePlanner(root, store).reconcile()
         return result
+
+
+def _complete(
+    root: Path,
+    store: RuntimeStore,
+    task: dict[str, Any],
+    worker_id: str,
+    *,
+    telemetry: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    task_id = task["task_id"]
+    _validate_semantic_receipt(root, store, task)
+    result = store.complete(task_id, worker_id, telemetry=telemetry)
+    if task["task_type"] == "capture":
+        receipt = load_json(root / task["metadata"]["receipt"])
+        source_id = task["metadata"]["source_id"]
+        if receipt["status"] == "captured":
+            store.update_source(
+                source_id,
+                status="captured",
+                local_paths=list(receipt.get("local_paths", [])),
+                content_bytes=int(receipt.get("content_bytes", 0)),
+                content_tokens=int(receipt.get("estimated_tokens", 0)),
+                metadata={"capture_receipt": task["metadata"]["receipt"]},
+            )
+        else:
+            store.update_source(
+                source_id,
+                status="blocked",
+                metadata={
+                    "capture_receipt": task["metadata"]["receipt"],
+                    "capture_reason": receipt.get("reason", receipt.get("disposition", {}).get("reason", "blocked")),
+                },
+            )
+    return result
 
 
 def _validate_semantic_receipt(root: Path, store: RuntimeStore, task: dict[str, Any]) -> None:
@@ -150,20 +175,26 @@ def _validate_semantic_receipt(root: Path, store: RuntimeStore, task: dict[str, 
                     f"{task['task_id']}: {validator_id} failed: {'; '.join(str(item) for item in details)}"
                 )
     if task["task_type"] == "source_discovery":
-        path = root / task["metadata"]["receipt"]
-        if not path.is_file():
-            raise ValueError(f"{task['task_id']}: discovery receipt is missing")
-        receipt = load_json(path)
-        channel = task["metadata"]["channel"]
-        current = store.discovery_channel(channel)
-        if receipt.get("channel") != channel:
-            raise ValueError(f"{task['task_id']}: discovery receipt channel mismatch")
-        if not current or current["state"] not in {"saturated", "not_applicable", "blocked", "incomplete"}:
-            raise ValueError(f"{task['task_id']}: discovery channel has not reached a terminal state")
-        if receipt.get("status") != current["state"]:
-            raise ValueError(f"{task['task_id']}: discovery receipt does not match scheduler state")
-        if not str(receipt.get("evidence", "")).strip():
-            raise ValueError(f"{task['task_id']}: discovery receipt lacks completion evidence")
+        channels = task["metadata"].get("channels") or [task["metadata"]["channel"]]
+        receipts = task["metadata"].get("receipts") or [task["metadata"]["receipt"]]
+        for channel, relative in zip(channels, receipts):
+            path = root / relative
+            if not path.is_file():
+                raise ValueError(f"{task['task_id']}: discovery receipt is missing for {channel}")
+            receipt = load_json(path)
+            current = store.discovery_channel(channel)
+            if receipt.get("channel") != channel:
+                raise ValueError(f"{task['task_id']}: discovery receipt channel mismatch for {channel}")
+            if not current or current["state"] not in DISCOVERY_TERMINAL:
+                raise ValueError(f"{task['task_id']}: discovery channel {channel} has not reached a terminal state")
+            if receipt.get("status") != current["state"]:
+                raise ValueError(f"{task['task_id']}: {channel} receipt does not match scheduler state")
+            if not str(receipt.get("evidence", "")).strip():
+                raise ValueError(f"{task['task_id']}: {channel} receipt lacks completion evidence")
+    if task["task_type"] == "triage":
+        failures = validate_triage(root)
+        if failures:
+            raise ValueError(f"{task['task_id']}: triage is invalid: {'; '.join(failures[:10])}")
     if task["task_type"] == "capture":
         path = root / task["metadata"]["receipt"]
         if not path.is_file():

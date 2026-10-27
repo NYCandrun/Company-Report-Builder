@@ -1,5 +1,7 @@
 # TASK TYPE: DISCOVERY REDUCER
 
+The runtime executes this deterministic task itself inside `python3 -m research_control run`; it is not dispatched to an agent. This text documents the contract it enforces.
+
 Act as the single writer for the final discovery snapshot. Do not perform new
 research and do not reinterpret an open channel as complete.
 
