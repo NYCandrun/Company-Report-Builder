@@ -395,7 +395,12 @@ const { chromium } = require('playwright');
 """
 MIN_HTML_TEXT_CHARACTERS = 200
 REFUSAL_STATUSES = {401, 403, 429}
-REFUSAL_TITLES = ("access denied", "403", "forbidden", "just a moment", "attention required", "are you a robot")
+REFUSAL_TITLES = (
+    "access denied", "403", "forbidden", "just a moment", "attention required", "are you a robot", "unusual traffic",
+)
+# A render that lands on one of these hosts or paths was redirected to a bot
+# check, whatever the page says.
+REFUSAL_URL_MARKERS = ("google.com/sorry", "/captcha", "challenges.cloudflare.com")
 # Owner policy: the headless browser always presents as desktop Chrome in a
 # desktop window, so pages render their desktop layout and content.
 DESKTOP_USER_AGENT = os.environ.get(
@@ -427,10 +432,23 @@ def _render_once(url: str, user_agent: str) -> dict[str, str]:
     return json.loads(result.stdout)
 
 
-def _refused(rendered: dict[str, str]) -> bool:
+def _refusal_marker(rendered: dict[str, str]) -> str:
+    """The refusal a render shows (a bot-check redirect or refusal title), or ''."""
+    landed = str(rendered.get("url", "")).casefold()
+    for value in REFUSAL_URL_MARKERS:
+        if value in landed:
+            return f"redirect to {value}"
     text = re.sub(r"\s+", " ", rendered.get("text", "")).strip()
     marker = f"{rendered.get('title', '')} {text[:200]}".casefold()
-    return any(value in marker for value in REFUSAL_TITLES) or len(text) < MIN_HTML_TEXT_CHARACTERS
+    for value in REFUSAL_TITLES:
+        if value in marker:
+            return f"refusal page {str(rendered.get('title', ''))[:80]!r}"
+    return ""
+
+
+def _refused(rendered: dict[str, str]) -> bool:
+    text = re.sub(r"\s+", " ", rendered.get("text", "")).strip()
+    return bool(_refusal_marker(rendered)) or len(text) < MIN_HTML_TEXT_CHARACTERS
 
 
 def _browser_render(url: str) -> dict[str, str]:
@@ -477,6 +495,9 @@ def _pdf_text(pdf_path: Path, text_path: Path) -> int:
 def _blocked_receipt(root: Path, source_id: str, url: str, reason: str) -> dict[str, Any]:
     directory = root / "01-sources/captures" / source_id
     directory.mkdir(parents=True, exist_ok=True)
+    # Page files from a refused attempt (a bot-check page) are not the source.
+    for name in ("raw.html", "rendered.html", "content.txt"):
+        (directory / name).unlink(missing_ok=True)
     atomic_write_text(directory / "BLOCKED.txt", f"{url}\n{reason}\n")
     receipt = {
         "schema_version": "1.0.0",
@@ -643,9 +664,9 @@ def _browser_capture(root: Path, *, url: str, source_id: str, grade: str, http_r
         return _blocked_receipt(root, source_id, url, f"{http_reason}; headless browser: {str(error).splitlines()[0][:160]}")
     text = re.sub(r"\n{3,}", "\n\n", rendered.get("text", "")).strip()
     title = str(rendered.get("title", ""))
-    refused = any(marker in f"{title} {text[:200]}".casefold() for marker in REFUSAL_TITLES)
-    if refused or len(text) < MIN_HTML_TEXT_CHARACTERS:
-        detail = f"refusal page {title!r}" if refused else f"only {len(text)} characters of text"
+    refusal = _refusal_marker(rendered)
+    if refusal or len(text) < MIN_HTML_TEXT_CHARACTERS:
+        detail = refusal or f"only {len(text)} characters of text"
         return _blocked_receipt(root, source_id, url, f"{http_reason}; headless browser got {detail}")
     directory = root / "01-sources/captures" / source_id
     directory.mkdir(parents=True, exist_ok=True)
@@ -657,7 +678,7 @@ def _browser_capture(root: Path, *, url: str, source_id: str, grade: str, http_r
         "schema_version": "1.0.0", "task_type": "capture", "source_id": source_id, "status": "captured",
         "source": {
             "id": source_id, "grade": grade, "title": title or url,
-            "publisher": parsed.netloc.removeprefix("www."), "url": rendered.get("url") or url,
+            "publisher": parsed.netloc.removeprefix("www."), "url": url,
             "date published": "", "date last modified": "",
             "date captured": datetime.now(timezone.utc).date().isoformat(),
             "local file": ";".join(paths), "method": "headless browser capture after HTTP refusal",
@@ -692,6 +713,14 @@ def _capture_page(
             # Some sites refuse plain HTTP clients but serve a real browser.
             return _browser_capture(root, url=url, source_id=source_id, grade=grade, http_reason=reason)
         return _blocked_receipt(root, source_id, url, reason)
+    landed = str(receipt.get("source", {}).get("url", "")).casefold()
+    redirect = next((marker for marker in REFUSAL_URL_MARKERS if marker in landed), "")
+    if redirect:
+        # The request was redirected to a bot check, not to the content.
+        reason = f"redirected to a bot check ({redirect})"
+        if use_browser if use_browser is not None else browser_available():
+            return _browser_capture(root, url=url, source_id=source_id, grade=grade, http_reason=reason)
+        return _blocked_receipt(root, source_id, url, reason)
     directory = root / "01-sources/captures" / source_id
     pdf_path = directory / "source.pdf"
     if pdf_path.is_file():
@@ -724,6 +753,11 @@ def _capture_page(
             if receipt["status"] == "captured":
                 return receipt
             return _blocked_receipt(root, source_id, url, f"browser render failed: {error}")
+        refusal = _refusal_marker(rendered)
+        if refusal:
+            if receipt["status"] == "captured":
+                return receipt
+            return _blocked_receipt(root, source_id, url, f"headless browser got {refusal}")
         atomic_write_text(directory / "rendered.html", rendered.get("html", ""))
         atomic_write_text(text_path, re.sub(r"\n{3,}", "\n\n", rendered.get("text", "")).strip() + "\n")
         receipt["local_paths"] = list(dict.fromkeys([*receipt["local_paths"], str((directory / "rendered.html").relative_to(root))]))
