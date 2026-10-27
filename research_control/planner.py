@@ -947,10 +947,16 @@ class AdaptivePlanner:
             inputs = task["inputs"]
             holds = True
             for item in inputs:
-                if base_source(item.get("id", "")) in supplemented and task["state"] == "succeeded":
+                source = base_source(item.get("id", ""))
+                if source in supplemented and task["state"] == "succeeded":
                     # Facts already extracted from the earlier text stand; an
                     # unfinished batch over text that changed is replaced.
                     continue
+                if source in supplemented and str(task["created_at"]) < listed_at.get(source, ""):
+                    # Unfinished work planned before the source was listed again is
+                    # replaced by the new pass rather than run beside it.
+                    holds = False
+                    break
                 if not same(item) or item["id"] in covered:
                     holds = False
                     break

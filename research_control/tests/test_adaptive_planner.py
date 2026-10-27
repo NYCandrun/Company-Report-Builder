@@ -331,6 +331,13 @@ class SupplementBatchTests(unittest.TestCase):
                 kept, uncovered = AdaptivePlanner(root, store)._unchanged_batches(unchanged)
                 self.assertEqual(["facts.extract.done"], kept)
                 self.assertIn("SRC-1", {item["id"] for item in uncovered})
+                # An unfinished batch planned before its source was listed again is replaced.
+                atomic_write_json(root / "tools/lists/supplement-sources.json", {
+                    "sources": {"SRC-2": "again"}, "added_at": {"SRC-2": "2999-01-01T00:00:00Z"},
+                })
+                kept, uncovered = AdaptivePlanner(root, store)._unchanged_batches([old, stopped])
+                self.assertNotIn("facts.extract.stopped", kept)
+                self.assertIn("SRC-2", {item["id"] for item in uncovered})
 
 
 class AlternateCopiesTests(unittest.TestCase):
