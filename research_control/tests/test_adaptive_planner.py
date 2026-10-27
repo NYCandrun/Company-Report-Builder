@@ -10,7 +10,7 @@ from research_control.cli import _require_discovery_lease
 from research_control.dispatch import emit_ready_packets
 from research_control.io import atomic_write_json, atomic_write_jsonl, load_jsonl, workflow
 from research_control.orchestration import current_phase, initialize, load_state, reopen_phase, save_state
-from research_control.planner import RUNTIME_DISCOVERY_CHANNELS, AdaptivePlanner, discovery_task_id
+from research_control.planner import RUNTIME_DISCOVERY_CHANNELS, AdaptivePlanner, _batch_id, discovery_task_id
 from research_control.runtime import WorkItem
 from research_control.provision import provision_run
 from research_control.reducers import reduce_capture_parts, reduce_discovery
@@ -281,6 +281,15 @@ class AdaptivePlannerTests(unittest.TestCase):
                 AdaptivePlanner(root, store).reconcile()
                 retriage = store.task(f"facts.retriage.{request['id']}")
                 self.assertEqual(("retriage", "ready"), (retriage["task_type"], retriage["state"]))
+
+
+class BatchIdentityTests(unittest.TestCase):
+    def test_rereading_the_same_span_for_changed_text_or_a_new_pass_is_a_new_batch(self) -> None:
+        span = {"source_id": "SRC-1", "token_start": 0, "token_end": 100, "sha256": "aaa"}
+        first = _batch_id([span])
+        self.assertNotEqual(first, _batch_id([{**span, "sha256": "bbb"}]))
+        self.assertNotEqual(first, _batch_id([{**span, "pass": "2026-10-27T14:48:19Z"}]))
+        self.assertEqual(first, _batch_id([dict(span)]))
 
 
 class SupplementBatchTests(unittest.TestCase):

@@ -64,8 +64,13 @@ def _slug(value: str) -> str:
 
 
 def _batch_id(items: list[dict[str, Any]]) -> str:
+    # The text's hash and the supplement pass are part of a batch's identity: the
+    # same span re-read after its text changed, or for a new question, is new work,
+    # not the batch that already read it.
     signature = "|".join(
-        f"{item['source_id']}:{item.get('token_start', 0)}:{item.get('token_end', '')}" for item in items
+        f"{item['source_id']}:{item.get('token_start', 0)}:{item.get('token_end', '')}"
+        f"{':' + str(item['sha256']) if item.get('sha256') else ''}{':' + str(item['pass']) if item.get('pass') else ''}"
+        for item in items
     )
     return sha256(signature.encode("utf-8")).hexdigest()[:12]
 
@@ -604,6 +609,11 @@ class AdaptivePlanner:
                 )
         slices = self._source_slices(included=triage_included(self.root))
         kept, uncovered = self._unchanged_batches(slices)
+        listed_at = supplement_added_at(self.root)
+        uncovered = [
+            {**item, "pass": listed_at[base_source(item["id"])]} if base_source(item["id"]) in listed_at else item
+            for item in uncovered
+        ]
         batches = self._pack_slices(uncovered)
         extraction_ids: list[str] = list(kept)
         for batch in batches:
