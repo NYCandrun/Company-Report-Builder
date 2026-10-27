@@ -999,7 +999,7 @@ def _change_history(checkout: Path, scope: str = "") -> list[str]:
     return lines
 
 
-def _unmerged_work(checkout: Path, scope: str = "") -> tuple[list[str], str]:
+def _unmerged_work(checkout: Path, scope: str = "", merged: frozenset[int] = frozenset()) -> tuple[list[str], str]:
     """Branches and pull request heads with commits the default branch lacks.
 
     Refs whose commits are all by bots (dependency bumps) are skipped; refs with the
@@ -1037,6 +1037,14 @@ def _unmerged_work(checkout: Path, scope: str = "") -> tuple[list[str], str]:
         first, last = log[-1][:10], log[0][:10]
         latest = max(latest, last)
         diff = _git(["diff", "--stat=200", "HEAD..." + ref, "--", scope or "."], cwd=checkout).rstrip()
+        numbers = {int(name.rsplit("#", 1)[1]) for name in names if name.startswith("pull request #")}
+        if numbers & merged:
+            # Merged on github.com by squash or rebase: the default branch carries the
+            # change under different commits, so it is shipped, not unmerged.
+            lines += ["", f"=== MERGED BY SQUASH OR REBASE: {', '.join(names)} ({len(log)} commits, {first} to {last}; "
+                          "the pull request page shows it merged, so this work is on the default branch) ===",
+                      *log, "", diff]
+            continue
         lines += ["", f"=== UNMERGED: {', '.join(names)} ({len(log)} commits, {first} to {last}) ===", *log, "", diff]
         changed = _git(["diff", "--name-only", "--diff-filter=AM", "HEAD..." + ref, "--", scope or "."], cwd=checkout).splitlines()
         patch_paths = [path for path in changed if Path(path).name not in SKIPPED_FILES]
@@ -1137,10 +1145,14 @@ def _issue_numbers(owner: str, repo: str) -> list[int]:
     return sorted(numbers)
 
 
-def _github_conversations(checkout: Path, owner: str, repo: str, scope: str = "") -> list[str]:
-    """Pull request and issue pages as text, with their dates, within the budget."""
+MERGED_PAGE = re.compile(r"\bmerged \d+ commits? into\b")
+
+
+def _github_conversations(checkout: Path, owner: str, repo: str, scope: str = "") -> tuple[list[str], frozenset[int]]:
+    """Pull request and issue pages as text, with their dates, within the budget, and the
+    numbers of the pull requests the pages show as merged."""
     if not browser_available():
-        return ["", "--- PULL REQUESTS AND ISSUES NOT CAPTURED (no headless browser on this host) ---"]
+        return ["", "--- PULL REQUESTS AND ISSUES NOT CAPTURED (no headless browser on this host) ---"], frozenset()
     targets = [("pull", number) for number in _conversation_numbers(checkout, scope)]
     unread = ""
     if not scope:
@@ -1150,6 +1162,7 @@ def _github_conversations(checkout: Path, owner: str, repo: str, scope: str = ""
             unread = str(error)
     lines: list[str] = []
     missed: list[str] = []
+    merged: set[int] = set()
     used = 0
     for kind, number in targets[:CONVERSATION_LIMIT]:
         url = f"https://github.com/{owner}/{repo}/{kind}/{number}"
@@ -1163,11 +1176,13 @@ def _github_conversations(checkout: Path, owner: str, repo: str, scope: str = ""
             missed.append(f"{url} (conversation budget reached)")
             continue
         used += len(text)
+        if kind == "pull" and MERGED_PAGE.search(text[:1500]):
+            merged.add(number)
         label = "PULL REQUEST" if kind == "pull" else "ISSUE"
         lines += ["", f"=== {label} #{number}: {rendered.get('title', '')} ({url}) ===", text]
     if not targets:
         issues = f"; {unread}" if unread else ("" if scope else ", and the issue list on github.com is empty")
-        return ["", f"--- PULL REQUESTS AND ISSUES (none: no pull request refs{issues}) ---"]
+        return ["", f"--- PULL REQUESTS AND ISSUES (none: no pull request refs{issues}) ---"], frozenset()
     header = [
         "", f"--- PULL REQUESTS AND ISSUES ({len(targets) - len(missed)} of {len(targets)}, rendered from github.com; "
         "dates are the pages' own timestamps) ---",
@@ -1176,7 +1191,7 @@ def _github_conversations(checkout: Path, owner: str, repo: str, scope: str = ""
         missed.append(unread)
     if missed:
         lines += ["", f"--- CONVERSATIONS NOT CAPTURED ({len(missed)}) ---", *missed]
-    return header + lines
+    return header + lines, frozenset(merged)
 
 
 def _github_conversation_capture(root: Path, *, url: str, source_id: str, grade: str) -> dict[str, Any]:
@@ -1251,9 +1266,10 @@ def _github_capture(root: Path, *, url: str, source_id: str, grade: str) -> dict
     if target.exists():
         lines += _commit_history(checkout, relative)
         lines += _change_history(checkout, relative)
-        unmerged, unmerged_latest = _unmerged_work(checkout, relative)
+        conversations, merged = _github_conversations(checkout, owner, repo, relative)
+        unmerged, unmerged_latest = _unmerged_work(checkout, relative, merged)
         lines += unmerged
-        lines += _github_conversations(checkout, owner, repo, relative)
+        lines += conversations
     else:
         raise RuntimeError(f"{relative} is not in {owner}/{repo} at its default branch head")
     directory = root / "01-sources/captures" / source_id

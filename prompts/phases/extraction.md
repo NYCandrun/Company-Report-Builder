@@ -56,7 +56,9 @@ Mark each fact's delivery status in notes:
 - `Shipped`: on the default branch and implemented in its code.
 - `Built, unmerged: <branch or pull request>`: implemented on a branch or pull
   request that the default branch does not contain. It is done but not
-  shipped; date it by its own commits.
+  shipped; date it by its own commits. A pull request whose page shows it
+  merged is Shipped even when its commits appear as unmerged (it was merged
+  by squash or rebase).
 - `Promised`: described in a README or other doc but not implemented in the
   code captured. A doc is not proof that a capability exists.
 

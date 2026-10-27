@@ -141,6 +141,10 @@ class RepositoryCaptureTests(unittest.TestCase):
             self.assertIn("claim quality", text)
             self.assertNotIn("bump", text)
             self.assertEqual(1, text.count("=== UNMERGED"))
+            # A pull request its page shows as merged (squash or rebase) is shipped, not unmerged.
+            merged_text = "\n".join(_unmerged_work(repo, merged=frozenset({4}))[0])
+            self.assertIn("=== MERGED BY SQUASH OR REBASE: feature, pull request #4", merged_text)
+            self.assertNotIn("=== UNMERGED", merged_text)
             # Pull requests worth reading: human ones, and for a path, those that changed it.
             _git(repo, "update-ref", "refs/remotes/pull/9", "bump")
             self.assertEqual([4], _conversation_numbers(repo))
