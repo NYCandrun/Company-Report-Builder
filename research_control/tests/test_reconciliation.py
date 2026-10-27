@@ -122,7 +122,7 @@ class ReportOutlineTests(unittest.TestCase):
         import tempfile
 
         from research_control.io import atomic_write_text, load_json
-        from research_control.report_outline import OUTLINE, report_words, write_report_outline
+        from research_control.report_outline import OUTLINE, write_report_outline
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -141,12 +141,56 @@ class ReportOutlineTests(unittest.TestCase):
             self.assertEqual("executive summary", outline["opening"])
             self.assertEqual("Go-to-market", outline["focus"])
             self.assertEqual({"include": True, "questions": ["Q2"]}, outline["accounts_exhibit"])
-            self.assertEqual(1_500 + 4 * 450, outline["words"]["target"])
-            # Prose is counted; tables and fact IDs are not.
-            self.assertEqual(4, report_words("Tribe builds agents today [PRD-001, PRD-002].\n| a | b |\n|---|---|\n| c | d |\n"))
+            # No length target: the report is as long as the evidence needs.
+            self.assertNotIn("words", outline)
             # A scope that lists its questions one per line works too, with the whole company as focus.
             atomic_write_text(root / "00-scope.md", "# Scope\n\n## Research questions\n\n- Q1 product and architecture.\n- Q7 competitors.\n")
             write_report_outline(root)
             outline = load_json(root / OUTLINE)
             self.assertEqual(("The whole company", ["market", "offering"], False),
                              (outline["focus"], [part["part"] for part in outline["parts"]], outline["accounts_exhibit"]["include"]))
+
+
+class CitationBuildTests(unittest.TestCase):
+    def test_fact_ids_become_numbered_superscripts_linked_to_deep_links(self) -> None:
+        import tempfile
+
+        from research_control import citation_build
+        from research_control.io import atomic_write_jsonl, atomic_write_text, load_json
+        from research_control.publication import markdown_to_html
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            atomic_write_text(root / "01-sources/MANIFEST.csv",
+                              "id,grade,title,publisher,url,date published\n"
+                              "SRC-A,P,Home page,example.com,https://example.com/,\n"
+                              "SRC-B,S,Launch post,news.example,https://news.example/launch,2026-03-01\n")
+            atomic_write_text(root / "02-facts/facts.md",
+                              "| Fact ID | Claim | Verbatim quote | Source ID | Grade |\n|---|---|---|---|---|\n"
+                              "| PRD-001 | Sells agents | agents | SRC-A | P |\n| PRD-002 | Launched | launched | SRC-B | S |\n"
+                              "| PRD-003 | Ships fast | fast | SRC-A | P |\n")
+            atomic_write_jsonl(root / "tools/outputs/fact-links.jsonl", [
+                {"fact_id": "PRD-001", "located": True, "deep_link": "https://example.com/#:~:text=agents"},
+                {"fact_id": "PRD-002", "located": False, "deep_link": "https://news.example/launch"},
+            ])
+            filler = "This paragraph talks at length about the market in general terms without showing any evidence at all for what it says here, which a reader cannot check."
+            atomic_write_text(root / citation_build.BRIEF,
+                              "# Company brief\n\n## Executive summary\n\nIt sells agents [PRD-001] and launched [PRD-002, PRD-003].\n\n"
+                              f"{filler}\n\n| Offering | Evidence |\n|---|---|\n| Agents | Stated [PRD-001] |\n| Studio | Lead |\n\n"
+                              "## Open questions and whom to ask\n\n" + filler + "\n\n## Sources\n")
+            built = citation_build.build(root)
+            data = load_json(root / citation_build.CITATION_MAP)
+            # A source keeps its first number; each number links to its fact's deep link where one was located.
+            self.assertEqual([(1, ["PRD-001"]), (1, ["PRD-003"]), (2, ["PRD-002"]), (1, ["PRD-001"])],
+                             [(item["n"], item["facts"]) for item in data["citations"]])
+            self.assertEqual("https://example.com/#:~:text=agents", data["citations"][0]["link"])
+            self.assertEqual("https://example.com/", data["citations"][1]["link"])
+            self.assertEqual(["exhibit-1-row-1-col-2"], [item["element_id"] for item in load_json(root / citation_build.EXHIBIT_MAP)["elements"]])
+            # Filler in a body part and an uncited table row are flagged; closing sections are not.
+            self.assertEqual(2, len(built["problems"]))
+            self.assertIn("cites no fact", built["problems"][0])
+            page = markdown_to_html((root / citation_build.BRIEF).read_text(encoding="utf-8"), "Company brief", "", data)
+            self.assertIn('<sup class="cn"><a href="https://example.com/#:~:text=agents" data-cite="1">1</a></sup>', page)
+            self.assertIn('data-cite="1">1</a>,<a href="https://news.example/launch" data-cite="2">2</a></sup>', page)
+            self.assertNotIn("PRD-00", page)
+            self.assertIn('<li id="note-2" value="2"><span class="grade">S</span> Launch post. news.example. March 1, 2026.', page)

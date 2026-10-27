@@ -36,6 +36,11 @@ blockquote { margin-left: 0; padding-left: 18px; border-left: 3px solid var(--ac
 .architecture-figures svg { display: block; width: 100%; max-width: 165mm; height: auto; margin: 0 auto; }
 .architecture-figures figcaption { margin: 10px auto 0; max-width: 165mm; color: var(--muted); font-size: 13px; }
 .meta { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
+sup.cn { font-size: .7em; line-height: 0; margin-left: 1px; }
+sup.cn a { text-decoration: none; font-weight: 600; }
+ol.source-notes { padding-left: 2.4em; font-size: 13px; }
+ol.source-notes li { margin: 4px 0; max-width: none; overflow-wrap: anywhere; }
+ol.source-notes .grade { display: inline-block; min-width: 1.4em; color: var(--muted); font-weight: 600; }
 @media print { body { background: white; } main { width: auto; margin: 0; padding: 36pt 42pt; box-shadow: none; } }
 """.strip()
 
@@ -59,7 +64,57 @@ def _inline(value: str) -> str:
     return value
 
 
-def markdown_to_html(markdown: str, title: str, css: str) -> str:
+CITE = "\x00cite{}\x00"
+SOURCE_LIST = "\x00sources\x00"
+
+
+def _with_citations(markdown: str, citation_map: dict[str, Any]) -> tuple[str, dict[str, str]]:
+    """Swap each fact-ID group for a marker the HTML replaces with linked superscript numbers,
+    and the Sources section's body for a marker the numbered source list replaces."""
+    from research_control.citation_build import GROUP, SOURCES_HEADING
+
+    groups: dict[int, list[dict[str, Any]]] = {}
+    for citation in citation_map.get("citations", []):
+        groups.setdefault(int(citation.get("group", -1)), []).append(citation)
+    counter = iter(range(1_000_000))
+
+    def marker(_match: re.Match[str]) -> str:
+        return CITE.format(next(counter))
+
+    text = re.sub(r"[ \t]*" + GROUP.pattern, marker, markdown)
+    lines, kept, skipping = text.splitlines(), [], False
+    for line in lines:
+        if SOURCES_HEADING.match(line):
+            kept += ["## Sources", "", SOURCE_LIST, ""]
+            skipping = True
+            continue
+        if skipping and re.match(r"^#{1,2}\s", line):
+            skipping = False
+        if not skipping:
+            kept.append(line)
+    if SOURCE_LIST not in kept and citation_map.get("notes"):
+        kept += ["", "## Sources", "", SOURCE_LIST]
+    replacements: dict[str, str] = {}
+    for index, citations in groups.items():
+        anchors = ",".join(
+            f'<a href="{html.escape(item.get("link") or "#note-" + str(item["n"]))}" data-cite="{item["n"]}">{item["n"]}</a>'
+            for item in citations
+        )
+        replacements[CITE.format(index)] = f'<sup class="cn">{anchors}</sup>'
+    items = []
+    for note in citation_map.get("notes", []):
+        url = str(note.get("url") or "")
+        described = ". ".join(html.escape(str(part)) for part in (note.get("title"), note.get("publisher"), note.get("date")) if part)
+        link = f' <a href="{html.escape(url)}">{html.escape(re.sub(r"^https?://(www\.)?", "", url).rstrip("/"))}</a>' if url else ""
+        items.append(f'<li id="note-{note["n"]}" value="{note["n"]}"><span class="grade">{html.escape(str(note.get("grade") or ""))}</span> {described}.{link}</li>')
+    replacements[f"<p>{SOURCE_LIST}</p>"] = f'<ol class="source-notes">{"".join(items)}</ol>'
+    return "\n".join(kept) + ("\n" if markdown.endswith("\n") else ""), replacements
+
+
+def markdown_to_html(markdown: str, title: str, css: str, citation_map: dict[str, Any] | None = None) -> str:
+    replacements: dict[str, str] = {}
+    if citation_map:
+        markdown, replacements = _with_citations(markdown, citation_map)
     lines = reader_text(markdown).splitlines()
     body: list[str] = []
     paragraph: list[str] = []
@@ -126,11 +181,14 @@ def markdown_to_html(markdown: str, title: str, css: str) -> str:
             body.append(f"<blockquote>{_inline(line.lstrip('> '))}</blockquote>")
         else:
             paragraph.append(line)
-    return (
+    document = (
         "<!doctype html>\n<html lang=\"en-US\"><head><meta charset=\"utf-8\">"
         f"<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{html.escape(title)}</title>"
         f"<style>{css}</style></head><body><main><div class=\"meta\">Company research</div>{''.join(body)}</main></body></html>\n"
     )
+    for marker, markup in replacements.items():
+        document = document.replace(marker, markup)
+    return document
 
 
 def _diagram_gallery(root: Path) -> str:
@@ -315,6 +373,7 @@ def _render_inputs(root: Path, source: Path) -> dict[str, str]:
     patterns = [
         str(source.relative_to(root)),
         "05-synthesis/design/style.css",
+        "tools/outputs/citation-map-*.json",
         "research_control/publication.py",
         "research_control/diagram_contract.py",
         *(spec["path"] for spec in DIAGRAM_SPECS),
@@ -448,7 +507,9 @@ def render(root: Path) -> dict[str, Any]:
             metadata["total_pages"] += int(record.get("pages", 0))
             continue
         title = "Company brief"
-        document = markdown_to_html(markdown, title, css)
+        map_path = root / f"tools/outputs/citation-map-{slug}.json"
+        citation_map = load_json(map_path) if map_path.is_file() else None
+        document = markdown_to_html(markdown, title, css, citation_map)
         document = document.replace("</main>", _diagram_gallery(root) + "</main>", 1)
         atomic_write_text(html_path, document)
         pdf_renderer, pages = render_pdf(html_path, markdown, pdf_path)

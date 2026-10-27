@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import json
 from hashlib import sha256
 import re
@@ -11,7 +12,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Iterable
 
-from research_control import FAIL, PASS, UNKNOWN
+from research_control import FAIL, PASS, UNKNOWN, citation_build
 from research_control.diagram_contract import DIAGRAM_CAPTIONS, DIAGRAM_MODEL_JSON, DIAGRAM_SPECS, FINAL_ARTIFACTS
 from research_control.gates.phase_gate import check_phase_gate
 from research_control.hashing import checker_version, hash_patterns, hash_path, report_inputs_current
@@ -452,10 +453,28 @@ def _validate_citations(root: Path) -> dict[str, Any]:
         slug = path.stem.removeprefix("citation-map-")
         markdown_path = root / f"05-synthesis/{slug}.md"
         html_path = root / f"07-final-report/{slug}.html"
-        expected_numbers = [int(item.get("n")) for item in data.get("citations", []) if isinstance(item.get("n"), int)]
+        expected = [(int(item["n"]), str(item.get("link") or "")) for item in data.get("citations", []) if isinstance(item.get("n"), int)]
         if not markdown_path.is_file() or not html_path.is_file():
             failures.append(f"{path.name}: corresponding Markdown or HTML artifact is missing")
+        elif data.get("built_by") == "research_control.citation_build":
+            # The map is built from the fact IDs in the Markdown: rebuilt now, it must be unchanged.
+            rebuilt = citation_build.build(root, write=False)["map"]["citations"]
+            if [(item["n"], item["facts"], item["link"]) for item in rebuilt] != [
+                    (item["n"], item.get("facts"), item.get("link")) for item in data.get("citations", [])]:
+                failures.append(f"{path.name}: the map no longer matches the fact IDs in the Markdown; run `work check` to rebuild it")
+            links = load_jsonl(root / "tools/outputs/fact-links.jsonl") if (root / "tools/outputs/fact-links.jsonl").is_file() else []
+            located = {row["fact_id"]: row["deep_link"] for row in links if row.get("located") and row.get("deep_link")}
+            for item in data.get("citations", []):
+                deep = [located[fact] for fact in item.get("facts", []) if fact in located]
+                if deep and item.get("link") not in deep:
+                    failures.append(f"{path.name}: citation {item['n']} does not link to its fact's deep link")
+            rendered = [(int(number), html.unescape(link)) for link, number in re.findall(
+                r'<a href="([^"]*)" data-cite="(\d+)"', html_path.read_text(encoding="utf-8", errors="replace"))]
+            if rendered != expected:
+                failures.append(f"{path.name}: the page's superscript citations {len(rendered)} do not match the map's {len(expected)} "
+                                "(numbers or deep links differ); rebuild the page")
         else:
+            expected_numbers = [number for number, _link in expected]
             markdown_numbers = _citation_numbers(markdown_path.read_text(encoding="utf-8", errors="replace"))
             html_numbers = _citation_numbers(re.sub(r"<[^>]+>", " ", html_path.read_text(encoding="utf-8", errors="replace")))
             if markdown_numbers != expected_numbers:

@@ -193,10 +193,17 @@ notes. The research questions are a checklist, not headings (many are written
 into the scope by default): each is placed in the part it belongs to and
 answered under plain topical subheadings. Parts with no question are left out.
 When the questions cover customers or engagements, the customers part holds an
-exhibit of accounts over time. Prose length is 1,500 words plus 450 for each
-question, give or take a quarter (tables and exhibits not counted), and
-`work check` holds the writer to it. The cover's focus is the scope's `Focus:`
-line, or "The whole company".
+exhibit of accounts over time. There is no length target: the report is as long
+as the evidence needs, in tight copy with no filler or tangents. The cover's
+focus is the scope's `Focus:` line, or "The whole company".
+
+Citations are built by script. The writer keeps fact IDs beside the words they
+support; `work check` (for the writer and the publication fixer) numbers each
+source on first use, links every superscript number to the cited fact's deep
+link, lists each source once under the Sources heading, maps each table cell to
+its facts, and lists any body paragraph or table row that cites no fact. The
+page build renders the superscripts and source list, and the citation check
+confirms the page, the map, and each fact's deep link agree.
 
 ## Checks between synthesis and review
 

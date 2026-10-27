@@ -9,6 +9,14 @@ Apply these rules to authored prose. Verbatim quotes preserve their source.
 - Use no semicolon to join independent sentences.
 - Never use the word `suggested`.
 - State facts directly and explicitly.
+- Keep copy tight. Lead each paragraph with its point, then show the facts
+  behind it. Length follows the evidence: as long as it needs, no longer.
+- Write no filler: do not restate a heading, announce what a section will do,
+  repeat what an earlier paragraph or part said, or add general commentary the
+  evidence does not support.
+- Stay on the questions: leave out tangents, however interesting.
+- Do not drop the context that gives a fact its meaning: its date, what it
+  changed from, who said it, and how strong the evidence is.
 - Do not narrate how wording changed from an earlier draft.
 - Preserve proper nouns, source titles, URLs, file names, fact IDs, and quotes.
 

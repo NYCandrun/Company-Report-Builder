@@ -269,9 +269,14 @@ how a sentence changed from a prior draft. Say things explicitly rather than
 alluding to them. Verbatim quotes preserve original spelling and punctuation.
 proper nouns, titles, URLs, file names, and fact IDs are not rewritten.
 
-The narrative artifact is titled **company brief**. Its cover says **Focus:
-Product marketing**, and the front matter identifies the product-marketing
-point of view. Reader-facing copy never says `onboarding`, `starting at`, `the
+Keep copy tight: lead with the point, show the facts behind it, and write no
+filler, no tangents, and no repetition. Keep the context that gives a fact its
+meaning (date, change, speaker, strength of evidence). Length follows the
+evidence.
+
+The narrative artifact is titled **company brief**, about the whole company.
+Its cover says **Focus:** followed by the scope's focus, or "The whole company"
+when the scope names none. Reader-facing copy never says `onboarding`, `starting at`, `the
 new PMM`, or `the role`.
 
 Before design, a separate high-reasoning context reviews the company brief,
@@ -281,7 +286,9 @@ does not alter quotes, fact IDs, file names, or URLs.
 ## Publication
 
 Markdown remains the research trail and keeps fact IDs beside supported words.
-Rendered HTML and PDF replace fact IDs with superscript source numbers. No
+Rendered HTML and PDF replace fact IDs with superscript source numbers, each
+linked to the cited fact's deep link; a script builds the numbers, links,
+source list, and citation and exhibit maps from the fact IDs. No
 reader-facing output exposes repository paths, fact IDs, script names, build
 instructions, internal warnings, or remove-before-sharing notes.
 
@@ -304,14 +311,15 @@ of facts. Before design, commit or checksum the Markdown reference in which
 fact IDs sit beside supported words. Final exhibit and citation mappings must
 still match that reference or a later justified, reverified fact.
 
-The brief answers, in order: product and architecture; buyer and buying motion;
-positioning and change; direction; competitors; dependencies; questions and
-owners; evidence limits; and sources. It opens with a short summary and one
-portfolio exhibit, includes the product map and messaging timeline only in
-their intended sections, and targets 10 to 15 body pages excluding cover and
-sources.
+The brief is arranged top down from an executive summary: the company, its
+market and competitors, what it sells and how it is built, how it sells, its
+customers, its people, and its direction, then the catalogue, open questions,
+evidence limits, and sources. Each research question is answered in the part it
+belongs to, under plain topical headings. The portfolio exhibit opens the
+offering part; the product map and messaging timeline appear only in their
+intended parts. There is no page or word target.
 
-Section 7 frames unresolved questions neutrally as what the author would want
+The open-questions section frames unresolved questions neutrally as what the author would want
 to understand early. Names appear only when factually useful, not as task
 headings. The section does not open with Grade-I evidence or a guess about
 reporting lines. Evidence limits use reproducible counts and plain-language

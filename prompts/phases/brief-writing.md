@@ -28,10 +28,10 @@ the reader. Write, in order:
 2. Each part in the outline's `parts`, in that order, under the part's
    heading. Answer every question the part `covers`, under plain topical
    subheadings (for example "Partnerships with AI labs and cloud providers"),
-   never phrased as the question and never as "you asked". Within a part, go
-   from the general to the specific. Where something changed, show the
-   change with dates. Where evidence is thin, say so briefly instead of
-   filling the space.
+   never phrased as the question and never as "you asked". Open each part
+   with one or two sentences that state its main point, then go from the
+   general to the specific. Where something changed, show the change with
+   dates. Where evidence is thin, say so briefly instead of filling the space.
    - The part on what the company sells opens with a portfolio exhibit of
      every offering (products, services, engagement types), each marked
      `Stated`, `Inferred`, or `Lead` with its evidence, and holds the product
@@ -46,10 +46,15 @@ the reader. Write, in order:
 3. The catalogue exhibit described below.
 4. Open questions and whom to ask.
 5. The limits of the evidence.
-6. Source notes.
+6. A `## Sources` heading with nothing under it: the build lists every cited
+   source there, numbered, once.
 
-Keep the report's prose within the outline's `words` (`minimum` to `maximum`;
-tables and other exhibits are not counted); `work check` counts them.
+There is no length target. The report is as long as the evidence needs and no
+longer: every question answered with the facts that bear on it, in tight
+copy, with no filler and no tangents. Give an exhibit a title that states its
+takeaway as a sentence, and say beneath it where its figures come from. Give
+every number its date and basis, and say when a figure is your own
+calculation or comes secondhand.
 
 Before the open questions, include a catalogue exhibit drawn from
 `05-synthesis/inference-catalogue.md` in four parts:
@@ -68,12 +73,16 @@ The open-questions section uses neutral first person and topical headings,
 not assignments to employees. The limits-of-the-evidence section uses
 reproducible counts and plain-language method names.
 
-Create the company-brief citation map plus its element-level exhibit map. Each
-citation record links rendered placement to fact IDs, source IDs, and the
-fact's deep link from `tools/outputs/fact-links.jsonl` (the file and line at
-a commit, the line in a diff, the recording's timestamp, or a text fragment
-on the page), with the source's publisher and its posted and recorded dates
-from `tools/outputs/source-dates.jsonl`. Do not expose fact IDs in rendered output, but do not
-remove them from Markdown. The architecture-diagram tasks own the separate
+Cite with fact IDs only: put them in square brackets right beside the exact
+words they support, in prose and in every table cell that states a fact (for
+example `[PRD-001, PRD-014]`). Do not write citation numbers, source notes, the
+citation map, or the exhibit map. `work check` builds them from your fact IDs:
+it numbers each source on first use in reading order, links every superscript
+number to the cited fact's deep link (the line at a commit, the moment in a
+recording, the quoted words on a page), lists each source once with its grade,
+publisher, and date, and maps each table cell to its facts. It also lists any
+body paragraph or table row that cites no fact, and any fact that is unknown or
+withdrawn: fix each in the Markdown and run it again. Rendered output never
+shows fact IDs. The architecture-diagram tasks own the separate
 model and SVG deliverables; do not create a one-page summary. Do not review
 your own claim support. Run writing and fact-ID checks before return.

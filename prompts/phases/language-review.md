@@ -2,8 +2,10 @@ TASK TYPE: INDEPENDENT AMERICAN-ENGLISH REVIEW
 
 Review the company-brief Markdown, diagram captions, and rendered reader-facing
 text. Check spelling,
-punctuation, quote style, terminology, directness, and every mechanical rule in
-the writing core. Preserve proper nouns, source titles, URLs, file names, fact
+punctuation, quote style, terminology, directness, and every rule in the
+writing core, including tight copy: flag filler, tangents, points repeated
+across parts, and facts shown without the date or context that gives them
+their meaning. Preserve proper nouns, source titles, URLs, file names, fact
 IDs, and verbatim quotations.
 
 Do not edit the deliverables. Write `06-checks/american-english.md` with the

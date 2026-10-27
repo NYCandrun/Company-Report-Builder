@@ -12,6 +12,7 @@ from research_control.checks import check_phase, run_validator
 from research_control.dispatch import emit_ready_packets
 from research_control.discovery import ALTERNATES_PART, BLOCKED_SOURCES_LIST
 from research_control.io import load_json, load_jsonl, workflow
+from research_control import citation_build
 from research_control.orchestration import current_phase, initialize, load_state, phase_order, reopen_phase, set_phase_result
 from research_control import conversation, verification
 from research_control.archive import ensure_conversation_pushed
@@ -260,19 +261,18 @@ def check_work(root: Path, task_id: str) -> dict[str, Any]:
                     report = run_validator(root, phase, validator_id)
                     if report.get("status") != PASS:
                         problems.extend(f"{validator_id}: {item}" for item in (report.get("failures") or report.get("unknowns") or [])[:20])
+        built: dict[str, Any] = {}
+        if task["task_type"] in {"brief_writer", "publication_fixer"} and (root / citation_build.BRIEF).is_file():
+            # Citations are numbered, linked, and mapped by script from the fact IDs in the brief.
+            built = citation_build.build(root)
+            problems.extend(built["problems"])
         for output in task["outputs"]:
             if "*" not in output and "{" not in output and not (root / output).exists():
                 problems.append(f"output missing: {output}")
-        outline_path = root / "tools/lists/report-outline.json"
-        brief = root / "05-synthesis/company-brief.md"
-        if task["task_type"] == "brief_writer" and outline_path.is_file() and brief.is_file():
-            from research_control.report_outline import report_words
-
-            words = load_json(outline_path)["words"]
-            count = report_words(brief.read_text(encoding="utf-8"))
-            if not words["minimum"] <= count <= words["maximum"]:
-                problems.append(f"the report has {count} words; the outline sets {words['minimum']} to {words['maximum']}")
-        return {"task_id": task_id, "problems": problems, "status": "clean" if not problems else "problems"}
+        result = {"task_id": task_id, "problems": problems, "status": "clean" if not problems else "problems"}
+        if built:
+            result["citations"] = {key: built[key] for key in ("citations", "sources", "deep_links", "exhibit_cells")}
+        return result
 
 
 def _validate_semantic_receipt(root: Path, store: RuntimeStore, task: dict[str, Any]) -> None:

@@ -7,9 +7,9 @@ opens with an executive summary, then moves from broad context to specifics
 how it sells, its customers and accounts, its people and organization, its
 direction), and closes with the catalogue, open questions, the limits of the
 evidence, and source notes. Each question is placed in the part it belongs
-to, so every one is answered, under plain topical headings. Length scales
-with the number of questions. The cover's focus is the scope's own `Focus:`
-line, or the whole company.
+to, so every one is answered, under plain topical headings. There is no
+length target: the report is as long as the evidence needs and no longer. The
+cover's focus is the scope's own `Focus:` line, or the whole company.
 """
 
 from __future__ import annotations
@@ -22,11 +22,6 @@ from research_control.io import atomic_write_json, utc_now
 from research_control.relevance import question_texts
 
 OUTLINE = "tools/lists/report-outline.json"
-# Words for the executive summary, open questions, evidence limits, and source
-# notes, then for each question covered; the prose may run a quarter over or under.
-BASE_WORDS = 1_500
-WORDS_PER_QUESTION = 450
-TOLERANCE = 0.25
 FOCUS_LINE = re.compile(r"^\s*(?:\*\*)?Focus:(?:\*\*)?\s*(.+?)\s*$", re.M | re.I)
 DEFAULT_FOCUS = "The whole company"
 ACCOUNT_WORDS = re.compile(r"\b(accounts?|clients?|customers?|engagements?)\b", re.I)
@@ -75,11 +70,9 @@ def build_outline(root: Path) -> dict[str, Any]:
     for number, text in ordered:
         placed[_part_for(_title(text), text)].append({"question": number, "topic": _title(text)})
     parts = [
-        {"part": key, "heading": heading, "covers": placed[key],
-         "words": WORDS_PER_QUESTION * len(placed[key])}
+        {"part": key, "heading": heading, "covers": placed[key]}
         for key, heading, _ in PARTS if placed[key]
     ]
-    target = BASE_WORDS + WORDS_PER_QUESTION * len(ordered)
     accounts = [number for number, text in ordered if ACCOUNT_WORDS.search(text)]
     return {
         "created": utc_now(),
@@ -87,8 +80,7 @@ def build_outline(root: Path) -> dict[str, Any]:
         "opening": "executive summary",
         "parts": parts,
         "accounts_exhibit": {"include": bool(accounts), "questions": accounts},
-        "closing": ["catalogue (four parts)", "open questions and whom to ask", "limits of the evidence", "source notes"],
-        "words": {"target": target, "minimum": int(target * (1 - TOLERANCE)), "maximum": int(target * (1 + TOLERANCE))},
+        "closing": ["catalogue (four parts)", "open questions and whom to ask", "limits of the evidence", "sources"],
     }
 
 
@@ -97,12 +89,4 @@ def write_report_outline(root: Path) -> dict[str, Any]:
     if not outline["parts"]:
         raise ValueError("00-scope.md lists no numbered research questions to build the report from")
     atomic_write_json(root / OUTLINE, outline)
-    return {"parts": [part["part"] for part in outline["parts"]], "words": outline["words"],
-            "accounts_exhibit": outline["accounts_exhibit"]["include"]}
-
-
-def report_words(text: str) -> int:
-    """The report's prose words: tables (exhibits) and fact IDs are not counted."""
-    text = re.sub(r"\[[A-Z][A-Z0-9-]*-[A-Z]*\d+[a-z]?(?:[,;] ?[A-Z][A-Z0-9-]*-[A-Z]*\d+[a-z]?)*\]", "", text)
-    text = re.sub(r"^\s*\|.*$", "", text, flags=re.M)
-    return len(re.findall(r"[A-Za-z0-9][A-Za-z0-9'’.-]*", text))
+    return {"parts": [part["part"] for part in outline["parts"]], "accounts_exhibit": outline["accounts_exhibit"]["include"]}

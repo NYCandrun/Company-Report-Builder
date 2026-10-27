@@ -6,8 +6,10 @@ a reason and evidence path. Record decisions in
 `tools/outputs/publication-decisions.jsonl` and a readable summary in
 `06-checks/publication-decisions.md`.
 
-Apply accepted changes only to final Markdown, citation maps, exhibit maps,
-diagram model files, editable SVGs, captions, or design sources. Never
+Apply accepted changes only to final Markdown, diagram model files, editable
+SVGs, captions, or design sources. Citations are fact IDs in the Markdown: fix a
+citation by changing the fact IDs beside the words, then run `work check`, which
+rebuilds the citation and exhibit maps. Never edit those maps by hand. Never
 hand-edit generated HTML or PDF. Run `python3 -m research_control render` only
 when the company-brief source, its style, a placed diagram, or a brand artifact
 changed. The renderer reuses the HTML, PDF, and page previews when their input
