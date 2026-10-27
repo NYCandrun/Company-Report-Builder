@@ -747,6 +747,11 @@ def main() -> None:
             _refresh_release_evidence(root)
             report, validation_path, manifest_path = check_release(root)
             set_phase_result(root, "release_acceptance", report["status"], str(validation_path.relative_to(root)))
+            if report["status"] == PASS:
+                from research_control.archive import ensure_conversation_pushed
+
+                # The run ends with its whole conversation written once, checked, and pushed.
+                ensure_conversation_pushed(root, "end of the run")
             print_summary("release", report, str(validation_path))
             if report["status"] == PASS:
                 print(f"release_manifest={manifest_path}")

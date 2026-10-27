@@ -170,13 +170,17 @@ overrides below).
 
 ## The control agent's conversation
 
-Every `archive` adds what the orchestrator's conversation gained since the
-last one to `08-control agent conversation history/` as a numbered part, with
-access tokens, keys, and other secrets removed. Once the run is released (or
-with `archive --final-conversation`), the whole conversation is written as one
-file, a script checks that every part is contained in it, and the parts are
-deleted. After that the folder is left alone. These files are written by
-script and not read unless the user asks.
+The orchestrator's whole conversation, with access tokens, keys, and other
+secrets removed, is copied into `08-control agent conversation history/` and
+pushed with the run every time the run is saved (`archive`) and at the start
+of every phase. At each phase start a script asks the remote for the run's
+branch and confirms the push landed; a push that did not land is tried again,
+and the phase waits until it has. Each copy is the full conversation so far,
+recorded by line count and hash. When the run is released, the whole
+conversation is written as one file, a script checks that every earlier copy
+matches the start of it, and the earlier copy is deleted. After that the
+folder is left alone: questions after the run are not added. These files are
+written by script and not read unless the user asks.
 
 ## Talking to the user
 

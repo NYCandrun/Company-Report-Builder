@@ -13,7 +13,8 @@ from research_control.dispatch import emit_ready_packets
 from research_control.discovery import ALTERNATES_PART, BLOCKED_SOURCES_LIST
 from research_control.io import load_json, load_jsonl, workflow
 from research_control.orchestration import current_phase, initialize, load_state, phase_order, reopen_phase, set_phase_result
-from research_control import verification
+from research_control import conversation, verification
+from research_control.archive import ensure_conversation_pushed
 from research_control.validators.extraction import validate_part as validate_extraction_part
 from research_control.automatic import RUNTIME_WORKER, run_automatic
 from research_control.media import is_media_url
@@ -64,6 +65,16 @@ def advance(root: Path, company_url: str | None = None, *, automatic: bool = Tru
         for _step in range(16):
             _reopen_unsatisfied_phases(root, store)
             phase = current_phase(root)
+            # Every phase starts, and the run ends, with the conversation pushed and confirmed.
+            label = f"start of {phase}" if phase else "end of the run"
+            if conversation.state(root).get("last_verified") != label:
+                pushed = ensure_conversation_pushed(root, label)
+                if not pushed["on_remote"]:
+                    return {
+                        "status": "blocked", "phase": phase,
+                        "reason": "the control agent's conversation could not be pushed to GitHub before this phase "
+                                  f"({pushed.get('detail', '')}); fix the push and run again",
+                    }
             if phase is None:
                 return {"status": "released", "phase": None, "recovered": recovered, "stale": stale}
             if phase == "release_acceptance":

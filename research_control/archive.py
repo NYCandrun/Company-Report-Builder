@@ -131,7 +131,7 @@ def _released(root: Path) -> bool:
 
 
 def archive(root: Path, *, remote: str | None = None, branch: str | None = None, push: bool = True,
-            final_conversation: bool = False) -> dict[str, Any]:
+            final_conversation: bool = False, label: str = "save") -> dict[str, Any]:
     root = root.resolve()
     state = load_json(root / "tools/outputs/run-state.json")
     slug = str(state.get("slug") or root.name)
@@ -145,7 +145,7 @@ def archive(root: Path, *, remote: str | None = None, branch: str | None = None,
     _snapshot_database(root)
     # The control agent's conversation is kept with the run: new lines on every
     # archive, one checked file once the run is released.
-    log = conversation.finalize(root) if final_conversation or _released(root) else conversation.snapshot(root)
+    log = conversation.finalize(root) if final_conversation or _released(root) else conversation.snapshot(root, label=label)
     bundles = _bundle_repositories(root)
     _git(root, "add", "--all", ".")
     changed = _git(root, "diff", "--cached", "--quiet", check=False).returncode != 0
@@ -167,3 +167,36 @@ def archive(root: Path, *, remote: str | None = None, branch: str | None = None,
         "branch": branch, "commit": head, "committed": changed, "pushed": pushed, "conversation": log,
         "repositories": {name: entry.get("status") for name, entry in bundles.items()},
     }
+
+
+def ensure_conversation_pushed(root: Path, label: str) -> dict[str, Any]:
+    """Push the run with the whole conversation so far and confirm the remote has it.
+
+    Called at the start of every phase and at the end of the run. It saves and pushes
+    the run, then asks the remote for the branch head; a push that did not land is
+    tried again. With no transcript or no remote there is nothing to push, which is
+    reported rather than blocking.
+    """
+    root = root.resolve()
+    if conversation.find_transcript() is None and not conversation.state(root).get("copies"):
+        return {"on_remote": True, "status": "no conversation transcript on this host"}
+    try:
+        url = _remote_url(root)
+    except RuntimeError as error:
+        return {"on_remote": True, "status": f"no remote to push to: {error}"}
+    detail = ""
+    for _attempt in range(3):
+        try:
+            result = archive(root, label=label)
+        except RuntimeError as error:
+            detail = str(error)[:300]
+            continue
+        heads = subprocess.run(["git", "ls-remote", url, f"refs/heads/{result['branch']}"],
+                               text=True, capture_output=True, timeout=120)
+        remote_head = heads.stdout.split()[0] if heads.returncode == 0 and heads.stdout.strip() else ""
+        if result["commit"] and remote_head == result["commit"]:
+            conversation.record_push(root, label, result["commit"], True)
+            return {"on_remote": True, "status": "pushed and confirmed", "commit": result["commit"], "label": label}
+        detail = f"the remote branch is at {remote_head[:7] or 'nothing'}, the saved run at {result['commit'][:7]}"
+    conversation.record_push(root, label, "", False, detail)
+    return {"on_remote": False, "status": "not confirmed on the remote", "detail": detail, "label": label}

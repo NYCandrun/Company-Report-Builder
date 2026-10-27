@@ -47,12 +47,14 @@ every ready packet until exact-artifact release passes.
   you hit). The configured numbers are defaults; see README for the overrides.
 - Preserve single-writer reducer ownership, record concrete access blockers,
   and never edit scheduler state directly.
-- The control agent's conversation is kept with the run: every `archive`
-  adds the new part of it to `08-control agent conversation history/`, with
-  secrets removed, and once the run is released `archive` writes the whole
-  conversation as one file, checks by script that the earlier parts are in
-  it, and deletes them. Only write it, by that script; never read or review
-  it unless the user asks. Questions after the run are not added.
+- The control agent's conversation is kept with the run: `run` pushes the
+  whole conversation so far (secrets removed) to
+  `08-control agent conversation history/` at the start of every phase and
+  confirms it reached GitHub before the phase begins; every `archive` pushes it
+  too. At the end of the run it is written as one file, checked by script
+  against every earlier copy, and the earlier copy is deleted. Only write it,
+  by those scripts; never read or review it unless the user asks. Questions
+  after the run are not added.
 - Keep the evidence. A run folder is ignored by the template's git, so after
   every `run` that captured or recaptured sources, and after each wave of
   workers, run `python3 -m research_control --root runs/<slug> archive`. It
