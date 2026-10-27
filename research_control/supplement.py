@@ -34,18 +34,33 @@ def supplement_added_at(root: Path) -> dict[str, str]:
     return dict(load_json(path).get("added_at", {})) if path.is_file() else {}
 
 
-def add_supplement(root: Path, source_ids: list[str], reason: str, at: str | None = None) -> dict[str, Any]:
+def supplement_focus(root: Path) -> dict[str, list[str]]:
+    """Sources listed again only for some questions: extraction looks for those alone."""
+    path = root / SUPPLEMENT_LIST
+    return {key: list(value) for key, value in load_json(path).get("focus", {}).items()} if path.is_file() else {}
+
+
+def add_supplement(root: Path, source_ids: list[str], reason: str, at: str | None = None,
+                   focus: list[str] | None = None) -> dict[str, Any]:
     """List sources for supplement extraction. Listing a source again (for a new
-    question or new rules) has its current text extracted again; filed facts stand."""
+    question or new rules) has its current text extracted again; filed facts stand.
+    With `focus`, the pass extracts only facts bearing on those questions."""
     if not reason.strip():
         raise ValueError("a supplement needs a reason")
     sources = supplement_sources(root)
     added = supplement_added_at(root)
+    focused = supplement_focus(root)
     stamp = at or utc_now()
     for source_id in source_ids:
         sources[source_id] = reason.strip()
         added[source_id] = stamp
+        if focus:
+            focused[source_id] = sorted(set(focus))
+        else:
+            focused.pop(source_id, None)
     document = {"sources": dict(sorted(sources.items())), "added_at": dict(sorted(added.items()))}
+    if focused:
+        document["focus"] = dict(sorted(focused.items()))
     path = root / SUPPLEMENT_LIST
     if not path.is_file() or load_json(path) != document:
         atomic_write_json(path, document)
@@ -61,6 +76,17 @@ def deferred_slices(root: Path) -> dict[str, dict[str, str]]:
     """Extraction slices left out on purpose, with their text's hash and the reason."""
     path = root / DEFERRED_SLICES
     return dict(load_json(path).get("slices", {})) if path.is_file() else {}
+
+
+def set_planned_deferrals(root: Path, entries: dict[str, dict[str, Any]], by: str) -> None:
+    """Replace the deferrals the planner made for one reason (`budget` or `focus`): they
+    are recomputed every pass, so a raised budget or a new question brings slices back."""
+    slices = {key: value for key, value in deferred_slices(root).items() if value.get("by") != by}
+    slices.update({key: {**value, "by": by} for key, value in entries.items()})
+    path = root / DEFERRED_SLICES
+    document = {"slices": dict(sorted(slices.items()))}
+    if not path.is_file() or load_json(path) != document:
+        atomic_write_json(path, document)
 
 
 def defer_slices(root: Path, slice_ids: list[str], reason: str) -> dict[str, Any]:

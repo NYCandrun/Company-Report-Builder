@@ -84,6 +84,12 @@
       "optional": true,
       "fallback": "use_available_model",
       "default_tier": "strong",
+      "extraction_tiers": {
+        "repository": "standard",
+        "business_records": "strong",
+        "recording": "strong",
+        "page": "strong"
+      },
       "tiers": {
         "economy": {
           "model_class": "faster_capable",
@@ -108,7 +114,7 @@
       }
     },
     "worker_outputs": "isolated_parts_then_single_writer_reducer",
-    "runtime_executed_task_types": ["first-party discovery", "capture", "discovery_reducer", "capture_reducer", "extraction_reducer"],
+    "runtime_executed_task_types": ["first-party discovery", "capture", "discovery_reducer", "capture_reducer", "extraction_reducer", "filing", "claim_digests", "supplement_reducer"],
     "early_dispatch": "a task marked dispatch=early starts as soon as its own dependencies are met; its phase gate still requires it"
   },
   "execution_profiles": {

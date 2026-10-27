@@ -291,7 +291,7 @@ def _read_prompt(root: Path, relative: str) -> str:
 
 def _write_packet(root: Path, phase: dict[str, Any], task: dict[str, Any]) -> tuple[Path, Path]:
     task_id = f"{phase['id']}.{task['id']}"
-    route = model_route(root, task["task_type"])
+    route = model_route(root, task["task_type"], task.get("metadata"))
     packet = {
         "schema_version": "1.0.0",
         "task_id": task_id,

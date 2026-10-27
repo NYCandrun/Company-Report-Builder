@@ -286,6 +286,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     limits_parser.add_argument("--global", dest="global_concurrency", type=int)
     limits_parser.add_argument("--per-host", dest="per_host_concurrency", type=int)
+    limits_parser.add_argument(
+        "--extraction-budget", dest="extraction_token_budget", type=int,
+        help="tokens of source text extraction may read in this run (0 removes the limit); "
+             "past it, the slices that bear most on the questions are planned and the rest deferred, recorded",
+    )
     scope_parser = subparsers.add_parser("scope", help="orchestrator: change the research questions mid-run")
     scope_sub = scope_parser.add_subparsers(dest="scope_command", required=True)
     scope_add = scope_sub.add_parser(
@@ -309,7 +314,12 @@ def _parser() -> argparse.ArgumentParser:
     supplement = subparsers.add_parser(
         "supplement", help="orchestrator: extract a recaptured source's new text as a supplement to its filed facts"
     )
-    supplement.add_argument("--source-id", action="append", required=True)
+    supplement.add_argument("--source-id", action="append", default=[])
+    supplement.add_argument(
+        "--kind", choices=["repository", "business_records", "recording", "page"],
+        help="list every included source of this kind (for a rule change that affects one kind of source)",
+    )
+    supplement.add_argument("--focus", action="append", default=[], help="extract only for these questions (e.g. Q13)")
     supplement.add_argument("--reason", required=True)
 
     task = subparsers.add_parser("task", help="record task attempt lifecycle")
@@ -447,17 +457,29 @@ def main() -> None:
             _print_json(result)
             return
         if args.command == "supplement":
-            _print_json(add_supplement(root, args.source_id, args.reason))
+            from research_control.routing import source_kind
+            from research_control.triage import triage_included
+
+            sources = list(args.source_id)
+            if args.kind:
+                for source_id in sorted(triage_included(root)):
+                    canonical = root / "tools/extracts/canonical" / f"{source_id}.txt"
+                    paths = [str(path.relative_to(root)) for path in (root / "01-sources/captures" / source_id).glob("*.txt")]
+                    if canonical.is_file() and source_kind(canonical.read_text(encoding="utf-8", errors="replace")[:200_000], paths) == args.kind:
+                        sources.append(source_id)
+            if not sources:
+                raise ValueError("name sources with --source-id or --kind")
+            _print_json(add_supplement(root, sorted(set(sources)), args.reason, focus=list(args.focus) or None))
             return
         if args.command == "limits":
             from research_control.adaptive import RUNTIME_LIMITS
 
             path = root / RUNTIME_LIMITS
             current = load_json(path) if path.is_file() else {}
-            for key in ("global_concurrency", "per_host_concurrency"):
+            for key in ("global_concurrency", "per_host_concurrency", "extraction_token_budget"):
                 value = getattr(args, key)
                 if value is not None:
-                    if value < 1:
+                    if value < (0 if key == "extraction_token_budget" else 1):
                         raise ValueError(f"{key} must be positive")
                     current[key] = value
             atomic_write_json(path, current)

@@ -28,7 +28,7 @@ def store_company_url(root: Path) -> str:
 
 
 def write_packet(root: Path, task: dict[str, Any]) -> dict[str, Any]:
-    route = model_route(root, task["task_type"])
+    route = model_route(root, task["task_type"], task.get("metadata"))
     packet = {
         "schema_version": "2.0.0",
         "task_id": task["task_id"],

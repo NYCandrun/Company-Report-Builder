@@ -567,3 +567,69 @@ class ContentCutTests(unittest.TestCase):
                 self.assertEqual(["facts.extract.done"], kept)
                 self.assertEqual(["SRC-1:part-0003"], [item["id"] for item in uncovered])
                 self.assertEqual("inserted-text", uncovered[0]["sha256"])
+
+
+class ExtractionRoutingTests(unittest.TestCase):
+    def test_code_reads_on_a_balanced_model_and_judgment_sources_on_a_strong_one(self) -> None:
+        from research_control.routing import extraction_tier, source_kind
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            copy_template(root)
+            code = "Repository: x/y\n\n--- FILE: app/score.py (3 lines) ---\ndef score(doc):\n    return 0.7\n" * 20
+            book = ("Repository: x/y\n\n--- FILE: accounts/book.md (9 lines) ---\n"
+                    "| Client | Deal | Budget | Pipeline |\n| Acme | Phase 2 proposal | $5M | renewal meeting |\n") * 20
+            self.assertEqual("recording", source_kind("[00:00:01] hello", ["01-sources/captures/S/transcript.txt"]))
+            self.assertEqual("page", source_kind("Tribe builds agents for enterprises.", ["content.txt"]))
+            self.assertEqual("repository", source_kind(code, ["content.txt"]))
+            self.assertEqual("business_records", source_kind(book, ["content.txt"]))
+            self.assertEqual(("standard", "strong"), (extraction_tier(root, "repository"), extraction_tier(root, "business_records")))
+            route = model_route(root, "extraction", {"model_tier": "standard"})
+            self.assertEqual(("standard", "medium"), (route["tier"], route["effort"]))
+            self.assertEqual("strong", model_route(root, "extraction")["tier"])
+
+
+class BudgetAndFocusTests(unittest.TestCase):
+    def test_budget_keeps_the_most_relevant_slices_and_focus_skips_unrelated_ones(self) -> None:
+        from research_control.io import atomic_write_text
+        from research_control.supplement import add_supplement, deferred_slices
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            copy_template(root)
+            state = initialize(root, "https://example.com")
+            save_state(root, state)
+            atomic_write_text(root / "00-scope.md", "# Scope\n\n**Q1. Pricing and packaging.** What does it charge for workshops?\n\n"
+                                                    "**Q2. Accounts and renewals.** Which clients renewed their engagements?\n")
+            texts = {
+                "SRC-A:part-0001": "Workshop pricing and packaging: workshops charge per seat. " * 40,
+                "SRC-B:part-0001": "The clients renewed their engagements; renewals grew. " * 40,
+                "SRC-C:part-0001": "def helper(x):\n    return x + 1\n" * 40,
+            }
+            slices = []
+            for identifier, text in texts.items():
+                path = f"tools/extracts/slices/{identifier.replace(':', '.')}.txt"
+                atomic_write_text(root / path, text)
+                slices.append({"id": identifier, "source_id": identifier.split(":")[0], "path": path,
+                               "estimated_tokens": 600, "token_start": 0, "token_end": 600, "sha256": identifier})
+            with RuntimeStore(root) as store:
+                store.initialize(run_id=state["run_id"], company_url=state["company_url"])
+                planner = AdaptivePlanner(root, store)
+                # Without a budget everything is planned.
+                self.assertEqual(3, len(planner._within_budget(slices, [])))
+                atomic_write_json(root / "tools/lists/runtime-limits.json", {"extraction_token_budget": 1200})
+                planned = planner._within_budget(slices, [])
+                self.assertEqual({"SRC-A:part-0001", "SRC-B:part-0001"}, {item["id"] for item in planned})
+                self.assertEqual(["SRC-C:part-0001"], [key for key, value in deferred_slices(root).items() if value["by"] == "budget"])
+                self.assertIn("deferred 1 slices", (root / "06-checks/extraction-budget.md").read_text(encoding="utf-8"))
+                # Raising the budget brings the deferred slice back.
+                atomic_write_json(root / "tools/lists/runtime-limits.json", {"extraction_token_budget": 5000})
+                self.assertEqual(3, len(planner._within_budget(slices, [])))
+                self.assertEqual({}, deferred_slices(root))
+                # A source listed again for Q2 reads only slices that bear on Q2, for Q2.
+                add_supplement(root, ["SRC-A", "SRC-B"], "Q2 added", focus=["Q2"])
+                focused = planner._focus(slices)
+                self.assertEqual(["SRC-B:part-0001", "SRC-C:part-0001"], [item["id"] for item in focused])
+                self.assertEqual(["Q2"], focused[0]["focus_questions"])
+                self.assertNotIn("focus_questions", focused[1])
+                self.assertEqual("focus", deferred_slices(root)["SRC-A:part-0001"]["by"])

@@ -10,12 +10,14 @@ from typing import Any
 
 from research_control.discovery import ALTERNATES_PART, BLOCKED_SOURCES_LIST, DISCOVERY_CHANNELS, MEDIA_CHANNELS, DiscoveryEngine
 from research_control import verification
+from research_control.routing import extraction_tier, source_kind
+from research_control import relevance
 from research_control.supplement import (
     SUPPLEMENT_DIGESTS, SUPPLEMENT_FACTS, SUPPLEMENT_PARTS, SUPPLEMENT_REPORT, add_supplement, base_source, deferred_slices,
-    supplement_added_at, supplement_sources, write_supplement_digests,
+    set_planned_deferrals, supplement_added_at, supplement_focus, supplement_sources, write_supplement_digests,
 )
 from research_control.media import is_media_url
-from research_control.io import atomic_write_jsonl, atomic_write_text, load_json, load_jsonl, workflow
+from research_control.io import atomic_write_jsonl, atomic_write_text, load_json, load_jsonl, utc_now, workflow
 from research_control.validators.facts import load_fact_tables
 from research_control.triage import (
     RETRIAGE_DECISIONS,
@@ -705,7 +707,7 @@ class AdaptivePlanner:
                 add_supplement(
                     self.root, again,
                     f"extracted again for the questions added after triage ({', '.join(request.get('questions', []))})",
-                    at=str(request.get("requested_at", "")),
+                    at=str(request.get("requested_at", "")), focus=list(request.get("questions", [])),
                 )
         slices = self._source_slices(included=triage_included(self.root))
         kept, uncovered = self._unchanged_batches(slices)
@@ -714,8 +716,12 @@ class AdaptivePlanner:
             {**item, "pass": listed_at[base_source(item["id"])]} if base_source(item["id"]) in listed_at else item
             for item in uncovered
         ]
-        deferred_text = {str(value.get("sha256")) for value in deferred_slices(self.root).values()}
+        # The orchestrator's deferrals hold; the planner's own (budget, focus) are recomputed here.
+        deferred_text = {str(value.get("sha256")) for value in deferred_slices(self.root).values()
+                         if value.get("by") not in {"budget", "focus"}}
         uncovered = [item for item in uncovered if item.get("sha256") not in deferred_text]
+        uncovered = self._focus(uncovered)
+        uncovered = self._within_budget(uncovered, kept)
         batches = self._pack_slices(uncovered)
         extraction_ids: list[str] = list(kept)
         for batch in batches:
@@ -739,6 +745,7 @@ class AdaptivePlanner:
                     independent=True,
                     metadata={
                         "estimated_tokens": sum(int(item["estimated_tokens"]) for item in batch),
+                        **self._batch_route(batch),
                         "candidate_id_prefix": f"CAND-{identifier.upper()}-",
                         "candidate_part": candidate_part,
                         "disposition_part": disposition_part,
@@ -1099,6 +1106,76 @@ class AdaptivePlanner:
                     if same(item) and str(task["created_at"]) >= listed_at.get(base_source(item.get("id", "")), "")
                 )
         return kept, [item for item in slices if item["id"] not in covered]
+
+    def _focus(self, uncovered: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Slices of sources listed again for some questions carry those questions; a
+        slice sharing no terms with them is not read again."""
+        focus = supplement_focus(self.root)
+        skipped: dict[str, dict[str, Any]] = {}
+        kept: list[dict[str, Any]] = []
+        for item in uncovered:
+            questions = focus.get(item["source_id"])
+            if not questions:
+                kept.append(item)
+                continue
+            text = (self.root / item["path"]).read_text(encoding="utf-8", errors="replace")
+            value, hits = relevance.score(text, relevance.terms(self.root, questions))
+            if not hits:
+                skipped[item["id"]] = {"sha256": item["sha256"], "reason": f"shares no terms with {', '.join(questions)}",
+                                       "score": 0, "at": utc_now()}
+                continue
+            kept.append({**item, "focus_questions": questions})
+        set_planned_deferrals(self.root, skipped, "focus")
+        return kept
+
+    def _within_budget(self, uncovered: list[dict[str, Any]], kept: list[str]) -> list[dict[str, Any]]:
+        """With an extraction token budget set (`limits --extraction-budget`), plan the slices
+        that bear most on the questions until it is spent and defer the rest, recorded."""
+        path = self.root / "tools/lists/runtime-limits.json"
+        budget = int(load_json(path).get("extraction_token_budget") or 0) if path.is_file() else 0
+        report = self.root / "06-checks/extraction-budget.md"
+        if not budget:
+            set_planned_deferrals(self.root, {}, "budget")
+            return uncovered
+        used = sum(int((self.store.task(task_id) or {}).get("metadata", {}).get("estimated_tokens") or 0) for task_id in kept)
+        everything = relevance.terms(self.root)
+        ranked = []
+        for item in uncovered:
+            wanted = relevance.terms(self.root, item["focus_questions"]) if item.get("focus_questions") else everything
+            text = (self.root / item["path"]).read_text(encoding="utf-8", errors="replace")
+            ranked.append((relevance.score(text, wanted)[0], item))
+        ranked.sort(key=lambda pair: (-pair[0], pair[1]["id"]))
+        planned, deferred, remaining = [], {}, budget - used
+        for value, item in ranked:
+            if int(item["estimated_tokens"]) <= remaining:
+                planned.append(item)
+                remaining -= int(item["estimated_tokens"])
+            else:
+                deferred[item["id"]] = {"sha256": item["sha256"], "score": round(value, 3), "at": utc_now(),
+                                        "reason": f"over the extraction token budget ({budget}); ranked by relevance"}
+        set_planned_deferrals(self.root, deferred, "budget")
+        atomic_write_text(report, "\n".join([
+            "# Extraction budget", "",
+            f"Budget {budget} tokens; already planned or done {used}; planned now {sum(int(i['estimated_tokens']) for i in planned)}; "
+            f"deferred {len(deferred)} slices ({sum(int(i['estimated_tokens']) for _, i in ranked if i['id'] in deferred)} tokens).",
+            "", "Deferred slices, most relevant first (raise the budget to bring them back):", "",
+            *(f"- {key} (score {value['score']})" for key, value in sorted(deferred.items(), key=lambda pair: -pair[1]["score"])),
+        ]) + "\n")
+        return sorted(planned, key=lambda item: item["id"])
+
+    def _batch_route(self, batch: list[dict[str, Any]]) -> dict[str, Any]:
+        """The source kinds a batch reads and the model tier they call for (the strongest
+        any of them needs): code, specs, and data read well on a balanced model;
+        recordings, pages, and business records keep the strong one."""
+        order = ["economy", "standard", "strong", "frontier"]
+        kinds = sorted({
+            source_kind((self.root / item["path"]).read_text(encoding="utf-8", errors="replace")[:200_000],
+                        list(item.get("source_paths", [])))
+            for item in batch
+        })
+        tiers = [extraction_tier(self.root, kind) for kind in kinds]
+        tier = max(tiers, key=lambda value: order.index(value) if value in order else len(order))
+        return {"source_kinds": kinds, "model_tier": tier}
 
     def _pack_slices(self, slices: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
         batches: list[list[dict[str, Any]]] = []

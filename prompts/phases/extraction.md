@@ -56,6 +56,11 @@ each repository cover, with one fact per distinct claim:
   its first records. State totals from the header, never by counting the
   sample. A file headed `(HTML, as text)` is a page's text, not its markup.
 
+When an input carries `focus_questions`, its source was extracted before and
+is read again for questions added later: extract only facts that bear on those
+questions (their text is in `00-scope.md`). Facts for the other questions are
+filed already.
+
 Keep notes short: the marks this prompt asks for (delivery status,
 relationship basis, scope, date basis, `Recorded:` date, sourcing) and at most
 one sentence of qualifier. Do not restate the claim or the quote, explain where
