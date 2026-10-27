@@ -632,9 +632,9 @@ def auto_capture_source(
     """Capture a public page, PDF, or media source end to end without an agent.
 
     With ``shallow_repositories`` (sources about other firms, such as competitors), a
-    GitHub repository is read at its latest commit only: its file list and Markdown
-    files, or the one file a URL names, with no history, branches, pull requests, or
-    authorship.
+    GitHub repository is read at its latest commit only: its file list and Markdown and
+    CSV files, or the one file a URL names, with no history, branches, pull requests,
+    authorship, or other code.
 
     Produces a terminal receipt: ``captured`` with a canonical text derivative,
     or ``blocked`` with the concrete reason. Media sources also get a
@@ -1529,18 +1529,28 @@ def _github_conversation_capture(root: Path, *, url: str, source_id: str, grade:
     return {**receipt, "receipt": str(receipt_path.relative_to(root))}
 
 
-# A shallow look reads a repository's Markdown (cheap, and where firms write down clients,
-# teams, and plans), README first and shallower paths before deeper ones, up to this much.
-SHALLOW_MARKDOWN_CHARACTERS = 300_000
+# A shallow look reads a repository's Markdown and CSV files (cheap, and where firms and their
+# people write down clients, teams, accounts, and plans), never other code: README first and
+# shallower paths before deeper ones, up to this much.
+SHALLOW_TEXT_CHARACTERS = 300_000
 SHALLOW_FILE_CHARACTERS = 60_000
-MARKDOWN_SUFFIXES = (".md", ".mdx", ".markdown")
+SHALLOW_SUFFIXES = (".md", ".mdx", ".markdown", ".csv", ".tsv")
 SKIPPED_DIRECTORIES = {"node_modules", "vendor", "third_party", ".venv", "dist", "build"}
 
 
+def shallow_files(listed: list[str]) -> list[str]:
+    """The files a shallow look reads: Markdown and CSV only, README first, then shallower
+    paths before deeper ones, leaving out vendored and built directories."""
+    readable = [item for item in listed if item.casefold().endswith(SHALLOW_SUFFIXES)
+                and not SKIPPED_DIRECTORIES & set(item.split("/")[:-1])]
+    return sorted(readable, key=lambda item: (not Path(item).name.casefold().startswith("readme"),
+                                              item.count("/"), item.casefold()))
+
+
 def _github_shallow_capture(root: Path, *, url: str, source_id: str, grade: str) -> dict[str, Any]:
-    """A shallow look at another firm's public repository: the latest commit's file list and
-    Markdown files, README first (or the one file the URL names), nothing from its history or
-    its people."""
+    """A shallow look at another firm's (or its people's) public repository: the latest
+    commit's file list and its Markdown and CSV files, README first (or the one file the URL
+    names), nothing from its history or authorship and no other code."""
     parts = [part for part in urlparse(url).path.split("/") if part]
     if len(parts) < 2 or (len(parts) > 2 and parts[2] not in {"tree", "blob"}):
         raise RuntimeError("a shallow look takes a repository, directory, or file URL on github.com")
@@ -1564,7 +1574,7 @@ def _github_shallow_capture(root: Path, *, url: str, source_id: str, grade: str)
     lines = [
         f"Repository: {owner}/{repo}", f"Source URL: {url}", f"Captured commit: {commit} (committed {committed})",
         "Method: shallow look at the latest commit ("
-        + ("the one file named" if relative and (target / relative).is_file() else "file list and Markdown files")
+        + ("the one file named" if relative and (target / relative).is_file() else "file list, Markdown, and CSV files")
         + "; no history, branches, or authors)", "",
         f"--- FILE TREE ({len(listed)} files{', under ' + relative if relative else ''}) ---", *listed[:300],
         *([f"... {len(listed) - 300} more files"] if len(listed) > 300 else []),
@@ -1573,12 +1583,8 @@ def _github_shallow_capture(root: Path, *, url: str, source_id: str, grade: str)
     if named and named.is_file():
         chosen = [relative]
     else:
-        markdown = [item for item in listed if item.casefold().endswith(MARKDOWN_SUFFIXES)
-                    and not SKIPPED_DIRECTORIES & set(item.split("/")[:-1])]
-        # README first, then shallower paths before deeper ones.
-        chosen = sorted(markdown, key=lambda item: (not Path(item).name.casefold().startswith("readme"),
-                                                    item.count("/"), item.casefold()))
-    room = SHALLOW_MARKDOWN_CHARACTERS
+        chosen = shallow_files(listed)
+    room = SHALLOW_TEXT_CHARACTERS
     left_out: list[str] = []
     for item in chosen:
         path = target / item
@@ -1591,7 +1597,7 @@ def _github_shallow_capture(root: Path, *, url: str, source_id: str, grade: str)
         room -= len(text)
         lines += ["", f"--- FILE: {item} ---", text]
     if left_out:
-        lines += ["", f"--- MARKDOWN NOT READ ({len(left_out)} files over the shallow look's limit) ---", *left_out[:100]]
+        lines += ["", f"--- MARKDOWN AND CSV NOT READ ({len(left_out)} files over the shallow look's limit) ---", *left_out[:100]]
     directory = root / "01-sources/captures" / source_id
     directory.mkdir(parents=True, exist_ok=True)
     text_path = directory / "content.txt"

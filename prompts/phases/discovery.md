@@ -61,23 +61,29 @@ Admit what answers a question, not everything that exists:
   sizes or describes the category: analyst and trade reports, filings and
   earnings commentary on the category, funding and acquisition activity, and
   moves by platform vendors and AI labs into the company's line of work.
-  Public code is a shallow look, for direct competitors only: open the
-  repository list of the competitor's own GitHub organization in the headless
-  browser (`https://github.com/orgs/ORG/repositories`) and admit only the
-  repositories that show its offering (a product, a public tool, an
-  accelerator), by repository URL. The runtime reads each one at its latest
-  commit: the file list and every Markdown file (README first, within a size
-  limit), since firms often write down clients, teams, and plans in Markdown.
-  When the file list shows another file worth reading on the main branch (a
-  package description that names what it is built on, a configuration that
-  names a platform), admit that file by its URL
-  (`https://github.com/ORG/REPO/blob/main/PATH`); the runtime reads that one
-  file at the latest commit. Keep it bounded: only files that show what the
-  competitor sells, how it is built, whom it works for, or what it depends on,
-  never whole directories of code. Do not clone, read history or other
-  branches, look up its people or their handles, query GH Archive, or admit
-  adjacent firms' code; that depth is for the company itself
-  (`code_packages`).
+  Public code is a shallow look, for direct competitors only, and it reads
+  Markdown and CSV files, never other code (firms and their people often
+  write down clients, teams, accounts, and plans in them):
+  1. The competitor's own GitHub organization: open its repository list in the
+     headless browser (`https://github.com/orgs/ORG/repositories`) and admit
+     the repositories that show its offering, clients, or organization, by
+     repository URL.
+  2. Its people: the organization's public members
+     (`https://github.com/orgs/ORG/people`) and the contributors shown on its
+     repositories' pages. Open each one's public repositories in the browser
+     (`https://github.com/HANDLE?tab=repositories`) and admit a repository
+     only when it is the competitor's work (a business record such as an org
+     chart, account list, or plan; a tool or skill the firm uses or sells;
+     client work), never a personal project.
+  The runtime reads each admitted repository at its latest commit: the file
+  list and its Markdown and CSV files (README first, within a size limit).
+  When the file list shows another single file that matters (a package
+  description that names what a product is built on), admit that file by its
+  URL (`https://github.com/ORG/REPO/blob/main/PATH`). Do not clone, read
+  history or other branches, query GH Archive, read whole directories of code,
+  or look at adjacent firms' code; that depth is for the company itself
+  (`code_packages`). Record organizations and repositories, never personal
+  details.
   Close as `sufficient` against the market and competitor questions, naming
   each competitor found, whether it is direct or adjacent, and the evidence.
 - Social platforms that require login (LinkedIn, X, Facebook, Instagram,

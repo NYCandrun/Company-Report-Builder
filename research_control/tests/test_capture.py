@@ -240,3 +240,13 @@ class ResilienceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ShallowLookTests(unittest.TestCase):
+    def test_a_shallow_look_reads_markdown_and_csv_only_readme_first(self) -> None:
+        from research_control.capture import shallow_files
+
+        listed = ["src/agent.py", "docs/clients.md", "README.md", "data/accounts.csv", "notes.md",
+                  "node_modules/pkg/README.md", "package.json", "team/org-chart.tsv"]
+        self.assertEqual(["README.md", "notes.md", "data/accounts.csv", "docs/clients.md", "team/org-chart.tsv"],
+                         shallow_files(listed))
