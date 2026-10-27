@@ -554,12 +554,31 @@ class RuntimeStore:
             raise KeyError(f"unknown task: {task_id}")
         if task["state"] != "succeeded":
             return task
+        # Completed consumers of this task's outputs are stale with it.
+        stale = [task_id]
+        frontier = [task_id]
+        while frontier:
+            parent = frontier.pop()
+            for row in self.connection.execute(
+                "SELECT task_id FROM dependencies WHERE depends_on=?", (parent,)
+            ).fetchall():
+                child = self.task(row["task_id"])
+                if child and child["state"] == "succeeded" and child["task_id"] not in stale:
+                    stale.append(child["task_id"])
+                    frontier.append(child["task_id"])
+        now = utc_now()
         with self.connection:
             self.connection.execute(
                 "UPDATE tasks SET state='stale', finished_at=NULL, last_error=?, updated_at=? WHERE task_id=?",
-                (reason, utc_now(), task_id),
+                (reason, now, task_id),
+            )
+            self.connection.executemany(
+                "UPDATE tasks SET state='stale', finished_at=NULL, updated_at=? WHERE task_id=?",
+                [(now, child) for child in stale[1:]],
             )
         self.event("task_stale", task_id, {"reason": reason})
+        for child in stale[1:]:
+            self.event("task_stale", child, {"reason": f"upstream {task_id} is stale"})
         self.refresh_ready()
         return self.task(task_id) or task
 
