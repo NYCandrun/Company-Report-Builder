@@ -36,6 +36,19 @@ notes.
 - Keep contradictions visible with both sources and dates.
 - Start inference with `My inference:` and name its supporting fact IDs.
 - Scope every absence to the sources searched.
+- Mark every customer, client, or partner relationship with its basis,
+  wherever it appears: a sentence, a list, a table, a diagram label, a
+  caption.
+  - `Stated` means a source names the relationship.
+  - `Inferred` means the evidence supports it but no source names it. The
+    mark goes on the relationship itself (for example "Microsoft (inferred
+    client: …)"), followed by the evidence and fact IDs.
+  - `Lead` means the evidence is too thin to infer, such as one commit, a
+    demo, or one person's activity; a lead appears only among open questions.
+
+  Never put inferred and stated relationships in the same list or count
+  without each one's mark. Never let an inferred client become a stated one
+  through summary, emphasis, or a logo, name, or count.
 
 Name a transcript speaker only when the record establishes identity. Otherwise
 use `a speaker in the <title> webinar`. Diarization labels (`Speaker 1`, ...)

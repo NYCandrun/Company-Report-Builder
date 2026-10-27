@@ -77,7 +77,8 @@ Admit what answers a question, not everything that exists:
     branches and files).
 
   Record such a relationship as an inference, naming the evidence and its
-  strength. A single commit, a fork, a demo, or one person's activity alone
+  strength, with the `Stated`, `Inferred`, or `Lead` mark the evidence core
+  requires. A single commit, a fork, a demo, or one person's activity alone
   is a lead, not an inferred client. Do not use GitHub search or API tools
   beyond the repositories the environment permits; use the routes above.
 - Video and podcasts, at every length (Shorts, clips, and social video drops
