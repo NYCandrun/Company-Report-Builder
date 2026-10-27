@@ -4,6 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import json
+
+from research_control.capture import _reusable_transcript
 from research_control.discovery import admissible_media, discoverable_link
 from research_control.media import is_media_url, youtube_id
 from research_control.validators import quotes
@@ -39,6 +42,19 @@ class MediaTests(unittest.TestCase):
             ]
             report = quotes.validate(rows, {"S": [page, transcript]}, root)
             self.assertEqual("PASS", report["status"], report)
+
+    def test_recapture_reuses_a_finished_transcript_of_the_same_url(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            url = "https://cdn.example.com/episode.mp3"
+            transcript = root / "01-sources/captures/S1/transcript.txt"
+            transcript.parent.mkdir(parents=True)
+            transcript.write_text(f"# Transcript: {url}\n[00:00:01] hello\n", encoding="utf-8")
+            receipt = root / "tools/outputs/worker-parts/capture/S1.json"
+            receipt.parent.mkdir(parents=True)
+            receipt.write_text(json.dumps({"transcript": {"status": "transcribed", "method": "whisper", "segments": 1}}))
+            self.assertEqual(transcript, _reusable_transcript(root, "S1", url)["path"])
+            self.assertIsNone(_reusable_transcript(root, "S1", "https://cdn.example.com/other.mp3"))
 
 
 if __name__ == "__main__":

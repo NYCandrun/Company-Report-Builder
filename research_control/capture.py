@@ -492,6 +492,7 @@ def auto_capture_source(
     """
     from research_control.media import AUDIO_SUFFIXES
 
+    prior_transcript = _reusable_transcript(root, source_id, url) if media else None
     if media and urlparse(url).path.casefold().endswith(AUDIO_SUFFIXES):
         # A direct audio or video file has no page text; its transcript is the derivative.
         receipt = _blocked_receipt(root, source_id, url, "direct media file; no page text to capture")
@@ -502,7 +503,9 @@ def auto_capture_source(
     from research_control.media import transcribe
 
     directory = root / "01-sources/captures" / source_id
-    result = transcribe(url, directory)
+    # A recapture (for example after an upstream invalidation) keeps a finished
+    # transcript of the same URL instead of downloading and transcribing again.
+    result = prior_transcript or transcribe(url, directory)
     receipt.pop("receipt", None)
     if result["status"] != "transcribed":
         receipt["transcript"] = {"status": "unavailable", "reason": result["reason"]}
@@ -548,6 +551,28 @@ def auto_capture_source(
     receipt_path = root / "tools/outputs/worker-parts/capture" / f"{source_id}.json"
     atomic_write_json(receipt_path, receipt)
     return {**receipt, "receipt": str(receipt_path.relative_to(root))}
+
+
+def _reusable_transcript(root: Path, source_id: str, url: str) -> dict[str, Any] | None:
+    receipt_path = root / "tools/outputs/worker-parts/capture" / f"{source_id}.json"
+    transcript_path = root / "01-sources/captures" / source_id / "transcript.txt"
+    if not receipt_path.is_file() or not transcript_path.is_file():
+        return None
+    try:
+        prior = json.loads(receipt_path.read_text(encoding="utf-8")).get("transcript") or {}
+        header = transcript_path.read_text(encoding="utf-8", errors="replace").split("\n", 1)[0]
+    except (OSError, ValueError):
+        return None
+    if prior.get("status") != "transcribed" or header != f"# Transcript: {url}":
+        return None
+    return {
+        "status": "transcribed",
+        "method": prior.get("method", ""),
+        "path": transcript_path,
+        "segments": prior.get("segments", 0),
+        "audio_sha256": prior.get("audio_sha256", ""),
+        "attempts": [*prior.get("attempts", []), "reused transcript from the previous capture of this URL"],
+    }
 
 
 def _capture_page(

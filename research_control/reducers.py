@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from research_control.capture import MANIFEST_FIELDS
+from research_control.discovery import coverage_markdown
 from research_control.io import (
     atomic_write_json,
     atomic_write_jsonl,
@@ -71,6 +72,7 @@ def reduce_discovery(root: Path, store: RuntimeStore) -> dict[str, Any]:
         "completed_at": utc_now(),
     }
     atomic_write_json(root / "tools/outputs/discovery/final.json", result)
+    atomic_write_text(root / "06-checks/discovery-coverage.md", coverage_markdown(channels))
     return result
 
 

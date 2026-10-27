@@ -111,6 +111,24 @@ class LinkExtractor(HTMLParser):
             self._text = []
 
 
+LIVE_COVERAGE = "tools/outputs/discovery/coverage.md"
+
+
+def coverage_markdown(channels: list[dict[str, Any]]) -> str:
+    lines = [
+        "# Discovery coverage", "",
+        "Discovery has no source-count target. The runtime crawls the company site to a fixed point; "
+        "search channels close as `sufficient` for named research questions or `saturated`.", "",
+        "| Channel | State | Passes | New sources | Evidence |", "|---|---|---:|---:|---|",
+    ]
+    for item in channels:
+        evidence = str(item.get("completion_evidence") or "").replace("|", "\\|")
+        lines.append(
+            f"| {item['channel']} | {item['state']} | {item['total_passes']} | {item['total_new_sources']} | {evidence} |"
+        )
+    return "\n".join(lines) + "\n"
+
+
 def canonicalize_url(url: str, base: str | None = None) -> str:
     absolute = urljoin(base or "", url.strip())
     parsed = urlparse(absolute)
@@ -784,15 +802,7 @@ class DiscoveryEngine:
                 "updated_at": utc_now(),
             },
         )
-        lines = [
-            "# Discovery coverage", "",
-            "Discovery has no source-count target. The runtime crawls the company site to a fixed point; "
-            "search channels close as `sufficient` for named research questions or `saturated`.", "",
-            "| Channel | State | Passes | New sources | Evidence |", "|---|---|---:|---:|---|",
-        ]
-        for item in channels:
-            evidence = str(item.get("completion_evidence") or "").replace("|", "\\|")
-            lines.append(
-                f"| {item['channel']} | {item['state']} | {item['total_passes']} | {item['total_new_sources']} | {evidence} |"
-            )
-        atomic_write_text(self.root / "06-checks/discovery-coverage.md", "\n".join(lines) + "\n")
+        # Live view only. The discovery reducer is the single writer of
+        # 06-checks/discovery-coverage.md, so a catalog change cannot alter a
+        # snapshot that capture work depends on.
+        atomic_write_text(self.root / LIVE_COVERAGE, coverage_markdown(channels))
