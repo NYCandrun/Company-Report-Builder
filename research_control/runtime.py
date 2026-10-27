@@ -575,10 +575,15 @@ class RuntimeStore:
         ]
         if changed:
             raise ValueError(f"{task_id}: outputs changed since it finished: {', '.join(changed[:5])}")
+        # Restoring is the orchestrator's judgment that the result holds for the
+        # inputs as they are now, so a task that tracks its inputs accepts them.
+        patterns = [str(item["path"]) for item in task["inputs"] if item.get("path")]
+        inputs = hash_patterns(self.root, patterns) if task["track_input_staleness"] else task["input_hashes"]
         with self.connection:
             self.connection.execute(
-                "UPDATE tasks SET state='succeeded', last_error=NULL, finished_at=?, updated_at=? WHERE task_id=?",
-                (last["finished_at"], utc_now(), task_id),
+                "UPDATE tasks SET state='succeeded', last_error=NULL, finished_at=?, input_hashes_json=?, updated_at=? "
+                "WHERE task_id=?",
+                (last["finished_at"], json.dumps(inputs, sort_keys=True), utc_now(), task_id),
             )
         self.event("task_restored", task_id, {"reason": reason})
         self.refresh_ready()
