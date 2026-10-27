@@ -936,18 +936,19 @@ UNMERGED_REF_LIMIT = 300_000
 BOT_MARKERS = ("[bot]", "dependabot", "renovate")
 
 
-def _commit_history(checkout: Path) -> list[str]:
-    log = _git(["log", "--format=%cs %h %s"], cwd=checkout).splitlines()
+def _commit_history(checkout: Path, scope: str = "") -> list[str]:
+    log = _git(["log", "--format=%cs %h %s", "--", scope or "."], cwd=checkout).splitlines()
     if not log:
         return []
-    lines = ["", f"--- COMMIT HISTORY OF THE DEFAULT BRANCH ({len(log)} commits, {log[-1][:10]} to {log[0][:10]}) ---"]
+    under = f" under {scope}" if scope else ""
+    lines = ["", f"--- COMMIT HISTORY OF THE DEFAULT BRANCH{under} ({len(log)} commits, {log[-1][:10]} to {log[0][:10]}) ---"]
     lines += log[:HISTORY_LIMIT]
     if len(log) > HISTORY_LIMIT:
         lines.append(f"... {len(log) - HISTORY_LIMIT} earlier commits")
     return lines
 
 
-def _change_history(checkout: Path) -> list[str]:
+def _change_history(checkout: Path, scope: str = "") -> list[str]:
     """Every human commit's changes on the default branch, oldest first.
 
     Earlier versions of files are evidence too: an account book's stages over
@@ -955,7 +956,7 @@ def _change_history(checkout: Path) -> list[str]:
     commits are kept (a fork's upstream history is oldest); commits by bots and
     lockfile changes are left out, and every omission is listed.
     """
-    rows = _git(["log", "--no-merges", "--format=%H%x09%cs%x09%an%x09%ae%x09%s"], cwd=checkout).splitlines()
+    rows = _git(["log", "--no-merges", "--format=%H%x09%cs%x09%an%x09%ae%x09%s", "--", scope or "."], cwd=checkout).splitlines()
     kept: list[list[str]] = []
     omitted: list[str] = []
     used = 0
@@ -967,9 +968,9 @@ def _change_history(checkout: Path) -> list[str]:
         if used >= CHANGE_HISTORY_BUDGET:
             omitted.append(f"{day} {sha[:7]} {subject} (history budget reached)")
             continue
-        patch = _git(["show", "--no-color", "--format=", sha, "--", ".", *excludes], cwd=checkout, timeout=300)
+        patch = _git(["show", "--no-color", "--format=", sha, "--", scope or ".", *excludes], cwd=checkout, timeout=300)
         if len(patch) > CHANGE_COMMIT_LIMIT or used + len(patch) > CHANGE_HISTORY_BUDGET:
-            stat = _git(["show", "--format=", "--stat=200", sha, "--", ".", *excludes], cwd=checkout).rstrip()
+            stat = _git(["show", "--format=", "--stat=200", sha, "--", scope or ".", *excludes], cwd=checkout).rstrip()
             kept.append([f"=== COMMIT {sha[:7]} {day} {subject} (diff of {len(patch)} characters not included; files changed below) ===", stat])
             used += len(stat)
             continue
@@ -986,7 +987,7 @@ def _change_history(checkout: Path) -> list[str]:
     return lines
 
 
-def _unmerged_work(checkout: Path) -> tuple[list[str], str]:
+def _unmerged_work(checkout: Path, scope: str = "") -> tuple[list[str], str]:
     """Branches and pull request heads with commits the default branch lacks.
 
     Refs whose commits are all by bots (dependency bumps) are skipped; refs with the
@@ -998,7 +999,7 @@ def _unmerged_work(checkout: Path) -> tuple[list[str], str]:
     for ref in refs:
         if ref.endswith("/HEAD"):
             continue
-        commits = _git(["log", "--format=%H\t%an\t%ae", ref, "^HEAD"], cwd=checkout).splitlines()
+        commits = _git(["log", "--format=%H\t%an\t%ae", ref, "^HEAD", "--", scope or "."], cwd=checkout).splitlines()
         human = frozenset(
             row.split("\t")[0] for row in commits
             if not any(marker in row.casefold() for marker in BOT_MARKERS)
@@ -1018,12 +1019,12 @@ def _unmerged_work(checkout: Path) -> tuple[list[str], str]:
         names = sorted(ref.removeprefix("refs/remotes/").removeprefix("origin/") for ref in groups[key])
         names = [name if not name.startswith("pull/") else f"pull request #{name.split('/')[1]}" for name in names]
         ref = groups[key][0]
-        log = [row for row in _git(["log", "--format=%cs %h %s", ref, "^HEAD"], cwd=checkout).splitlines()]
+        log = [row for row in _git(["log", "--format=%cs %h %s", ref, "^HEAD", "--", scope or "."], cwd=checkout).splitlines()]
         first, last = log[-1][:10], log[0][:10]
         latest = max(latest, last)
-        diff = _git(["diff", "--stat=200", "HEAD..." + ref], cwd=checkout).rstrip()
+        diff = _git(["diff", "--stat=200", "HEAD..." + ref, "--", scope or "."], cwd=checkout).rstrip()
         lines += ["", f"=== UNMERGED: {', '.join(names)} ({len(log)} commits, {first} to {last}) ===", *log, "", diff]
-        changed = _git(["diff", "--name-only", "--diff-filter=AM", "HEAD..." + ref], cwd=checkout).splitlines()
+        changed = _git(["diff", "--name-only", "--diff-filter=AM", "HEAD..." + ref, "--", scope or "."], cwd=checkout).splitlines()
         patch_paths = [path for path in changed if Path(path).name not in SKIPPED_FILES]
         if not patch_paths:
             continue
@@ -1038,6 +1039,156 @@ def _unmerged_work(checkout: Path) -> tuple[list[str], str]:
     return lines, latest
 
 
+# Pull request and issue conversations (titles, descriptions, comments, reviews,
+# and their dates) are github.com pages, not repository content. Plain requests
+# to them are refused here, but the headless browser renders them.
+CONVERSATION_BUDGET = 800_000
+CONVERSATION_PAGE_LIMIT = 150_000
+CONVERSATION_LIMIT = 300
+GITHUB_PAGE_SCRIPT = r"""
+const { chromium } = require('playwright');
+(async () => {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({
+      userAgent: process.argv[2], viewport: { width: 1440, height: 900 }, locale: 'en-US',
+    });
+    await page.goto(process.argv[1], { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForTimeout(1500);
+    const result = await page.evaluate(() => {
+      // Relative times ("last week") become the dates they stand for.
+      for (const node of document.querySelectorAll('relative-time, time-ago, local-time, time')) {
+        const when = node.getAttribute('datetime');
+        if (when) node.replaceWith(document.createTextNode(when.slice(0, 10)));
+      }
+      const main = document.querySelector('main') || document.body;
+      const links = Array.from(document.querySelectorAll('a[href]')).map((a) => a.getAttribute('href'));
+      return { text: main ? main.innerText : '', links };
+    });
+    process.stdout.write(JSON.stringify({ url: page.url(), title: await page.title(), ...result }));
+  } finally {
+    await browser.close();
+  }
+})().catch((error) => { process.stderr.write(String(error)); process.exit(1); });
+"""
+
+
+def _github_page(url: str) -> dict[str, Any]:
+    with _browser_slots:
+        result = subprocess.run(
+            ["node", "-e", GITHUB_PAGE_SCRIPT, url, DESKTOP_USER_AGENT], text=True, capture_output=True, timeout=150
+        )
+    if result.returncode != 0:
+        raise RuntimeError(f"browser render failed: {(result.stderr.strip().splitlines() or ['no output'])[0][:200]}")
+    rendered = json.loads(result.stdout)
+    if _refusal_marker(rendered) or len(rendered.get("text", "").strip()) < 100:
+        raise RuntimeError(_refusal_marker(rendered) or "page rendered no text")
+    return rendered
+
+
+def _conversation_numbers(checkout: Path, scope: str = "") -> list[int]:
+    """Pull request numbers worth reading: every human pull request in a repository, or for a
+    path inside someone else's repository, the pull requests that changed that path."""
+    numbers: set[int] = set()
+    for ref in _git(["for-each-ref", "--format=%(refname)", "refs/remotes/pull"], cwd=checkout).split():
+        number = ref.rsplit("/", 1)[-1]
+        if not number.isdigit():
+            continue
+        head = _git(["log", "-1", "--format=%an %ae", ref], cwd=checkout).casefold()
+        if any(marker in head for marker in BOT_MARKERS):
+            continue
+        if not scope or _git(["log", "--format=%h", ref, "^HEAD", "--", scope], cwd=checkout).strip():
+            numbers.add(int(number))
+    if scope:
+        # Merged pull requests name themselves in the commits they left on the path.
+        subjects = _git(["log", "--format=%s", "--", scope], cwd=checkout)
+        numbers.update(int(value) for value in re.findall(r"(?:pull request |\(|\s)#(\d+)\b", subjects))
+    return sorted(numbers)
+
+
+def _issue_numbers(owner: str, repo: str) -> list[int]:
+    numbers: set[int] = set()
+    pattern = re.compile(rf"^/{re.escape(owner)}/{re.escape(repo)}/issues/(\d+)$", re.IGNORECASE)
+    for page in range(1, 11):
+        try:
+            listing = _github_page(f"https://github.com/{owner}/{repo}/issues?q=is%3Aissue&page={page}")
+        except Exception:
+            break
+        found = {int(match.group(1)) for link in listing.get("links", []) if (match := pattern.match(str(link or "")))}
+        if not found - numbers:
+            break
+        numbers |= found
+    return sorted(numbers)
+
+
+def _github_conversations(checkout: Path, owner: str, repo: str, scope: str = "") -> list[str]:
+    """Pull request and issue pages as text, with their dates, within the budget."""
+    if not browser_available():
+        return ["", "--- PULL REQUESTS AND ISSUES NOT CAPTURED (no headless browser on this host) ---"]
+    targets = [("pull", number) for number in _conversation_numbers(checkout, scope)]
+    if not scope:
+        targets += [("issues", number) for number in _issue_numbers(owner, repo)]
+    lines: list[str] = []
+    missed: list[str] = []
+    used = 0
+    for kind, number in targets[:CONVERSATION_LIMIT]:
+        url = f"https://github.com/{owner}/{repo}/{kind}/{number}"
+        try:
+            rendered = _github_page(url)
+        except Exception as error:
+            missed.append(f"{url} ({str(error)[:120]})")
+            continue
+        text = re.sub(r"\n{3,}", "\n\n", rendered.get("text", "")).strip()[:CONVERSATION_PAGE_LIMIT]
+        if used + len(text) > CONVERSATION_BUDGET:
+            missed.append(f"{url} (conversation budget reached)")
+            continue
+        used += len(text)
+        label = "PULL REQUEST" if kind == "pull" else "ISSUE"
+        lines += ["", f"=== {label} #{number}: {rendered.get('title', '')} ({url}) ===", text]
+    if not targets:
+        return []
+    header = [
+        "", f"--- PULL REQUESTS AND ISSUES ({len(targets) - len(missed)} of {len(targets)}, rendered from github.com; "
+        "dates are the pages' own timestamps) ---",
+    ]
+    if missed:
+        lines += ["", f"--- CONVERSATIONS NOT CAPTURED ({len(missed)}) ---", *missed]
+    return header + lines
+
+
+def _github_conversation_capture(root: Path, *, url: str, source_id: str, grade: str) -> dict[str, Any]:
+    """A single pull request, issue, or discussion page, rendered with its dates."""
+    rendered = _github_page(url)
+    text = re.sub(r"\n{3,}", "\n\n", rendered.get("text", "")).strip()
+    directory = root / "01-sources/captures" / source_id
+    directory.mkdir(parents=True, exist_ok=True)
+    text_path = directory / "content.txt"
+    atomic_write_text(text_path, f"Page: {url}\nTitle: {rendered.get('title', '')}\n\n{text}\n")
+    dates = sorted(re.findall(r"\b(20\d\d-\d\d-\d\d)\b", text))
+    relative_text = str(text_path.relative_to(root))
+    parsed = [part for part in urlparse(url).path.split("/") if part]
+    source = {
+        "id": source_id, "grade": grade, "title": rendered.get("title", "") or url,
+        "publisher": f"GitHub ({parsed[0]})", "url": url,
+        "date published": dates[0] if dates else "", "date last modified": dates[-1] if dates else "",
+        "date captured": datetime.now(timezone.utc).date().isoformat(),
+        "local file": relative_text, "method": "headless browser render of the github.com page",
+        "notes": "Opened on its earliest timestamp, last activity on its latest; both from the page",
+    }
+    receipt = {
+        "schema_version": "1.0.0", "task_type": "capture", "source_id": source_id, "status": "captured",
+        "source": source, "local_paths": [relative_text], "content_bytes": len(text.encode("utf-8")),
+        "estimated_tokens": max(1, len(text) // 4), "canonical_text_ready": True, "captured_at": utc_now(),
+        "disposition": {
+            "input_id": source_id, "disposition": "completed", "reason": "rendered with a headless browser",
+            "evidence_paths": [relative_text], "output_ids": [source_id],
+        },
+    }
+    receipt_path = root / "tools/outputs/worker-parts/capture" / f"{source_id}.json"
+    atomic_write_json(receipt_path, receipt)
+    return {**receipt, "receipt": str(receipt_path.relative_to(root))}
+
+
 def _github_capture(root: Path, *, url: str, source_id: str, grade: str) -> dict[str, Any]:
     """Capture a public GitHub repository, directory, or file through git rather than web pages."""
     parts = [part for part in urlparse(url).path.split("/") if part]
@@ -1047,12 +1198,11 @@ def _github_capture(root: Path, *, url: str, source_id: str, grade: str) -> dict
             "its public repositories are captured individually"
         )
     owner, repo = parts[0], parts[1].removesuffix(".git")
+    if len(parts) > 3 and parts[2] in {"pull", "issues", "discussions"}:
+        # Conversations are github.com pages, not repository content.
+        return _github_conversation_capture(root, url=url, source_id=source_id, grade=grade)
     if len(parts) > 2 and parts[2] not in {"tree", "blob"}:
-        # Pull requests, issues, and discussions are not repository content.
-        raise RuntimeError(
-            f"a GitHub {parts[2]} page needs github.com's web pages or API, which this session cannot reach; "
-            "it is not repository content a clone can capture"
-        )
+        raise RuntimeError(f"a GitHub {parts[2]} page is neither repository content nor a conversation page")
     checkout = _github_checkout(root, owner, repo)
     unmerged_latest = ""
     relative = "/".join(parts[4:]) if len(parts) > 4 and parts[2] in {"tree", "blob"} else ""
@@ -1073,11 +1223,14 @@ def _github_capture(root: Path, *, url: str, source_id: str, grade: str) -> dict
         if len(listed) > 500:
             lines.append(f"... {len(listed) - 500} more files")
         lines += _repository_text(checkout, listed)
-        if not relative:
-            lines += _commit_history(checkout)
-            lines += _change_history(checkout)
-            unmerged, unmerged_latest = _unmerged_work(checkout)
-            lines += unmerged
+    # A path inside a repository gets that path's history, unmerged work, and
+    # the pull requests that changed it; a whole repository gets all of them.
+    if target.exists():
+        lines += _commit_history(checkout, relative)
+        lines += _change_history(checkout, relative)
+        unmerged, unmerged_latest = _unmerged_work(checkout, relative)
+        lines += unmerged
+        lines += _github_conversations(checkout, owner, repo, relative)
     else:
         raise RuntimeError(f"{relative} is not in {owner}/{repo} at its default branch head")
     directory = root / "01-sources/captures" / source_id

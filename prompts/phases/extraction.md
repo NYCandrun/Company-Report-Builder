@@ -59,6 +59,42 @@ deliverables). Say which in notes (`Scope: offering` or `Scope: engagement,
 <client>`), and record a client named only by a repository's or file's
 subject as a relationship with its mark.
 
+## Business records and conversations
+
+Some sources record the business itself: account books, deal and pipeline
+notes, call notes and summaries, proposals, statements of work, org charts,
+plans and forecasts, and recorded talks, interviews, and podcasts in which
+the company's people or its clients describe the work. Extract them as
+thoroughly as code, one fact per distinct claim:
+
+- People and roles: who is involved on each side and what they do (the
+  company's people by name and role; client and prospect staff by role and
+  organization only, never by name).
+- Accounts: each account's status, what has happened in it, and what is
+  happening now; what the engagement actually is (scope, deliverables, team,
+  phase).
+- Timelines: start dates, milestones, deadlines, and every shift in them,
+  with both the earlier and the later date.
+- Budgets and money: contract values, budgets, rates, bookings, revenue, and
+  every change in them, with both figures and their dates. Plans and
+  forecasts stay plans.
+- Projects: what each project is, its stage, and how its scope and stage
+  shifted.
+- Land, expand, churn: first engagements, follow-on phases and expansions,
+  pauses, losses, and renewals, each as recorded. A pattern the steps suggest
+  (a sales cycle's length, an expansion path, likely churn) is inference with
+  the steps' fact IDs.
+- What was said: statements by clients and by the company on calls, in
+  meetings, or in talks that bear on any of the above, quoted, attributed (the
+  company's speakers by name, client speakers by role and organization), and
+  dated by the call or recording. Say whether a statement is a commitment, a
+  request, a concern, or an opinion.
+- Contradictions: where two records, two versions, or a record and a public
+  statement disagree, extract both with their dates and say so in notes.
+- Sourcing: in notes, name the file, section, call, or recording each fact
+  comes from, and for a repository the commit that last changed it (its date
+  is when it was edited or pushed).
+
 Date each repository fact by the commit that introduced the quoted content
 (from the change history or commit log), not only by the repository's last
 commit, and say which in notes. Quote single lines from a diff without its
@@ -72,7 +108,8 @@ present a capture date as a publication date.
 When an input's source is listed in `tools/lists/supplement-sources.json`, it
 was recaptured with more content after its earlier facts were filed. Read the
 facts already filed from it (search `02-facts/` for its source ID) and extract
-what they do not already cover, across every dimension in "Repositories"
-above (earlier passes were thinner than these rules ask), plus any earlier
+what they do not already cover, across every dimension in "Repositories" and
+"Business records and conversations" above and the questions the list's reason
+names (earlier passes were thinner than these rules ask), plus any earlier
 claim the new text corrects or dates more precisely (say so in notes). Do not
 re-extract a fact already filed.

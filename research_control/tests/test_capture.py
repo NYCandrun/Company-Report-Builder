@@ -13,6 +13,7 @@ from research_control.capture import (
     _change_history,
     _clear_stale_block,
     _commit_history,
+    _conversation_numbers,
     _embedded_publish_date,
     _refusal_marker,
     _repository_text,
@@ -140,6 +141,11 @@ class RepositoryCaptureTests(unittest.TestCase):
             self.assertIn("claim quality", text)
             self.assertNotIn("bump", text)
             self.assertEqual(1, text.count("=== UNMERGED"))
+            # Pull requests worth reading: human ones, and for a path, those that changed it.
+            _git(repo, "update-ref", "refs/remotes/pull/9", "bump")
+            self.assertEqual([4], _conversation_numbers(repo))
+            self.assertEqual([4], _conversation_numbers(repo, "explorer.py"))
+            self.assertEqual([], _conversation_numbers(repo, "app.py"))
             history = "\n".join(_commit_history(repo))
             self.assertIn("1 commits, 2026-01-10 to 2026-01-10", history)
             self.assertIn("Initial tool", history)
