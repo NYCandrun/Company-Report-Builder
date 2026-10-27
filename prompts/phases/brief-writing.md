@@ -12,30 +12,41 @@ color, spacing, and print presentation. It is not factual evidence and must not
 change the research claims, architecture, or citations. Record any designed
 extension in `05-synthesis/design-notes.md`.
 
-The report's outline is `tools/lists/report-outline.json`, built from this
-run's own numbered research questions. The brief is titled `company brief`,
-its cover says **Focus:** followed by the outline's `focus`, and it does not
-presume employment. Write, in order:
+The report's outline is `tools/lists/report-outline.json`. The brief is a
+company brief for a reader who wants to understand the whole company: titled
+`company brief`, its cover says **Focus:** followed by the outline's `focus`,
+and it does not presume employment. It is arranged top down, from broad
+context to specifics, not in the order the research questions are numbered.
+The research questions are a checklist the report must answer, not its
+headings: many are written into the scope by default rather than asked by
+the reader. Write, in order:
 
-1. An opening summary with one portfolio exhibit: every offering the company
-   sells or delivers (products, services, engagement types), each marked
-   `Stated`, `Inferred`, or `Lead` with its evidence.
-2. One section for each entry in the outline's `sections`, in that order,
-   headed by the question in plain words and answering it from the synthesis.
-   Where a question asks how something changed, show the change with dates.
-   Where its evidence is thin, say so briefly instead of filling the space.
-   Put the product capability map in the section that answers the product
-   question and the messaging timeline in the one that answers positioning,
-   when those questions exist, without repeating either elsewhere.
-3. When the outline's `accounts_exhibit.include` is true, an exhibit of
-   accounts over time, in the section that answers the accounts or customer
-   question: each account with its relationship mark, what the engagement is,
-   its stages with dates, budgets as they moved, and its signs of landing,
-   expanding, renewing, pausing, or churning.
-4. The catalogue exhibit described below.
-5. Open questions and whom to ask.
-6. The limits of the evidence.
-7. Source notes.
+1. An executive summary: what the company is, what it sells, whom it sells
+   to, how it is doing, how it has changed, and the most important
+   uncertainties, each point grounded in the parts below. A short
+   at-a-glance table may open it.
+2. Each part in the outline's `parts`, in that order, under the part's
+   heading. Answer every question the part `covers`, under plain topical
+   subheadings (for example "Partnerships with AI labs and cloud providers"),
+   never phrased as the question and never as "you asked". Within a part, go
+   from the general to the specific. Where something changed, show the
+   change with dates. Where evidence is thin, say so briefly instead of
+   filling the space.
+   - The part on what the company sells opens with a portfolio exhibit of
+     every offering (products, services, engagement types), each marked
+     `Stated`, `Inferred`, or `Lead` with its evidence, and holds the product
+     capability map.
+   - The part on market and positioning holds the messaging timeline.
+   - When the outline's `accounts_exhibit.include` is true, the part on
+     customers holds an exhibit of accounts over time: each account with its
+     relationship mark, what the engagement is, its stages with dates, budgets
+     as they moved, and its signs of landing, expanding, renewing, pausing,
+     or churning.
+   No exhibit is repeated in another part.
+3. The catalogue exhibit described below.
+4. Open questions and whom to ask.
+5. The limits of the evidence.
+6. Source notes.
 
 Keep the report's prose within the outline's `words` (`minimum` to `maximum`;
 tables and other exhibits are not counted); `work check` counts them.

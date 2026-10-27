@@ -1,12 +1,15 @@
-"""The final report's outline, built from the run's own research questions.
+"""The final report's outline: a company brief arranged top down, covering every research question.
 
-The report answers the questions the run asked, so its sections are those
-questions in their numbered order, between a fixed opening (the cover and a
-portfolio exhibit) and a fixed close (the catalogue, open questions, the
-limits of the evidence, and source notes). Its length scales with the number
-of questions. When the questions cover customers, clients, accounts, or
-engagements, the report carries an exhibit of accounts over time. The cover's
-focus line is the scope's own `Focus:` line, or a general one.
+The research questions are a checklist, not the report's structure: many are
+written into the scope by default rather than asked by the user. The report
+opens with an executive summary, then moves from broad context to specifics
+(the company and its history, its market, what it sells and how it is built,
+how it sells, its customers and accounts, its people and organization, its
+direction), and closes with the catalogue, open questions, the limits of the
+evidence, and source notes. Each question is placed in the part it belongs
+to, so every one is answered, under plain topical headings. Length scales
+with the number of questions. The cover's focus is the scope's own `Focus:`
+line, or the whole company.
 """
 
 from __future__ import annotations
@@ -19,36 +22,70 @@ from research_control.io import atomic_write_json, utc_now
 from research_control.relevance import question_texts
 
 OUTLINE = "tools/lists/report-outline.json"
-# Words for the opening summary, open questions, evidence limits, and source notes,
-# then for each question's section; the report may run a quarter over or under.
+# Words for the executive summary, open questions, evidence limits, and source
+# notes, then for each question covered; the prose may run a quarter over or under.
 BASE_WORDS = 1_500
 WORDS_PER_QUESTION = 450
 TOLERANCE = 0.25
 FOCUS_LINE = re.compile(r"^\s*(?:\*\*)?Focus:(?:\*\*)?\s*(.+?)\s*$", re.M | re.I)
-DEFAULT_FOCUS = "Company research"
+DEFAULT_FOCUS = "The whole company"
 ACCOUNT_WORDS = re.compile(r"\b(accounts?|clients?|customers?|engagements?)\b", re.I)
+# Parts from broad to specific; a question goes to the first part whose words its
+# title matches, else to the part its title and text share most words with.
+PARTS = (
+    ("company", "The company: history, model, scale, and ownership",
+     ("history", "founded", "founding", "talent network", "business model", "model", "scale", "financial", "revenue",
+      "funding", "investor", "ownership", "acquisition", "acquired")),
+    ("market", "Market, positioning, and competitors",
+     ("position", "messaging", "competitor", "comparison", "market", "category")),
+    ("offering", "What it sells and how it is built",
+     ("product", "architecture", "offering", "service", "dependenc", "partner", "platform", "technology", "capabilit")),
+    ("commercial", "How it sells: buyers, buying motion, and pricing",
+     ("buyer", "buying", "sales", "pricing", "price", "go-to-market", "channel")),
+    ("customers", "Customers, accounts, and engagements",
+     ("customer", "client", "account", "engagement", "proof", "case stud")),
+    ("organization", "People and organization",
+     ("people", "organization", "leader", "team", "talent", "hiring", "headcount", "culture")),
+    ("direction", "Direction: launches, roadmap, and what is next",
+     ("direction", "launch", "roadmap", "plan", "future", "next")),
+)
 
 
 def _title(text: str) -> str:
     return re.sub(r"\s+", " ", text.split(".", 1)[0]).strip()
 
 
+def _part_for(title: str, text: str) -> str:
+    lowered = title.casefold()
+    for key, _, words in PARTS:
+        if any(word in lowered for word in words):
+            return key
+    body = text.casefold()
+    scores = [(sum(body.count(word) for word in words), -index, key) for index, (key, _, words) in enumerate(PARTS)]
+    best = max(scores)
+    return best[2] if best[0] else "company"
+
+
 def build_outline(root: Path) -> dict[str, Any]:
     questions = question_texts(root)
     scope = root / "00-scope.md"
     focus_match = FOCUS_LINE.search(scope.read_text(encoding="utf-8")) if scope.is_file() else None
-    sections = [
-        {"question": number, "title": _title(text), "words": WORDS_PER_QUESTION}
-        for number, text in sorted(questions.items(), key=lambda pair: int(pair[0][1:]))
+    ordered = sorted(questions.items(), key=lambda pair: int(pair[0][1:]))
+    placed: dict[str, list[dict[str, str]]] = {key: [] for key, _, _ in PARTS}
+    for number, text in ordered:
+        placed[_part_for(_title(text), text)].append({"question": number, "topic": _title(text)})
+    parts = [
+        {"part": key, "heading": heading, "covers": placed[key],
+         "words": WORDS_PER_QUESTION * len(placed[key])}
+        for key, heading, _ in PARTS if placed[key]
     ]
-    target = BASE_WORDS + WORDS_PER_QUESTION * len(sections)
-    accounts = [section["question"] for section, text in zip(sections, (questions[s["question"]] for s in sections))
-                if ACCOUNT_WORDS.search(text)]
+    target = BASE_WORDS + WORDS_PER_QUESTION * len(ordered)
+    accounts = [number for number, text in ordered if ACCOUNT_WORDS.search(text)]
     return {
         "created": utc_now(),
         "focus": focus_match.group(1).strip() if focus_match else DEFAULT_FOCUS,
-        "opening": ["cover", "summary with a portfolio exhibit of what the company offers"],
-        "sections": sections,
+        "opening": "executive summary",
+        "parts": parts,
         "accounts_exhibit": {"include": bool(accounts), "questions": accounts},
         "closing": ["catalogue (four parts)", "open questions and whom to ask", "limits of the evidence", "source notes"],
         "words": {"target": target, "minimum": int(target * (1 - TOLERANCE)), "maximum": int(target * (1 + TOLERANCE))},
@@ -57,10 +94,11 @@ def build_outline(root: Path) -> dict[str, Any]:
 
 def write_report_outline(root: Path) -> dict[str, Any]:
     outline = build_outline(root)
-    if not outline["sections"]:
+    if not outline["parts"]:
         raise ValueError("00-scope.md lists no numbered research questions to build the report from")
     atomic_write_json(root / OUTLINE, outline)
-    return {"sections": len(outline["sections"]), "words": outline["words"], "accounts_exhibit": outline["accounts_exhibit"]["include"]}
+    return {"parts": [part["part"] for part in outline["parts"]], "words": outline["words"],
+            "accounts_exhibit": outline["accounts_exhibit"]["include"]}
 
 
 def report_words(text: str) -> int:

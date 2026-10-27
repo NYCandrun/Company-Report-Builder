@@ -180,17 +180,23 @@ marked `<!-- only: ... -->` reach only the task types that use them. `run`
 prints a short summary (status, the workers to start, what blocks or waits);
 the full result is in `tools/outputs/last-run.json`.
 
-## The final report follows the run's questions
+## The final report: a company brief, top down
 
-Before the report is written, the runtime builds its outline from the numbered
-research questions in `00-scope.md` (`tools/lists/report-outline.json`): an
-opening summary with a portfolio exhibit of every offering, one section per
-question in order, an exhibit of accounts over time when the questions cover
-customers, clients, accounts, or engagements, the four-part catalogue, open
-questions, the limits of the evidence, and source notes. Its prose length is
-1,500 words plus 450 for each question, give or take a quarter (tables and
-exhibits not counted), and `work check` holds the writer to it. The cover's
-focus is the scope's `Focus:` line, or "Company research".
+Before the report is written, the runtime builds its outline
+(`tools/lists/report-outline.json`). The report is a company brief about the
+whole company, arranged from broad context to specifics: an executive summary;
+the company (history, model, scale, ownership); market, positioning, and
+competitors; what it sells and how it is built; how it sells; customers,
+accounts, and engagements; people and organization; direction; then the
+four-part catalogue, open questions, the limits of the evidence, and source
+notes. The research questions are a checklist, not headings (many are written
+into the scope by default): each is placed in the part it belongs to and
+answered under plain topical subheadings. Parts with no question are left out.
+When the questions cover customers or engagements, the customers part holds an
+exhibit of accounts over time. Prose length is 1,500 words plus 450 for each
+question, give or take a quarter (tables and exhibits not counted), and
+`work check` holds the writer to it. The cover's focus is the scope's `Focus:`
+line, or "The whole company".
 
 ## Checks between synthesis and review
 
