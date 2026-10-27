@@ -678,3 +678,32 @@ class GateRefreshTests(unittest.TestCase):
             record.assert_called_once_with(Path("."), "capture", PASS, "g.json")
             self.assertFalse(adaptive._refresh_dependency_gates(Path("."), mixed))
             self.assertEqual(1, check.call_count)
+
+
+class AgentGroupTests(unittest.TestCase):
+    def test_tasks_reading_the_same_files_share_a_worker_and_reviews_stay_separate(self) -> None:
+        from research_control.dispatch import emit_ready_packets
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            copy_template(root)
+            state = initialize(root, "https://example.com")
+            save_state(root, state)
+            with RuntimeStore(root) as store:
+                store.initialize(run_id=state["run_id"], company_url=state["company_url"])
+                shared = {"id": "capture", "path": "01-sources/captures/SRC-1/content.txt"}
+                for task_id, task_type, inputs in (
+                    ("facts.extract.a", "extraction", [shared, {"id": "scope", "path": "00-scope.md"}]),
+                    ("facts.extract.b", "extraction", [shared]),
+                    ("facts.extract.c", "extraction", [{"id": "other", "path": "01-sources/captures/SRC-2/content.txt"},
+                                                       {"id": "scope", "path": "00-scope.md"}]),
+                    ("review.technical", "technical_review", [{"id": "s", "path": "05-synthesis/offering.md"}]),
+                    ("review.editor", "editor_review", [{"id": "s", "path": "05-synthesis/offering.md"}]),
+                ):
+                    store.add_task(WorkItem(task_id=task_id, phase="facts", task_type=task_type, inputs=inputs,
+                                            outputs=[f"parts/{task_id}.jsonl"], prompt_files=["prompts/core/runtime.md"]))
+                result = emit_ready_packets(root, store)
+            groups = sorted(sorted(agent["tasks"]) for agent in result["agents"])
+            self.assertEqual([["facts.extract.a", "facts.extract.b"], ["facts.extract.c"], ["review.editor"], ["review.technical"]], groups)
+            shared_brief = next(agent["brief"] for agent in result["agents"] if len(agent["tasks"]) == 2)
+            self.assertIn("read each shared file once", (root / shared_brief).read_text(encoding="utf-8"))

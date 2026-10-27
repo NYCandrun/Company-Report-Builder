@@ -158,6 +158,32 @@ no longer holds (it described a capture omission a recapture fixed) is
 withdrawn by ID in `tools/lists/withdrawn-facts.json` with a reason: it keeps
 its ID, quote checks skip it, and synthesis may not cite it.
 
+## How many workers
+
+`run` lists, under `agents`, one entry per worker to start: tasks that read
+different material get separate workers so they run in parallel, and ready
+tasks of the same kind that read the same files share one worker (with a
+combined brief), so nothing is read twice. Reviews whose value is independent
+judgment, and the two citation checks, always get their own. Scripted work
+sizes its own parallelism to the machine's cores and memory (see the
+overrides below).
+
+## The control agent's conversation
+
+Every `archive` adds what the orchestrator's conversation gained since the
+last one to `08-control agent conversation history/` as a numbered part, with
+access tokens, keys, and other secrets removed. Once the run is released (or
+with `archive --final-conversation`), the whole conversation is written as one
+file, a script checks that every part is contained in it, and the parts are
+deleted. After that the folder is left alone. These files are written by
+script and not read unless the user asks.
+
+## Talking to the user
+
+Write for the user in plain English. Leave out jargon and internal shorthand ("shard", "slice", "packet", "gate", "reconcile", "the X repo"): say what a thing is ("a batch of 48 facts to verify", "a chunk of a source's text", "the phase checks"), name a repository by its GitHub name (owner/repository, for example carlmueller-tribe/mori), and name a source by what it is (a podcast episode, a company blog post), not only by its ID. The rule is in the orchestrator's instructions (`CLAUDE.md`), in the
+runtime core every task carries, in the writing core for documents, and in
+every worker brief.
+
 ## Spending less without reading less
 
 - Repository captures: a commit's added lines that are still in the current

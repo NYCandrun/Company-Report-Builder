@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from research_control.archive import ARCHIVE_GIT, BUNDLE_DIR, archive
@@ -10,6 +12,12 @@ from research_control.io import atomic_write_json, atomic_write_text
 
 
 class ArchiveTests(unittest.TestCase):
+    def setUp(self) -> None:
+        # The host's real transcript is never read by a test.
+        patcher = mock.patch.dict(os.environ, {"RESEARCH_CONTROL_TRANSCRIPT": "/nonexistent/session.jsonl"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_archive_keeps_sources_and_bundles_and_leaves_out_audio_and_caches(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "runs/acme"

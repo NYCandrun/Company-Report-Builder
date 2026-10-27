@@ -312,6 +312,10 @@ def _parser() -> argparse.ArgumentParser:
     )
     archive_parser.add_argument("--remote", help="remote URL (default: the template checkout's origin)")
     archive_parser.add_argument("--branch", help="branch (default: run-data/<slug>)")
+    archive_parser.add_argument(
+        "--final-conversation", action="store_true",
+        help="write the control agent's whole conversation as one checked file now (done automatically once released)",
+    )
     archive_parser.add_argument("--no-push", action="store_true")
     supplement = subparsers.add_parser(
         "supplement", help="orchestrator: extract a recaptured source's new text as a supplement to its filed facts"
@@ -523,7 +527,8 @@ def main() -> None:
         if args.command == "archive":
             from research_control.archive import archive
 
-            _print_json(archive(root, remote=args.remote, branch=args.branch, push=not args.no_push))
+            _print_json(archive(root, remote=args.remote, branch=args.branch, push=not args.no_push,
+                                final_conversation=args.final_conversation))
             return
         if args.command == "status":
             _print_json(runtime_status(root) if (root / "tools/outputs/runtime.sqlite3").is_file() else status_summary(root))

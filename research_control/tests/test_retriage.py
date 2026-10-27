@@ -110,3 +110,29 @@ class ScopeRevisionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DefinitionSafeguardTests(unittest.TestCase):
+    def test_finished_work_keeps_its_definition_and_unfinished_work_refuses_a_change(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _fixture(root)
+            with RuntimeStore(root) as store:
+                store.initialize(run_id="r", company_url="https://example.com")
+                for task_id in ("facts.file-facts", "facts.pending"):
+                    store.add_task(WorkItem(task_id=task_id, phase="facts", task_type="filing", inputs=[],
+                                            outputs=[f"{task_id}.md"], prompt_files=["p.md"], metadata={"single_writer": True}))
+                store.claim("w", task_id="facts.file-facts", bypass_limits=True)
+                store.start("facts.file-facts", "w")
+                atomic_write_text(root / "facts.file-facts.md", "filed\n")
+                store.complete("facts.file-facts", "w")
+                # Filing became runtime work after this task finished under the agent definition.
+                changed = WorkItem(task_id="facts.file-facts", phase="facts", task_type="filing", inputs=[],
+                                   outputs=["facts.file-facts.md"], prompt_files=["p.md"],
+                                   metadata={"single_writer": True, "executor": "runtime"})
+                self.assertFalse(store.add_task(changed))
+                self.assertEqual("succeeded", store.task("facts.file-facts")["state"])
+                self.assertNotIn("executor", store.task("facts.file-facts")["metadata"])
+                with self.assertRaisesRegex(ValueError, "while the task is unfinished"):
+                    store.add_task(WorkItem(task_id="facts.pending", phase="facts", task_type="filing", inputs=[],
+                                            outputs=["facts.pending.md"], prompt_files=["p.md"], metadata={"executor": "runtime"}))

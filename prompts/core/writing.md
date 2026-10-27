@@ -3,6 +3,8 @@
 Apply these rules to authored prose. Verbatim quotes preserve their source.
 
 - Use plain American English and double quotation marks as the main quote style.
+- Use no internal shorthand or jargon: say what a thing is. Name a repository by
+  its GitHub name (owner/repository) and a source by what it is.
 - Use no em dashes.
 - Use no semicolon to join independent sentences.
 - Never use the word `suggested`.

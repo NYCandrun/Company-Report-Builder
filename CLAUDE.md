@@ -1,19 +1,28 @@
 # Claude Code execution adapter
 
+## Talking to the user
+
+Write for the user in plain English. Leave out jargon and internal shorthand ("shard", "slice", "packet", "gate", "reconcile", "the X repo"): say what a thing is ("a batch of 48 facts to verify", "a chunk of a source's text", "the phase checks"), name a repository by its GitHub name (owner/repository, for example carlmueller-tribe/mori), and name a source by what it is (a podcast episode, a company blog post), not only by its ID. This holds for every message to the user, status updates included,
+and for anything a worker reports that you pass on.
+
 Follow `README.md` as the operational entry point. Start a company run with
 `python3 -m research_control new --url URL`, then work from inside its
 `runs/<slug>/` directory: rerun `python3 -m research_control run` and dispatch
 every ready packet until exact-artifact release passes.
 
-- Give every independent ready packet its own isolated subagent. Each packet
-  comes with a brief (`brief` in the `run` output, `<task>.brief.md`): pass it
-  as the subagent's whole prompt, unchanged, with the model and effort for its
-  tier from the table below. The brief carries the worker ID, lifecycle
-  commands, run notes, and the `work check` the worker runs before it succeeds.
-  When a worker reports something for the orchestrator, act on it; a small
-  correction to a finished output is recorded with `work record-edit`. Discovery is one task per channel: the runtime handles
-  `company_site` and `sitemaps`; each of the other eight channels gets its own
-  worker.
+- Start one subagent per entry in `agents` in the `run` output, and pass that
+  entry's brief as the subagent's whole prompt, unchanged, with the model and
+  effort for its level from the table below. Separate workers run work that
+  reads different material in parallel; tasks that read the same files share
+  one worker, so nothing is read twice; reviews whose value is independent
+  judgment always get their own worker. Do not split one task's reading
+  across workers or add workers beyond these entries. A brief carries the
+  worker ID, lifecycle commands, run notes, and the `work check` the worker
+  runs before it succeeds. When a worker reports something for you, act on
+  it; a small correction to a finished output is recorded with
+  `work record-edit`.
+  Discovery is one task per channel: the runtime handles `company_site` and
+  `sitemaps`; each of the other eight channels gets its own worker.
 - Workers act only under a held lease: claim and start before working, succeed
   only after outputs exist. Never let a worker run discovery or capture
   commands for a task it has not claimed. To add work to a closed channel,
@@ -29,12 +38,21 @@ every ready packet until exact-artifact release passes.
 - Runtime-owned work (crawl, sitemap audit, capture and transcription,
   reducers, filing, digests) runs inside `run`; never hand it to an agent. Use `run --plan-only`
   while another `run` process is executing.
+- Scripted work (crawling, capture, transcription, history, reducers) sizes its
+  own parallelism to the machine's cores and memory; raise or lower it with the
+  README's overrides only when the environment shows strain or slack.
 - Concurrency is your call. Dispatch as many ready agent packets at once, and
   set runtime and scheduler limits to whatever finishes fastest without
   failures in the environment you are in (cores, memory, network, rate limits
   you hit). The configured numbers are defaults; see README for the overrides.
 - Preserve single-writer reducer ownership, record concrete access blockers,
   and never edit scheduler state directly.
+- The control agent's conversation is kept with the run: every `archive`
+  adds the new part of it to `08-control agent conversation history/`, with
+  secrets removed, and once the run is released `archive` writes the whole
+  conversation as one file, checks by script that the earlier parts are in
+  it, and deletes them. Only write it, by that script; never read or review
+  it unless the user asks. Questions after the run are not added.
 - Keep the evidence. A run folder is ignored by the template's git, so after
   every `run` that captured or recaptured sources, and after each wave of
   workers, run `python3 -m research_control --root runs/<slug> archive`. It

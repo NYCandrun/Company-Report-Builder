@@ -53,3 +53,8 @@ A check that flags text you believe is right as the source has it (a product
 or standard name shaped like an ID, a quoted term) is a false positive. Do not
 reword the source's text to satisfy it: leave it and name the check and the
 text in your report, so the orchestrator fixes the check.
+
+## Reports in plain English
+
+Your report goes to the orchestrator and may be shown to the user as is.
+Write for the user in plain English. Leave out jargon and internal shorthand ("shard", "slice", "packet", "gate", "reconcile", "the X repo"): say what a thing is ("a batch of 48 facts to verify", "a chunk of a source's text", "the phase checks"), name a repository by its GitHub name (owner/repository, for example carlmueller-tribe/mori), and name a source by what it is (a podcast episode, a company blog post), not only by its ID.

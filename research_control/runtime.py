@@ -341,7 +341,21 @@ class RuntimeStore:
                 "metadata": existing["metadata"],
             }
             if comparison != immutable:
-                raise ValueError(f"{item.task_id}: immutable work-item definition changed")
+                if existing["state"] in SATISFIED_STATES:
+                    # Finished work stays governed by the definition it ran under: an engine
+                    # change (filing becoming runtime work, say) never invalidates a result.
+                    # Redoing it is an explicit `work rerun`.
+                    changed = sorted(key for key in immutable if immutable[key] != comparison[key])
+                    recorded = self.connection.execute(
+                        "SELECT 1 FROM events WHERE event_type='definition_kept' AND subject_id=? LIMIT 1", (item.task_id,)
+                    ).fetchone()
+                    if not recorded:
+                        self.event("definition_kept", item.task_id, {"changed": changed, "state": existing["state"]})
+                    return False
+                raise ValueError(
+                    f"{item.task_id}: immutable work-item definition changed while the task is unfinished "
+                    f"({existing['state']}); retire it and plan the new definition under a new task ID"
+                )
             for dependency in item.depends_on:
                 self.add_dependency(item.task_id, dependency)
             return False

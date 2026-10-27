@@ -7,9 +7,9 @@ through a separate git directory, leaving the template branch untouched. Each
 archive is a new commit, so the branch is the run's history too.
 
 Kept: every capture (page text and HTML, transcripts and captions, receipts),
-the fact store, synthesis, checks, final report, scheduler snapshot, and a git
+the fact store, synthesis, checks, final report, scheduler snapshot, a git
 bundle of each cloned repository with all its history, branches, and pull
-request heads. Left out: downloaded audio (its transcript is kept), the HTTP
+request heads, and the control agent's conversation (secrets removed). Left out: downloaded audio (its transcript is kept), the HTTP
 transport cache, worker scratch space, and live database files.
 """
 
@@ -23,6 +23,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from research_control import conversation
 from research_control.capture import GIT_CACHE
 from research_control.io import atomic_write_text, load_json, utc_now
 
@@ -120,7 +121,17 @@ def _remote_url(root: Path) -> str:
     raise RuntimeError("no origin remote found for the template checkout; pass --remote")
 
 
-def archive(root: Path, *, remote: str | None = None, branch: str | None = None, push: bool = True) -> dict[str, Any]:
+def _released(root: Path) -> bool:
+    from research_control.orchestration import current_phase
+
+    try:
+        return current_phase(root) is None
+    except Exception:
+        return False
+
+
+def archive(root: Path, *, remote: str | None = None, branch: str | None = None, push: bool = True,
+            final_conversation: bool = False) -> dict[str, Any]:
     root = root.resolve()
     state = load_json(root / "tools/outputs/run-state.json")
     slug = str(state.get("slug") or root.name)
@@ -132,6 +143,9 @@ def archive(root: Path, *, remote: str | None = None, branch: str | None = None,
         _git(root, "config", "user.email", os.environ.get("GIT_AUTHOR_EMAIL", "research-control@localhost"))
     atomic_write_text(root / ARCHIVE_GIT / "info/exclude", "\n".join(EXCLUDES) + "\n")
     _snapshot_database(root)
+    # The control agent's conversation is kept with the run: new lines on every
+    # archive, one checked file once the run is released.
+    log = conversation.finalize(root) if final_conversation or _released(root) else conversation.snapshot(root)
     bundles = _bundle_repositories(root)
     _git(root, "add", "--all", ".")
     changed = _git(root, "diff", "--cached", "--quiet", check=False).returncode != 0
@@ -150,6 +164,6 @@ def archive(root: Path, *, remote: str | None = None, branch: str | None = None,
                 raise RuntimeError(f"push to {branch} failed: {(result.stderr or result.stdout).strip()[:400]}")
             time.sleep(delay)
     return {
-        "branch": branch, "commit": head, "committed": changed, "pushed": pushed,
+        "branch": branch, "commit": head, "committed": changed, "pushed": pushed, "conversation": log,
         "repositories": {name: entry.get("status") for name, entry in bundles.items()},
     }

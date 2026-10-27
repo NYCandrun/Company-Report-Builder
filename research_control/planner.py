@@ -194,15 +194,7 @@ class AdaptivePlanner:
                 # A finished consumer (such as a reducer) gained new parts to
                 # merge: it reruns once they are done.
                 self.store.mark_stale(item.task_id, "new upstream work was planned")
-        try:
-            added = self.store.add_task(item)
-        except ValueError as error:
-            if existing and existing["state"] in SATISFIED_STATES and "definition changed" in str(error):
-                # Finished under an earlier engine's definition (filing done by an agent before
-                # it became runtime work, say): the result stands; `work rerun` redoes it.
-                return
-            raise
-        if added:
+        if self.store.add_task(item):
             created.append(item.task_id)
 
     def _plan_static(self, phase_id: str) -> list[str]:

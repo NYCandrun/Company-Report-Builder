@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 import re
 from pathlib import Path
 from typing import Any
@@ -155,6 +156,8 @@ def worker_brief(root: Path, task: dict[str, Any], route: dict[str, Any], packet
         "",
         "Write only the packet's outputs and your scratchpad directory. Do not run `research_control run` or edit "
         "scheduler state. Report in under 80 words: status, counts, output paths, and anything the orchestrator must act on.",
+        "Write the report in plain English: no jargon or internal shorthand; say what things are, and name a "
+        "repository by its GitHub name (owner/repository).",
     ]
     return "\n".join(lines) + "\n"
 
@@ -177,12 +180,75 @@ def emit_ready_packets(root: Path, store: RuntimeStore, phase: str | None = None
     manifest = {
         "schema_version": "1.0.0",
         "adapter": "native-agent-runtime",
-        "instruction": "Dispatch each independent packet to a genuinely separate worker context when available.",
+        "instruction": "Start one worker per entry in `agents`, passing its brief: separate workers for work that "
+                       "reads different material, one worker for tasks that read the same files.",
         "phase": phase,
         "ready_count": len(packets),
         "packets": packets,
+        "agents": agent_groups(root, tasks, packets),
         "created_at": utc_now(),
     }
     path = root / "tools/outputs/dispatch-manifest.json"
     atomic_write_json(path, manifest)
     return {**manifest, "manifest": str(path.relative_to(root))}
+
+
+# Reviews whose value is independent judgment get a worker each even though they
+# read the same synthesis; the two citation checks are deliberate double checks.
+KEEP_SEPARATE = {"technical_review", "devils_advocate", "insider_review", "editor_review", "citation_claim_review"}
+# Reference files every task of a phase may consult; sharing them is not overlap.
+SHARED_REFERENCES = {"00-scope.md", "01-sources/MANIFEST.csv", "WORKFLOW.yaml", "tools/lists/triage-index.jsonl"}
+
+
+def _reads(task: dict[str, Any]) -> set[str]:
+    """The files a task exists to read: concrete input paths, not globs or shared references."""
+    paths = {str(item.get("path", "")) for item in task["inputs"] if isinstance(item, dict)}
+    return {path for path in paths if path and not any(mark in path for mark in "*{?") and path not in SHARED_REFERENCES}
+
+
+def agent_groups(root: Path, tasks: list[dict[str, Any]], packets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One entry per worker to start. Ready tasks of the same type and model level that read
+    the same files go to one worker, which reads them once; everything else gets its own
+    worker, so work that reads different material runs in parallel."""
+    by_id = {packet["task_id"]: packet for packet in packets}
+    parent = {task["task_id"]: task["task_id"] for task in tasks}
+
+    def find(task_id: str) -> str:
+        while parent[task_id] != task_id:
+            parent[task_id] = parent[parent[task_id]]
+            task_id = parent[task_id]
+        return task_id
+
+    readers: dict[tuple[str, str, str], str] = {}
+    for task in tasks:
+        if task["task_type"] in KEEP_SEPARATE:
+            continue
+        tier = str(by_id[task["task_id"]]["model_route"]["tier"])
+        for path in _reads(task):
+            key = (task["task_type"], tier, path)
+            if key in readers:
+                parent[find(task["task_id"])] = find(readers[key])
+            else:
+                readers[key] = task["task_id"]
+    groups: dict[str, list[str]] = {}
+    for task in tasks:
+        groups.setdefault(find(task["task_id"]), []).append(task["task_id"])
+    agents: list[dict[str, Any]] = []
+    for members in groups.values():
+        if len(members) == 1:
+            packet = by_id[members[0]]
+            agents.append({"tasks": members, "brief": packet["brief"], "model_route": packet["model_route"]})
+            continue
+        identifier = sha256("\n".join(sorted(members)).encode("utf-8")).hexdigest()[:12]
+        path = root / PACKET_DIRECTORY / f"group-{identifier}.brief.md"
+        atomic_write_text(path, "\n".join([
+            f"One worker does these {len(members)} tasks, one after another, because they read the same files: "
+            "read each shared file once and keep it in mind for the next task.",
+            "",
+            *(f"- `{task_id}`: follow `{by_id[task_id]['brief']}`" for task_id in members),
+            "",
+            "Each task keeps its own claim, start, check, and completion; report once, in plain English, "
+            "covering every task.",
+        ]) + "\n")
+        agents.append({"tasks": members, "brief": str(path.relative_to(root)), "model_route": by_id[members[0]]["model_route"]})
+    return agents
