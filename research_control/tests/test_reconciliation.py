@@ -93,3 +93,25 @@ class CarriedWorkTests(unittest.TestCase):
         with mock.patch.object(assignments, "superseded_tasks", return_value={"verification.verify.a"}):
             report = assignments.validate_ledger(Path("."), [{**row, "exit_status": 1}], {"verification"})
         self.assertIn("no ledger attempts registered for required task type verification", report.get("unknowns", []))
+
+
+class RelationshipConsistencyTests(unittest.TestCase):
+    def test_organizations_marked_differently_across_files_are_listed(self) -> None:
+        import tempfile
+
+        from research_control.consistency import REPORT, write_relationship_report
+        from research_control.io import atomic_write_text
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            atomic_write_text(root / "05-synthesis/offering.md", "Work for Microsoft (inferred client: the ASN repository).\n")
+            atomic_write_text(root / "05-synthesis/customers-proof.md",
+                              "Microsoft (stated client: an employee's plugin names it). Acme (inferred client: two commits).\n"
+                              "Holiday Inn Club Vacations (lead, thin evidence: one demo).\n")
+            atomic_write_text(root / "05-synthesis/direction.md", "Holiday Inn Club Vacations (inferred client: a demo and a proposal).\n")
+            result = write_relationship_report(root)
+            self.assertEqual(2, result["marked_differently"])
+            text = (root / REPORT).read_text(encoding="utf-8")
+            self.assertIn("- Microsoft: inferred in offering.md; stated in customers-proof.md", text)
+            self.assertIn("- Holiday Inn Club Vacations: inferred in direction.md; lead in customers-proof.md", text)
+            self.assertNotIn("- Acme", text)

@@ -272,8 +272,19 @@
     "review": {
       "tasks": [
         {
+          "id": "relationship-consistency",
+          "task_type": "consistency_check",
+          "prompt": "prompts/core/runtime.md",
+          "inputs": [{"id": "synthesis_files", "path": "05-synthesis/*.md", "required": true}],
+          "outputs": ["06-checks/relationship-consistency.md"],
+          "independent": false,
+          "exclusive_inputs": false,
+          "metadata": {"planner": "static-profile", "single_writer": true, "executor": "runtime"}
+        },
+        {
           "id": "technical",
           "task_type": "technical_review",
+          "depends_on": ["relationship-consistency"],
           "prompt": "prompts/phases/review-technical.md",
           "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md"],
           "outputs": ["06-checks/review-technical.md", "tools/outputs/review-findings-technical.jsonl"],
@@ -283,6 +294,7 @@
         {
           "id": "devils-advocate",
           "task_type": "devils_advocate",
+          "depends_on": ["relationship-consistency"],
           "prompt": "prompts/phases/review-devils-advocate.md",
           "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md"],
           "outputs": ["06-checks/review-devils-advocate.md", "tools/outputs/review-findings-devils-advocate.jsonl"],
@@ -292,6 +304,7 @@
         {
           "id": "insider",
           "task_type": "insider_review",
+          "depends_on": ["relationship-consistency"],
           "prompt": "prompts/phases/review-insider.md",
           "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md"],
           "outputs": ["06-checks/review-insider.md", "tools/outputs/review-findings-insider.jsonl"],
@@ -301,6 +314,7 @@
         {
           "id": "editor",
           "task_type": "editor_review",
+          "depends_on": ["relationship-consistency"],
           "prompt": "prompts/phases/review-editor.md",
           "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
           "outputs": ["06-checks/review-editor.md", "tools/outputs/review-findings-editor.jsonl"],
@@ -311,7 +325,7 @@
           "id": "apply-review",
           "task_type": "fixer",
           "prompt": "prompts/phases/fixer.md",
-          "depends_on": ["technical", "devils-advocate", "insider", "editor"],
+          "depends_on": ["relationship-consistency", "technical", "devils-advocate", "insider", "editor"],
           "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
           "outputs": ["05-synthesis/{product-map,offering,customers-proof,competitors,glossary,messaging-timeline,organization,direction,inference-catalogue,open-questions}.md", "06-checks/review-decisions.md", "tools/outputs/review-decisions.jsonl"],
           "independent": true,

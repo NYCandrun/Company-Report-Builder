@@ -162,8 +162,11 @@ its ID, quote checks skip it, and synthesis may not cite it.
 
 Every step an agent takes re-reads its conversation so far, so cost grows with
 both the number of steps and the size of what it holds. Each task's brief
-(`<task>.brief.md`) is one file with everything the worker needs: its steps,
-the task's instructions, and the text of the files it reads (stores such as
+(`<task>.brief.md`) is one file with everything the worker needs, laid out for
+long material: a short start (how to begin, what the file holds, what it leaves
+out), then the text of the files it reads, then the task's instructions, the
+run notes, and how to finish, so the instructions are the freshest thing in
+mind when the work begins (stores such as
 captures and the fact store stay out; the instructions say which rows or
 passages to open). A worker reads it once instead of opening file after file; files that
 are not included (stores, large sets) are listed near the top, and the worker
@@ -176,6 +179,13 @@ brief never sits in the orchestrator's own conversation. Shared rule sections
 marked `<!-- only: ... -->` reach only the task types that use them. `run`
 prints a short summary (status, the workers to start, what blocks or waits);
 the full result is in `tools/outputs/last-run.json`.
+
+## Checks between synthesis and review
+
+Before the reviews start, a script lists every organization whose client
+relationship is marked differently in different synthesis files
+(`06-checks/relationship-consistency.md`). Reviewers and the worker applying
+their findings settle each by the evidence instead of finding it again.
 
 ## How many workers
 

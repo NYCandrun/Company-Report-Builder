@@ -39,6 +39,13 @@ notes.
   a README or doc describes but the code does not implement is promised, not
   built.
 - Employee-delivered work is not product capability without product evidence.
+- A statement in one person's material (their repository, post, talk, or
+  notes) is that person's: attribute it to them ("a general manager's
+  repository lists ..."). It speaks for the company only when the company
+  publishes or adopts it.
+- A repository under an employee's personal account is that person's work.
+  Call it the company's tooling or product only when evidence shows the
+  company uses, owns, or offers it.
 - Keep contradictions visible with both sources and dates.
 - Start inference with `My inference:` and name its supporting fact IDs.
 - Scope every absence to the sources searched.

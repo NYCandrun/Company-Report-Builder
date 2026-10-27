@@ -125,11 +125,7 @@ def write_packet(root: Path, task: dict[str, Any]) -> dict[str, Any]:
     brief_path = directory / f"{task['task_id']}.brief.md"
     material, elsewhere, fingerprints = task_material(root, task)
     atomic_write_json(directory / f"{task['task_id']}.material.json", fingerprints)
-    atomic_write_text(brief_path, worker_brief(root, task, route, md_path, elsewhere) + "\n".join([
-        "", "---", "", "# The task's instructions", "", md_path.read_text(encoding="utf-8").strip(), "",
-        "---", "", "# The files this task reads", "",
-        material or "(none in this file: see the list of files not included near the top)",
-    ]) + "\n")
+    atomic_write_text(brief_path, worker_brief(root, task, route, md_path, elsewhere, material))
     return {
         "task_id": task["task_id"],
         "task_type": task["task_type"],
@@ -205,45 +201,55 @@ def brief_out_of_date(root: Path, task_id: str) -> list[str]:
 
 
 def worker_brief(root: Path, task: dict[str, Any], route: dict[str, Any], packet: Path,
-                 elsewhere: list[str] | None = None) -> str:
-    """The whole instruction a host gives a worker for this task, so the orchestrator
-    only points the worker at it: lifecycle, run notes, the check, completion; the
-    task's instructions and the files it reads are appended after it."""
+                 elsewhere: list[str] | None = None, material: str = "") -> str:
+    """The one file a worker reads, laid out for long material: a short start (how to
+    begin, what the file holds, what it leaves out), then the files the task reads,
+    then the task's instructions, the run notes, and how to finish, so the
+    instructions are the freshest thing in mind when the work begins."""
     task_id = task["task_id"]
     worker = f"w-{task_id.rsplit('.', 1)[-1][:24]}"
     scope = root / "00-scope.md"
     notes = RUN_NOTES.search(scope.read_text(encoding="utf-8")) if scope.is_file() else None
     lines = [
-        f"Worker for `{task_id}` ({task['task_type']}). Run directory: {root}. Worker ID: {worker}.",
-        f"Model tier: {route['tier']} ({route['model_class']}), effort {route['effort']}.",
+        f"# Worker brief for `{task_id}` ({task['task_type']})",
+        "",
+        f"Run directory: {root}. Worker ID: {worker}. Model level: {route['tier']} ({route['model_class']}), "
+        f"effort {route['effort']}.",
+        "",
+        "## Start",
         "",
         f"1. `python3 -m research_control work claim {task_id} --worker-id {worker}` then "
         f"`python3 -m research_control work start {task_id} --worker-id {worker}` "
         "(if refused for concurrency, wait a minute and retry). If `work start` says this file was rewritten because "
         "its inputs changed, read it again from the top.",
-        "2. This file holds the task's instructions (after these steps) and the text of the files the task reads "
-        "(at the end, each under `=== FILE: path ===`), except the files listed just below. Read it whole, in as "
-        "few reads as you can (Read with allow_large, or a few large ranges), and follow the instructions exactly. "
-        "Open any other file you need to judge well: a related fact, the passage around a quote, a file listed "
+        "2. Read this whole file before starting work, in as few reads as you can (Read with allow_large, or a few "
+        "large ranges). It holds, in order: the files this task reads (each under `=== FILE: path ===`), then the "
+        "task's instructions and run notes, then how to finish. The instructions are at the end: read to the end "
+        "before you act.",
+        "3. Open any other file you need to judge well: a related fact, the passage around a quote, a file listed "
         "below. Do not read whole stores (every capture, the whole fact store) end to end.",
     ]
     if elsewhere:
-        lines += ["", "   Not included in this file (open what you need from these):",
-                  *(f"   - `{path}`" for path in elsewhere), ""]
-    if notes and notes.group(1).strip():
-        lines += ["3. Run notes from `00-scope.md` (findings and decisions this run has made; they apply to your work):",
-                  "", notes.group(1).strip(), ""]
-    else:
-        lines.append("3. No run notes.")
+        lines += ["", "Not included in this file (open what you need from these):", *(f"- `{path}`" for path in elsewhere)]
     lines += [
+        "", "---", "", "## The files this task reads", "",
+        material or "(none in this file: see the list of files not included near the top)",
+        "", "---", "", "## The task's instructions", "", packet.read_text(encoding="utf-8").strip(), "",
+    ]
+    if notes and notes.group(1).strip():
+        lines += ["## Run notes", "", "Findings and decisions this run has made (from `00-scope.md`); they apply to your work:",
+                  "", notes.group(1).strip(), ""]
+    lines += [
+        "---", "", "## Finish", "",
         f"4. Check with `python3 -m research_control work check {task_id}` and fix what it reports until its status is clean. "
         "If a check flags text you believe is correct as the source has it (a false positive), do not reword it: "
         "say so in your report.",
         f"5. `python3 -m research_control work succeed {task_id} --worker-id {worker} --model <the model ID you run as> "
         f"--effort {route['effort']}`.",
         "",
-        "Write only the packet's outputs and your scratchpad directory. Do not run `research_control run` or edit "
-        "scheduler state. Report in under 80 words: status, counts, output paths, and anything the orchestrator must act on.",
+        "Write only the outputs the instructions name and your scratchpad directory. Do not run `research_control run` "
+        "or edit scheduler state. Report in under 80 words: status, counts, output paths, and anything the orchestrator "
+        "must act on.",
         "Write the report in plain English: no jargon or internal shorthand; say what things are, and name a "
         "repository by its GitHub name (owner/repository).",
     ]

@@ -18,6 +18,7 @@ from typing import Any, Callable
 from research_control.capture import auto_capture_source
 from research_control.discovery import DiscoveryEngine
 from research_control.io import atomic_write_json, load_json, workflow
+from research_control.consistency import write_relationship_report
 from research_control.filing import file_candidates
 from research_control.supplement import CLAIM_DIGESTS, reduce_supplement, write_claim_digests
 from research_control.media import is_media_url
@@ -114,6 +115,7 @@ HANDLERS: dict[str, Callable[[Path, RuntimeStore, dict[str, Any]], Any]] = {
     "supplement_reducer": lambda root, _store, task: reduce_supplement(root, task["metadata"]["identifier"]),
     "filing": lambda root, _store, _task: file_candidates(root),
     "claim_digests": lambda root, _store, _task: {"digests": write_claim_digests(root, CLAIM_DIGESTS)},
+    "consistency_check": lambda root, _store, _task: write_relationship_report(root),
     "extraction_reducer": lambda root, store, _task: reduce_extraction_parts(root, [
         task for task in store.tasks(phase="facts", states={"succeeded"}) if task["task_type"] == "extraction"
     ]),

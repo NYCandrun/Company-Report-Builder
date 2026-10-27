@@ -660,7 +660,11 @@ class WorkerBriefTests(unittest.TestCase):
                 entry = write_packet(root, store.task("facts.extract.abc"))
             brief = (root / entry["brief"]).read_text(encoding="utf-8")
             # One file holds the steps, the task's instructions, and what it reads.
-            self.assertIn("# The task's instructions", brief)
+            self.assertIn("## The task's instructions", brief)
+            # Long material first, then the instructions and how to finish, read last before working.
+            self.assertLess(brief.index("=== FILE: tools/extracts/slices/"), brief.index("## The task's instructions"))
+            self.assertLess(brief.index("## The task's instructions"), brief.index("## Run notes"))
+            self.assertLess(brief.index("## Run notes"), brief.index("work check facts.extract.abc"))
             self.assertIn("=== FILE: tools/extracts/slices/SRC-1.part-0001.txt ===\nWe build agents.", brief)
             self.assertIn("- `02-facts/*.md`", brief)
             # Each task carries only the rules it uses: extraction gets receipts, not browsing or citation meaning.
@@ -669,7 +673,7 @@ class WorkerBriefTests(unittest.TestCase):
             self.assertNotIn("## Citation meaning", brief)
             self.assertNotIn("<!-- only:", brief)
             # What is not included is named before the instructions, so a worker knows to open it.
-            self.assertLess(brief.index("Not included in this file"), brief.index("# The task's instructions"))
+            self.assertLess(brief.index("Not included in this file"), brief.index("=== FILE: tools/extracts/slices/"))
             self.assertIn("Open any other file you need to judge well", brief)
             # A brief whose copy of an input went out of date is caught.
             from research_control.dispatch import brief_out_of_date

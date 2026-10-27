@@ -10,3 +10,8 @@ factual basis, proposed fix, and stable finding ID in both the assigned
 Markdown report and JSONL findings file. Do not edit synthesis. If the full
 assignment yields no findings, write a JSONL completion record with
 `status: clean` rather than leaving the file empty.
+
+`06-checks/relationship-consistency.md` lists organizations whose client
+relationship is marked differently in different synthesis files (found by
+script). Treat each as already found: settle it by the evidence rather than
+reporting the difference again.

@@ -23,3 +23,8 @@ page, not a new research pass). Otherwise reject it with that reason; a
 skipped suggestion is not reported as an open gap. A finding that two files
 disagree is settled by the evidence: the stronger, more direct, or later-dated
 source decides, and the change over time is shown where values differ by date.
+
+`06-checks/relationship-consistency.md` lists organizations whose client
+relationship is marked differently in different synthesis files (found by
+script). Treat each as already found: settle it by the evidence rather than
+reporting the difference again.

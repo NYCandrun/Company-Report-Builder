@@ -343,6 +343,9 @@ class OperationalRunTests(unittest.TestCase):
             report, _ = check_phase(root, "corrected_synthesis")
             self.assertEqual(PASS, report["status"], report)
 
+            from research_control.consistency import write_relationship_report
+
+            complete_task(root, "review.relationship-consistency", "runtime-executor", lambda: write_relationship_report(root))
             reviews = (
                 ("technical", "technical-reviewer", "review-technical", "technical"),
                 ("devils-advocate", "challenge-reviewer", "review-devils-advocate", "devils-advocate"),

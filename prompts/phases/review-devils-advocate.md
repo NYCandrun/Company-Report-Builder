@@ -9,3 +9,8 @@ Flag claims presented more confidently than their facts, but do not edit. Write
 the assigned Markdown report and JSONL findings file. Use one finding per
 assigned claim, including an explicit clean record when the work list requires
 it. Preserve IDs for reconciliation.
+
+`06-checks/relationship-consistency.md` lists organizations whose client
+relationship is marked differently in different synthesis files (found by
+script). Treat each as already found: settle it by the evidence rather than
+reporting the difference again.
