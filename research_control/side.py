@@ -566,12 +566,49 @@ def verify(root: Path, label: str, merge: bool = False) -> dict[str, Any]:
         result = verification_sandbox.merge(folder, "side")
         state["steps"]["verify"] = utc_now()
         _save(folder, state)
+        corrected = [row for row in load_jsonl(folder / verification.ADDED) if row.get("verdict") == "corrected"]
+        if corrected:
+            # The section was written before these facts were judged: the writer applies the
+            # corrections to its wording before the merge, as the main run's correction step does.
+            result["corrections"] = len(corrected)
+            result["start_workers"] = [{"read": _corrections_brief(root, folder, label, corrected), "model_level": "strong", "effort": "high"}]
         return result
     prepared = verification_sandbox.prepare(folder, "side")
     if prepared.get("facts"):
         prepared["start_workers"] = [{"read": str(folder / prepared["brief"]), "model_level": "frontier", "effort": "high"}]
         prepared["check"] = f"python3 -m research_control side check --label {label} --step verify"
     return prepared
+
+
+def _corrections_brief(root: Path, folder: Path, label: str, corrected: list[dict[str, Any]]) -> str:
+    rows = []
+    for row in corrected:
+        rows.append(f"- {row['fact_id']}: {str(row.get('reason', '')).strip()}"
+                    + (f"\n  Corrected claim: {row['corrected_claim']}" if row.get("corrected_claim") else "")
+                    + (f"\n  Corrected receipt: {row['corrected_receipt']}" if row.get("corrected_receipt") else ""))
+    lines = [
+        f"# Side run `{label}`: apply {len(corrected)} verification corrections to the section", "",
+        "This is a side run: a bounded add-on to a finished research run. You hold no scheduler task; do not run "
+        f"`research_control run` or `work` commands. Work in `{folder.relative_to(root)}/` and edit only "
+        "`05-synthesis/company-brief.md` and `05-synthesis/competitors.md` there.", "",
+        "## What to do", "",
+        "An independent verifier judged the facts the section cites. The facts below were corrected: the claim said "
+        "more than the quote supports, or the wording or date was off. Where the section (or the synthesis file) "
+        "rests on one of them, change its wording to what the corrected claim supports, keeping the fact ID beside "
+        "the words. Where the correction removes the basis for a sentence, cut the sentence. Change nothing else.", "",
+        "## The corrections", "", *rows, "",
+        "## The files", "",
+        *(f"=== FILE: 05-synthesis/{name} ===\n\n" + (folder / "05-synthesis" / name).read_text(encoding="utf-8").rstrip() + "\n"
+          for name in ("company-brief.md", "competitors.md")),
+        "---", "", "## Finish", "",
+        "Write in American English; quotes keep the source's spelling.", "",
+        f"1. Check with `python3 -m research_control side check --label {label} --step write` from the main run's "
+        "folder and fix what it reports until its status is clean.",
+        "2. Report in under 60 words, in plain English: how many sentences changed or were cut.", "",
+    ]
+    path = folder / "write" / "corrections-brief.md"
+    atomic_write_text(path, "\n".join(lines) + "\n")
+    return str(path)
 
 
 def render(root: Path, label: str) -> dict[str, Any]:
