@@ -581,6 +581,11 @@ class AdaptivePlanner:
         alternates_done = all(task["state"] in SATISFIED_STATES for task in passes) and not (
             captures_done and self._uncovered_blocked()
         )
+        reducer = self.store.task("capture.reduce-captures")
+        if reducer and reducer["state"] not in SATISFIED_STATES | ACTIVE_STATES | FINAL_STATES:
+            # A merge waiting to rerun waits for every capture now planned, not only those it knew.
+            for task_id in capture_ids:
+                self.store.add_dependency("capture.reduce-captures", task_id)
         if snapshot_done and captures_done and alternates_done:
             self._add(
                 WorkItem(
