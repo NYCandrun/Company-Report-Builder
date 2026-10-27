@@ -137,6 +137,25 @@ TikTok) are recorded as leads with provenance and are not captured, except
 videos admitted on the video channel, which capture attempts to transcribe. When a
 question depends on such content, look for a public copy of it.
 
+Public sources are treated as intentionally public: a public repository, page,
+or file may be used for what it says about a firm. Records name
+organizations, repositories, and roles, never personal details.
+
+### Market and competitors
+
+Every run researches the market and its competitors, not only the company.
+Competitors are found from evidence (the company's own comparisons, shared
+partner directories and competency lists, marketplace categories, comparison
+pages, trade press, investors' portfolios) and marked direct (the same kind
+of offering to the same buyers, in a similar way) or adjacent. For direct
+competitors, public GitHub is investigated as cheaply as possible: who is
+affiliated with the firm (from public event records of who commits to and
+stars its repositories and its people's work repositories, confirmed by
+profile, membership, or repeated commits), then the firm's and its people's
+work repositories, read only for their description, file list, and Markdown
+and CSV files at the latest commit. Deleted repositories may be read from the
+public event record, never duplicating live ones.
+
 ## Evidence
 
 ### Source grades

@@ -14,6 +14,10 @@ point. Check what is cataloged before searching:
 python3 -m research_control web list --purpose research_discovery
 ```
 
+Treat public sources as intentionally public: a public repository, page, or
+file may be used for what it says about a firm. Record organizations,
+repositories, and roles, never personal details.
+
 Search for what that crawl cannot reach: other first-party hosts and
 subdomains, applicant tracking systems, documentation portals, public code,
 recorded talks and podcasts, customer and partner announcements, independent
@@ -61,42 +65,58 @@ Admit what answers a question, not everything that exists:
   sizes or describes the category: analyst and trade reports, filings and
   earnings commentary on the category, funding and acquisition activity, and
   moves by platform vendors and AI labs into the company's line of work.
-  Public code is a shallow look, for direct competitors only, and it reads
-  Markdown and CSV files, never other code (firms and their people often
-  write down clients, teams, accounts, and plans in them):
-  1. The competitor's own GitHub organization: open its repository list in the
-     headless browser (`https://github.com/orgs/ORG/repositories`) and admit
-     the repositories that show its offering, clients, or organization, by
-     repository URL.
-  2. Its people: the organization's public members
-     (`https://github.com/orgs/ORG/people`) and the contributors shown on its
-     repositories' pages. Open each one's public repositories in the browser
-     (`https://github.com/HANDLE?tab=repositories`) and admit a repository
-     only when it is the competitor's work (a business record such as an org
-     chart, account list, or plan; a tool or skill the firm uses or sells;
-     client work), never a personal project.
-  3. Deleted repositories, when it is easy: one query of GH Archive (the
-     public record of GitHub events) per competitor organization lists every
-     repository it ever had, for example `https://play.clickhouse.com/?user=play&query=`
-     followed by the URL-encoded `SELECT repo_name, min(created_at), max(created_at),
-     count() FROM github_events WHERE repo_name LIKE 'ORG/%' GROUP BY repo_name
-     FORMAT TSV`. For repositories that are no longer live (not in the
-     organization's current list), admit one query URL that returns what the
-     archive recorded about them (pull request and issue titles and bodies,
-     branch names, release names), and state the archive's date range. Never
-     admit archive results for a repository that is still live: its current
-     files are read directly.
-  The runtime reads each admitted repository at its latest commit: its
-  description and topics from the repository page, the file list, and its
-  Markdown and CSV files (README first, within a size limit).
-  When the file list shows another single file that matters (a package
-  description that names what a product is built on), admit that file by its
-  URL (`https://github.com/ORG/REPO/blob/main/PATH`). Do not clone, read
-  history or other branches, query GH Archive beyond step 3, read whole
-  directories of code,
-  or look at adjacent firms' code; that depth is for the company itself
-  (`code_packages`). Record organizations and repositories, never personal
-  details.
+  Public GitHub, for direct competitors only, as cheaply as possible. Treat
+  public repositories as intentionally public. The aim is what a firm and its
+  people keep in Markdown and CSV files (clients, teams, accounts, offerings,
+  plans); other code is not read. Run GH Archive queries (the public record of
+  GitHub events, on the ClickHouse public playground:
+  `https://play.clickhouse.com/?user=play&query=` followed by a URL-encoded
+  query ending in `FORMAT TSV`) with `curl`; each is one cheap request.
+  1. Find the firm's GitHub presence: a link on its site, a search for its
+     name, or its people's profiles (from its team, about, and blog author
+     pages). Some firms have an organization, some work only from employees'
+     public accounts, and many have both.
+  2. Find who is affiliated, cheapest first. One archive query lists everyone
+     who acted on the firm's repositories and how: `SELECT actor_login,
+     groupUniqArray(event_type), count() FROM github_events WHERE repo_name
+     LIKE 'ORG/%' GROUP BY actor_login ORDER BY count() DESC LIMIT 300`.
+     Pushes, pull requests, and reviews are commits; a star (`WatchEvent`) is
+     only a lead. Add the organization's public members
+     (`https://github.com/orgs/ORG/people` in the headless browser) and
+     handles named on the firm's own pages. Open a profile in the browser only
+     when the archive leaves a handle unclear. A profile that names the firm,
+     organization membership, or repeated commits to its repositories make a
+     handle affiliated; a star or a single commit alone does not. Then go one
+     hop out the same way: who commits to or stars the affiliated people's own
+     work repositories, to find colleagues and firm work kept in personal
+     accounts. Stop when a hop adds no new affiliated handle.
+  3. Find the repositories, cheapest first. One archive query of the
+     affiliated handles (`SELECT repo_name, groupUniqArray(event_type),
+     min(created_at), max(created_at), count() FROM github_events WHERE
+     actor_login IN ('HANDLE', ...) GROUP BY repo_name ORDER BY count() DESC`)
+     shows the repositories they own or work in. Check names and descriptions
+     in the browser's repository lists (`https://github.com/orgs/ORG/repositories`,
+     `https://github.com/HANDLE?tab=repositories`). Admit a repository by its
+     URL when it is the firm's work: its offering (a product, a public tool,
+     an accelerator), a business record (an org chart, an account list, a
+     plan), or client work. Never admit a personal project.
+  4. Deleted repositories, when it is easy: the archive also lists
+     repositories under the organization or the affiliated handles that no
+     longer exist. For those only, admit one query URL that returns what the
+     archive recorded (pull request and issue titles and bodies, branch names,
+     release names), and state the archive's date range. Never admit archive
+     results for a repository that is still live.
+  The runtime reads each admitted repository at its latest commit: the
+  repository page's description and topics, the file list, and its Markdown
+  and CSV files (README first, within a size limit). When the file list shows
+  another single file that matters (a package description that names what a
+  product is built on), admit that file by its URL
+  (`https://github.com/ORG/REPO/blob/main/PATH`). Admit an archive query as a
+  source only when a fact will rest on it (affiliation evidence, or a deleted
+  repository). Do not clone, read history or other branches, read whole
+  directories of code, or look at adjacent firms' code; that depth is for the
+  company itself (`code_packages`). Record organizations, repositories, and
+  roles, never personal details.
   Close as `sufficient` against the market and competitor questions, naming
   each competitor found, whether it is direct or adjacent, and the evidence.
 - Social platforms that require login (LinkedIn, X, Facebook, Instagram,
@@ -114,7 +134,9 @@ Admit what answers a question, not everything that exists:
   - Staff handles: committers of the company's repositories (step 1 below),
     the organization's public members, handles that carry the company's name
     (GH Archive `actor_login ILIKE '%COMPANY%'`), and handles named in the
-    company's own pages, documents, and repositories.
+    company's own pages, documents, and repositories. People who star the
+    company's repositories (`WatchEvent` in GH Archive) are leads: a profile
+    that names the company or commits to its work confirm them.
   - Each staff handle's own public repositories (the browser's
     `https://github.com/HANDLE?tab=repositories`) and the repositories it
     pushed to or opened pull requests in (GH Archive, step 2). Triage them in

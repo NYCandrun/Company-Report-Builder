@@ -377,6 +377,37 @@ downloaded audio, whose transcript is kept, the HTTP transport cache, and
 worker scratch space. Archive after every `run` that captures sources and
 after each wave of workers.
 
+## Market and competitors
+
+Every run researches the market and the company's competitors through their
+own discovery channel (`market_competitors`) and a default scope question.
+The competitor set comes from evidence: the company's own comparisons, the
+partner directories and competency lists it shares with other firms,
+marketplace categories, comparison pages, trade press, and investors'
+portfolios. Each firm is marked direct (the same kind of offering to the same
+buyers, in a similar way) or adjacent (global consulting firms, platform
+vendors, AI labs moving into services).
+
+For direct competitors the worker also investigates public GitHub, as cheaply
+as possible, treating public sources as intentionally public:
+
+1. Find the firm's presence: an organization, its people's public accounts,
+   or both.
+2. Find who is affiliated: one GH Archive query lists everyone who committed
+   to or starred the firm's repositories; a profile naming the firm,
+   organization membership, or repeated commits confirm a handle (a star or
+   one commit alone is a lead). One hop out finds colleagues and firm work in
+   personal accounts.
+3. Find the repositories: one query of the affiliated handles' activity, then
+   the browser's repository lists; only the firm's work is admitted, never
+   personal projects.
+4. Deleted repositories, when easy: what the public event record kept about
+   them, never duplicating live repositories.
+
+The runtime reads each admitted repository at its latest commit: the
+description and topics, the file list, and the Markdown and CSV files (README
+first, within a size limit), never other code or history.
+
 ## Question-bounded discovery
 
 Discovery has no source-count target in either direction. Scope numbers the
