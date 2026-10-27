@@ -317,7 +317,7 @@
           "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
           "inputs": [
             {"id": "reviewed_synthesis", "path": "05-synthesis/*.md", "required": true},
-            {"id": "verified_facts", "path": "02-facts/**", "required": true},
+            {"id": "cited_fact_rows", "path": "tools/outputs/cited-fact-rows.md", "required": true},
             {"id": "source_manifest", "path": "01-sources/MANIFEST.csv", "required": true},
             {"id": "verification_verdicts", "path": "tools/outputs/verification-verdicts.jsonl", "required": true},
             {"id": "brand_guide", "path": "07-final-report/brand-guide.html", "required": true}
@@ -335,7 +335,7 @@
           "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
           "inputs": [
             {"id": "reviewed_synthesis", "path": "05-synthesis/*.md", "required": true},
-            {"id": "verified_facts", "path": "02-facts/**", "required": true},
+            {"id": "cited_fact_rows", "path": "tools/outputs/cited-fact-rows.md", "required": true},
             {"id": "source_manifest", "path": "01-sources/MANIFEST.csv", "required": true},
             {"id": "verification_verdicts", "path": "tools/outputs/verification-verdicts.jsonl", "required": true},
             {"id": "reviewed_timelines", "path": "03-timelines/*.md", "required": false}

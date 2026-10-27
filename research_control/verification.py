@@ -13,6 +13,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
+from research_control.deeplinks import source_excerpt
 from research_control.io import atomic_write_json, atomic_write_jsonl, atomic_write_text, load_json, load_jsonl
 from research_control.validators import sources
 from research_control.validators.facts import load_fact_tables
@@ -71,6 +72,8 @@ def prepare(root: Path) -> dict[str, Any]:
                 "local files": [item.strip() for item in source.get("local file", "").split(";") if item.strip()],
             },
         }
+        # The located quote with its context; the fingerprint below leaves it out.
+        packet["excerpt"] = source_excerpt(root, source_id, fact.get("verbatim_quote", ""))
         relative = f"{PACKET_DIR}/{fact_id}.json"
         atomic_write_json(root / relative, packet)
         fingerprint = _fingerprint(packet)
@@ -218,4 +221,33 @@ def reduce_verdicts(root: Path, parts: list[str]) -> dict[str, Any]:
         detail = f" Correction: {correction}" if correction else ""
         lines.append(f"- `{row['fact_id']}` ({row['verdict']}): {reason}{detail}")
     atomic_write_text(root / REPORT, "\n".join(lines) + "\n")
+    write_cited_rows(root, ordered)
     return {"status": "PASS", "verdicts": len(ordered), "parts": len(parts), **counts}
+
+
+CITED_ROWS = "tools/outputs/cited-fact-rows.md"
+
+
+def write_cited_rows(root: Path, verdicts: list[dict[str, Any]]) -> None:
+    """The cited facts as one compact table with their verdicts, dates, and deep links,
+    so the brief and diagrams work from it instead of the whole fact store."""
+    facts = _facts(root)
+    links: dict[str, dict[str, Any]] = {}
+    path = root / "tools/outputs/fact-links.jsonl"
+    if path.is_file():
+        links = {str(row.get("fact_id", "")): row for row in load_jsonl(path)}
+    rows = []
+    for row in verdicts:
+        fact = facts.get(str(row["fact_id"]), {})
+        cells = [
+            str(row["fact_id"]), row.get("verdict", ""), fact.get("claim", ""), fact.get("verbatim_quote", ""),
+            fact.get("source_id", ""), fact.get("source_date", ""), fact.get("grade", ""),
+            str(row.get("corrected_claim") or ""), links.get(str(row["fact_id"]), {}).get("deep_link", ""),
+        ]
+        rows.append("| " + " | ".join(re.sub(r"\s+", " ", str(cell)).replace("|", "/") for cell in cells) + " |")
+    atomic_write_text(root / CITED_ROWS, "\n".join([
+        "# Cited facts", "",
+        f"Every fact the synthesis cites ({len(rows)}), with its verification verdict. Full rows are in 02-facts/.", "",
+        "| Fact ID | Verdict | Claim | Verbatim quote | Source ID | Source date | Grade | Correction | Deep link |",
+        "|---|---|---|---|---|---|---|---|---|", *rows,
+    ]) + "\n")

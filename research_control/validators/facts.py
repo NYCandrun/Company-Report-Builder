@@ -98,3 +98,16 @@ def validate_records(records: list[dict[str, Any]], root: Path, source_ids: set[
             failures.append(f"subject {key[2]}: conflicting numeric facts lack conflict_group")
     paths = patterns or ["02-facts/*.md", "04-competitors/*/02-facts/*.md"]
     return report_for(sys.modules[__name__], "fact_records", root, paths, len(records), len(records), failures)
+
+
+# A filed fact whose evidence no longer holds (it described a capture's omission
+# that a recapture fixed, say) is withdrawn by ID with a reason, not deleted or
+# renumbered: quote checks skip it and synthesis may not cite it.
+WITHDRAWN_FACTS = "tools/lists/withdrawn-facts.json"
+
+
+def withdrawn_facts(root: Path) -> dict[str, str]:
+    import json
+
+    path = root / WITHDRAWN_FACTS
+    return dict(json.loads(path.read_text(encoding="utf-8")).get("facts", {})) if path.is_file() else {}

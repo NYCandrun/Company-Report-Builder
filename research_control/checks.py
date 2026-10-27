@@ -218,6 +218,7 @@ def _ledger(root: Path, task_types: set[str] | None = None) -> dict[str, Any]:
 def _validate_synthesis_ids(root: Path, checker: str) -> dict[str, Any]:
     paths = _paths(root, ["05-synthesis/*.md"])
     known = {row.get("fact_id", "") for row in _fact_records(root)}
+    withdrawn = facts.withdrawn_facts(root)
     failures: list[str] = []
     found: set[str] = set()
     for path in paths:
@@ -225,6 +226,8 @@ def _validate_synthesis_ids(root: Path, checker: str) -> dict[str, Any]:
             found.add(fact_id)
             if fact_id not in known:
                 failures.append(f"{path.relative_to(root)}: unknown fact ID {fact_id}")
+            elif fact_id in withdrawn:
+                failures.append(f"{path.relative_to(root)}: cites withdrawn fact {fact_id} ({withdrawn[fact_id]})")
     unknowns = [] if found else ["no fact IDs found in synthesis Markdown"]
     patterns = [str(path.relative_to(root)) for path in paths] + ["02-facts/*.md"]
     return _report(root, checker, patterns, len(paths), len(paths), failures, unknowns, {"fact_ids": len(found)})
@@ -593,6 +596,8 @@ def run_validator(root: Path, phase: dict[str, Any], validator_id: str) -> dict[
             return _report(root, validator_id, fact_patterns, 1, 0, unknowns=["no fact records found"])
         return _rename(facts.validate_records(fact_rows, root, source_ids, fact_patterns), validator_id)
     if validator_id == "fact_quotes":
+        withdrawn = facts.withdrawn_facts(root)
+        fact_rows = [row for row in fact_rows if row.get("fact_id") not in withdrawn]
         return quotes.validate(fact_rows, _source_paths(root, manifest), root, fact_patterns) if fact_rows else _report(root, validator_id, fact_patterns, 1, 0, unknowns=["no fact records found"])
     if validator_id == "fact_dates":
         source_dates = {row.get("id", ""): row.get("date published", "") for row in manifest if row.get("date published")}

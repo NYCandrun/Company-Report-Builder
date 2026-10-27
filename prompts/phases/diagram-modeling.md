@@ -2,7 +2,9 @@ TASK TYPE: EVIDENCE-BOUNDED ARCHITECTURE MODELING
 
 Research is complete. Do not browse, search, fetch sources, or add outside
 facts. Work only from the packet's reviewed synthesis, verified fact records,
-source manifest, verification results, timelines, and design reference. A
+source manifest, verification results, timelines, and design reference.
+Verified fact records are in `tools/outputs/cited-fact-rows.md`; open `02-facts/`
+only to look up a fact by ID that the table lacks. A
 company name or a familiar industry pattern is not evidence.
 
 Reconstruct the minimum logical architecture necessary to explain documented

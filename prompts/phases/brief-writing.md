@@ -1,7 +1,9 @@
 TASK TYPE: COMPANY-BRIEF WRITING, NOT REVIEW OR STATUS
 
 Read the evidence, writing, and runtime cores. Use only reviewed synthesis and
-verified facts. Follow the assigned word budget and exhibit specifications.
+verified facts: `tools/outputs/cited-fact-rows.md` lists every cited fact with
+its verdict, date, and deep link. Open `02-facts/` only to look up a fact by ID
+that the table lacks; do not read the fact store whole. Follow the assigned word budget and exhibit specifications.
 Keep fact IDs beside the exact supported words in Markdown.
 
 Use `07-final-report/brand-guide.html` only to derive the brief's typography,

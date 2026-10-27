@@ -136,6 +136,18 @@ packets. In Claude Code, use isolated subagents. If no subagent facility exists,
 execute the same packets in separate contexts sequentially. Never improvise a
 different task graph because a host lacks a dispatch API.
 
+## Keeping later steps bounded
+
+Steps after filing read only what they judge. Verification packets carry each
+quote as the runtime located it, with its context, the capture's first lines,
+and its section, so verifiers open a full capture only when that is not
+enough. Verification also writes `tools/outputs/cited-fact-rows.md`, one table
+of the cited facts with verdicts, dates, and deep links, which the brief writer
+and diagram modeler use instead of the fact store. A filed fact whose evidence
+no longer holds (it described a capture omission a recapture fixed) is
+withdrawn by ID in `tools/lists/withdrawn-facts.json` with a reason: it keeps
+its ID, quote checks skip it, and synthesis may not cite it.
+
 ## Adding a research question mid-run
 
 When the research needs a question the scope did not ask, add it with

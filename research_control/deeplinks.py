@@ -283,3 +283,38 @@ def write_fact_links(root: Path) -> dict[str, Any]:
     ]
     atomic_write_text(root / LINKS_REPORT, "\n".join(lines) + "\n")
     return {"facts": len(rows), "located": len(rows) - len(unlocated), "by_kind": {kind: total for kind, (total, _) in kinds.items()}}
+
+
+# A verifier judges a quote from the text around it, not the whole capture: the
+# located line with about this many characters of context, the capture's first
+# lines (title, repository, speakers), and the section the quote sits in.
+EXCERPT_CHARACTERS = 1_600
+SECTION_HEADER = re.compile(r"^(--- |=== )")
+
+
+def source_excerpt(root: Path, source_id: str, quote_text: str) -> dict[str, Any]:
+    directory = root / "01-sources/captures" / source_id
+    for name, strip_diff in (("transcript.txt", False), ("content.txt", True)):
+        lines = _read_lines(directory / name)
+        index = locate(lines, quote_text, strip_diff=strip_diff) if lines else None
+        if index is None:
+            continue
+        start, end, size = index, index + 1, len(lines[index])
+        while size < EXCERPT_CHARACTERS and (start > 0 or end < len(lines)):
+            if start > 0:
+                start -= 1
+                size += len(lines[start])
+            if end < len(lines) and size < EXCERPT_CHARACTERS:
+                size += len(lines[end])
+                end += 1
+        text = "\n".join(lines[start:end])
+        if len(text) > EXCERPT_CHARACTERS * 2:
+            # One very long line: keep the window around the quote.
+            at = max(text.casefold().find(_segment(quote_text)[:40].casefold()), 0)
+            text = text[max(at - EXCERPT_CHARACTERS // 2, 0): at + EXCERPT_CHARACTERS]
+        section = next((lines[position] for position in range(start - 1, -1, -1) if SECTION_HEADER.match(lines[position])), "")
+        return {
+            "located": True, "file": f"01-sources/captures/{source_id}/{name}", "line": index + 1,
+            "lines": f"{start + 1}-{end}", "head": lines[:6], "section": section[:300], "text": text,
+        }
+    return {"located": False, "file": "", "note": "quote not found by script; open the capture"}

@@ -9,8 +9,15 @@ and runtime cores. For every assigned fact packet judge:
 4. Is the published/modified date treatment correct?
 
 Your shard is a set of cited facts grouped by source; each input is one
-fact's packet (`tools/outputs/cited-facts/FACT-ID.json`) with its fact row and
-source files. Read each source's capture once and judge all of its facts.
+fact's packet (`tools/outputs/cited-facts/FACT-ID.json`) with its fact row,
+source files, and `excerpt`: the quote as the runtime located it in the
+capture, with the text around it, the capture's first lines (title,
+repository, speakers), and the section it sits in (a file, commit, or pull
+request header). Judge from the excerpt. Open the capture only where the
+excerpt is not enough: the quote was not located (`located: false`), or
+attribution or dating depends on text outside it (a speaker named earlier in a
+transcript, a commit date above a long diff). Do not read whole captures
+otherwise.
 
 Return exactly one verdict per assigned fact: `confirmed`, `corrected`,
 `unsupported`, or `source unreachable`. Prefer a narrower true correction to

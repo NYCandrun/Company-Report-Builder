@@ -108,7 +108,9 @@ def synthesis_target(fact_file: str) -> str:
 def write_supplement_digests(root: Path, fact_ids: list[str]) -> dict[str, int]:
     from research_control.validators.facts import load_fact_tables
 
-    wanted = set(fact_ids)
+    from research_control.validators.facts import withdrawn_facts
+
+    wanted = set(fact_ids) - set(withdrawn_facts(root))
     lines: dict[str, list[str]] = {}
     for path in sorted((root / "02-facts").glob("*.md")):
         for row in load_fact_tables([path]):

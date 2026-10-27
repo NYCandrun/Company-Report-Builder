@@ -26,8 +26,18 @@ class VerificationShardTests(unittest.TestCase):
             atomic_write_text(root / "02-facts/q01.md", FACTS)
             atomic_write_text(root / "05-synthesis/offering.md", "Network [PRD-003]. Agents [PRD-001].\n")
             atomic_write_text(root / "05-synthesis/product-map.md", "Services [PRD-002]; agents [PRD-001].\n")
+            lines = ["Title: Tribe", "URL: https://example.com", *[f"filler line {n}" for n in range(200)],
+                     "We build agents for enterprises.", *[f"after line {n}" for n in range(200)]]
+            atomic_write_text(root / "01-sources/captures/SRC-A/content.txt", "\n".join(lines) + "\n")
             report = verification.prepare(root)
             self.assertEqual(3, report["cited_facts"])
+            # Each packet carries the located quote with its context, not just the capture's path.
+            excerpt = verification.load_json(root / verification.PACKET_DIR / "PRD-001.json")["excerpt"]
+            self.assertEqual((True, 203), (excerpt["located"], excerpt["line"]))
+            self.assertIn("We build agents for enterprises.", excerpt["text"])
+            self.assertLess(len(excerpt["text"]), 4_000)
+            self.assertEqual("Title: Tribe", excerpt["head"][0])
+            self.assertFalse(verification.load_json(root / verification.PACKET_DIR / "PRD-003.json")["excerpt"]["located"])
             self.assertEqual(
                 ["PRD-003", "PRD-001", "PRD-002"],
                 (root / verification.CITED_LIST).read_text(encoding="utf-8").split(),
@@ -56,6 +66,10 @@ class VerificationShardTests(unittest.TestCase):
             merged = [row["fact_id"] for row in load_jsonl(root / verification.VERDICTS)]
             self.assertEqual(["PRD-003", "PRD-001", "PRD-002"], merged)
             self.assertIn("| confirmed | 3 |", (root / verification.REPORT).read_text(encoding="utf-8"))
+            # The brief and diagrams work from one table of the cited facts.
+            rows = (root / verification.CITED_ROWS).read_text(encoding="utf-8")
+            self.assertIn("| PRD-001 | confirmed | Tribe builds agents. | We build agents | SRC-A |", rows)
+            self.assertNotIn("PRD-004", rows)
 
             # Re-preparing after a change re-verifies only the changed fact.
             atomic_write_text(root / "02-facts/q01.md", FACTS.replace("Tribe has a network.", "Tribe has a talent network."))
@@ -73,3 +87,18 @@ class VerificationShardTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WithdrawnFactTests(unittest.TestCase):
+    def test_withdrawn_facts_are_not_quote_checked_and_cannot_be_cited(self) -> None:
+        from research_control import checks
+        from research_control.io import atomic_write_json
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            atomic_write_text(root / "02-facts/q01.md", FACTS)
+            atomic_write_text(root / "05-synthesis/offering.md", "Network [PRD-003].\n")
+            self.assertEqual([], checks._validate_synthesis_ids(root, "synthesis_fact_ids").get("failures", []))
+            atomic_write_json(root / "tools/lists/withdrawn-facts.json", {"facts": {"PRD-003": "capture omission since fixed"}})
+            failures = checks._validate_synthesis_ids(root, "synthesis_fact_ids")["failures"]
+            self.assertIn("cites withdrawn fact PRD-003", failures[0])
