@@ -255,6 +255,8 @@ def _parser() -> argparse.ArgumentParser:
     work_fail.add_argument("--reason", required=True)
     work_fail.add_argument("--terminal", action="store_true", help="do not retry this failure")
     work_sub.add_parser("recover", help="recover expired leases")
+    work_check = work_sub.add_parser("check", help="worker: list what `work succeed` would refuse, without completing")
+    work_check.add_argument("task_id")
     work_edit = work_sub.add_parser(
         "record-edit",
         help="orchestrator: record a small sanctioned edit of task outputs so finished work is not rerun for it",
@@ -534,6 +536,11 @@ def main() -> None:
             if args.work_command == "restore":
                 with open_runtime(root) as store:
                     _print_json(store.restore(args.task_id, args.reason))
+                return
+            if args.work_command == "check":
+                from research_control.adaptive import check_work
+
+                _print_json(check_work(root, args.task_id))
                 return
             if args.work_command == "record-edit":
                 from research_control.automatic import RUNTIME_WORKER

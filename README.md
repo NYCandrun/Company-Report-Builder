@@ -158,6 +158,44 @@ no longer holds (it described a capture omission a recapture fixed) is
 withdrawn by ID in `tools/lists/withdrawn-facts.json` with a reason: it keeps
 its ID, quote checks skip it, and synthesis may not cite it.
 
+## Spending less without reading less
+
+- Repository captures: a commit's added lines that are still in the current
+  file are counted, not repeated (the file's text has them, and its header
+  dates each line range by the commit that wrote it); removed lines, and added
+  lines later changed, stay. Test files are read by their test names and
+  docstrings, and test diffs are left out.
+- Sources are cut at file, commit, conversation, timestamp, or paragraph
+  boundaries chosen by the text there, and a finished batch covers its text
+  wherever it now sits, so a recapture re-extracts only what changed. Runs that
+  were cut at fixed sizes keep that cutting.
+- Extraction batches carry the model tier their sources need
+  (`extraction_tiers` in `WORKFLOW.yaml`): code, specs, and data on
+  `standard`; recordings, pages, and business records on `strong`.
+- A question added mid-run re-reads the relevant sources only where they share
+  terms with it, and only for it (`focus_questions` on the input). For a rule
+  change that affects one kind of source, `supplement --kind repository
+  --reason WHY` lists just those sources.
+- `limits --extraction-budget TOKENS` caps the source text extraction reads.
+  Past it, the planner plans the slices that bear most on the questions and
+  defers the rest, listed in `06-checks/extraction-budget.md`; raising the
+  budget brings them back.
+
+## Running without steering
+
+- Every packet comes with a brief (`<task>.brief.md`, and `brief` in the `run`
+  output) that a host passes to its worker unchanged: worker ID, lifecycle,
+  the run notes from `00-scope.md`, `work check TASK` (what `work succeed`
+  would refuse, and the synthesis checks), and completion.
+- The run notes in `00-scope.md` ("Notes for downstream phases") carry what
+  the research itself established that later work must apply, for example a
+  company's own statement of which names are its products.
+- `run` recovers expired leases, so work stopped by an interruption is
+  dispatched again, and re-checks earlier gates that are stale only because an
+  engine sync moved their recorded inputs.
+- A check never makes a worker reword the source's text; a suspected false
+  positive is reported instead.
+
 ## Small corrections to finished outputs
 
 When the orchestrator corrects a finished task's output by hand (a name a

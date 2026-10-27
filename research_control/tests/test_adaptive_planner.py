@@ -633,3 +633,45 @@ class BudgetAndFocusTests(unittest.TestCase):
                 self.assertEqual(["Q2"], focused[0]["focus_questions"])
                 self.assertNotIn("focus_questions", focused[1])
                 self.assertEqual("focus", deferred_slices(root)["SRC-A:part-0001"]["by"])
+
+
+class WorkerBriefTests(unittest.TestCase):
+    def test_every_packet_comes_with_a_brief_the_host_passes_on_unchanged(self) -> None:
+        from research_control.dispatch import write_packet
+        from research_control.io import atomic_write_text
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            copy_template(root)
+            state = initialize(root, "https://example.com")
+            save_state(root, state)
+            atomic_write_text(root / "00-scope.md", "# Scope\n\n## Notes for downstream phases\n\n- Treat X as internal tooling.\n")
+            with RuntimeStore(root) as store:
+                store.initialize(run_id=state["run_id"], company_url=state["company_url"])
+                store.add_task(WorkItem(
+                    task_id="facts.extract.abc", phase="facts", task_type="extraction", inputs=[],
+                    outputs=["parts/abc.jsonl"], prompt_files=["prompts/phases/extraction.md"],
+                    metadata={"model_tier": "standard"},
+                ))
+                entry = write_packet(root, store.task("facts.extract.abc"))
+            brief = (root / entry["brief"]).read_text(encoding="utf-8")
+            self.assertEqual("standard", entry["model_route"]["tier"])
+            self.assertIn("work claim facts.extract.abc --worker-id w-abc", brief)
+            self.assertIn("work check facts.extract.abc", brief)
+            self.assertIn("Treat X as internal tooling.", brief)
+            self.assertIn("--effort medium", brief)
+
+
+class GateRefreshTests(unittest.TestCase):
+    def test_only_gates_stale_from_moved_inputs_are_rechecked(self) -> None:
+        from unittest import mock
+
+        from research_control import PASS, adaptive
+
+        stale = {"failures": [], "unknowns": ["dependency gate capture: stale input WORKFLOW.yaml"]}
+        mixed = {"failures": ["fact_quotes: PRD-1 quote not found"], "unknowns": stale["unknowns"]}
+        with mock.patch.object(adaptive, "check_phase", return_value=({"status": PASS}, Path("g.json"))) as check:
+            self.assertTrue(adaptive._refresh_dependency_gates(Path("."), stale))
+            check.assert_called_once_with(Path("."), "capture", update_state=True)
+            self.assertFalse(adaptive._refresh_dependency_gates(Path("."), mixed))
+            self.assertEqual(1, check.call_count)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -107,13 +108,55 @@ def write_packet(root: Path, task: dict[str, Any]) -> dict[str, Any]:
         "",
     ])
     atomic_write_text(md_path, "\n".join(lines))
+    brief_path = directory / f"{task['task_id']}.brief.md"
+    atomic_write_text(brief_path, worker_brief(root, task, route, md_path))
     return {
         "task_id": task["task_id"],
         "task_type": task["task_type"],
         "independent": task["independent"],
         "packet": str(md_path.relative_to(root)),
         "packet_json": str(json_path.relative_to(root)),
+        "brief": str(brief_path.relative_to(root)),
+        "model_route": {key: route[key] for key in ("tier", "model_class", "effort")},
     }
+
+
+RUN_NOTES = re.compile(r"^## Notes for downstream phases\s*\n(.*?)(?=^## |\Z)", re.M | re.S)
+
+
+def worker_brief(root: Path, task: dict[str, Any], route: dict[str, Any], packet: Path) -> str:
+    """The whole instruction a host gives a worker for this task, so the orchestrator
+    passes it on unchanged: lifecycle, the packet, run notes, the check, completion."""
+    task_id = task["task_id"]
+    worker = f"w-{task_id.rsplit('.', 1)[-1][:24]}"
+    scope = root / "00-scope.md"
+    notes = RUN_NOTES.search(scope.read_text(encoding="utf-8")) if scope.is_file() else None
+    lines = [
+        f"Worker for `{task_id}` ({task['task_type']}). Run directory: {root}. Worker ID: {worker}.",
+        f"Model tier: {route['tier']} ({route['model_class']}), effort {route['effort']}.",
+        "",
+        f"1. `python3 -m research_control work claim {task_id} --worker-id {worker}` then "
+        f"`python3 -m research_control work start {task_id} --worker-id {worker}` "
+        "(if refused for concurrency, wait a minute and retry).",
+        f"2. Read `{packet.relative_to(root)}` and follow it exactly. Read what it names, not whole stores: "
+        "open full fact rows or captures only where the packet says to.",
+    ]
+    if notes and notes.group(1).strip():
+        lines += ["3. Run notes from `00-scope.md` (findings and decisions this run has made; they apply to your work):",
+                  "", notes.group(1).strip(), ""]
+    else:
+        lines.append("3. No run notes.")
+    lines += [
+        f"4. Check with `python3 -m research_control work check {task_id}` and fix what it reports until its status is clean. "
+        "If a check flags text you believe is correct as the source has it (a false positive), do not reword it: "
+        "say so in your report.",
+        f"5. `python3 -m research_control work succeed {task_id} --worker-id {worker} --model <the model ID you run as> "
+        f"--effort {route['effort']}`.",
+        "",
+        "Write only the packet's outputs and your scratchpad directory. Do not run `research_control run` or edit "
+        "scheduler state. Report in under 80 words: status, counts, output paths, and anything the orchestrator must act on.",
+    ]
+    return "\n".join(lines) + "\n"
 
 
 def emit_ready_packets(root: Path, store: RuntimeStore, phase: str | None = None) -> dict[str, Any]:

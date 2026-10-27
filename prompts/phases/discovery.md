@@ -45,11 +45,27 @@ Admit what answers a question, not everything that exists:
   official profiles and any post that a question depends on, and look for a
   public copy (a press release, blog post, or transcript) of that content.
 - Public code (`code_packages`): catalog every public repository in the
-  company's GitHub organizations. When an organization page cannot be listed
-  from the environment, ask the person running the research for the list
-  rather than guessing names, and look for further organization names in the
-  repositories' own files (remotes, package metadata, catalog files). Then
-  look for the company's work in other organizations' repositories:
+  company's GitHub organizations. List an organization's repositories and
+  people through the headless browser (`https://github.com/orgs/ORG/repositories`
+  and `/people`), which github.com serves when it refuses plain requests, and
+  look for further organization names in the repositories' own files
+  (remotes, package metadata, catalog files). Then find the company's people
+  on GitHub and their public work, without being told where to look:
+  - Staff handles: committers of the company's repositories (step 1 below),
+    the organization's public members, handles that carry the company's name
+    (GH Archive `actor_login ILIKE '%COMPANY%'`), and handles named in the
+    company's own pages, documents, and repositories.
+  - Each staff handle's own public repositories (the browser's
+    `https://github.com/HANDLE?tab=repositories`) and the repositories it
+    pushed to or opened pull requests in (GH Archive, step 2). Triage them in
+    bulk with a script: a shallow clone's README, file tree, and commit
+    subjects. Admit a repository that is the company's work: a business record
+    (an org chart, an account book, call or meeting notes, a plan), a tool or
+    skill the company uses or sells, or work shaped to a client. Personal
+    projects with no company tie are not admitted.
+  - Anything a shallow look left unclear (an empty README, a generic name) is
+    cloned with full history and all branches before it is ruled out.
+  Then look for the company's work in other organizations' repositories:
   1. Clone each company repository with full history and all branches, and
      list its committers from `git log --all`. A GitHub noreply address gives
      the handle.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -116,6 +117,8 @@ def advance(root: Path, company_url: str | None = None, *, automatic: bool = Tru
                 return {"status": "waiting", "phase": phase, "active_tasks": active, "runtime": store.summary()}
             if tasks and all(task["state"] in SATISFIED_STATES for task in tasks):
                 report, path = check_phase(root, phase, update_state=True)
+                if report["status"] != PASS and _refresh_dependency_gates(root, report):
+                    report, path = check_phase(root, phase, update_state=True)
                 if report["status"] != PASS:
                     return {
                         "status": "gate_failed", "phase": phase,
@@ -130,6 +133,21 @@ def advance(root: Path, company_url: str | None = None, *, automatic: bool = Tru
                 "runtime": store.summary(),
             }
     raise RuntimeError("adaptive advance exceeded the phase-transition safety bound")
+
+
+STALE_DEPENDENCY = re.compile(r"^dependency gate (\w+): stale input ")
+
+
+def _refresh_dependency_gates(root: Path, report: dict[str, Any]) -> bool:
+    """Re-check earlier gates that are stale only because their recorded inputs moved
+    (an engine sync rewrites WORKFLOW.yaml and the validators). Returns whether every
+    problem was such a gate and each passed again; real failures are left alone."""
+    problems = [str(item) for item in list(report.get("failures", [])) + list(report.get("unknowns", []))]
+    matches = [STALE_DEPENDENCY.match(item) for item in problems]
+    if not problems or not all(matches):
+        return False
+    gates = sorted({match.group(1) for match in matches if match})
+    return all(check_phase(root, gate, update_state=True)[0]["status"] == PASS for gate in gates)
 
 
 def _reopen_unsatisfied_phases(root: Path, store: RuntimeStore) -> None:
@@ -199,6 +217,35 @@ def _complete(
                 },
             )
     return result
+
+
+def check_work(root: Path, task_id: str) -> dict[str, Any]:
+    """What `work succeed` would refuse, without completing: a worker runs this until it is clean.
+
+    Covers the checks completion applies, plus the task's synthesis validators,
+    which completion leaves to the phase gate.
+    """
+    with open_runtime(root) as store:
+        task = store.task(task_id)
+        if not task:
+            raise KeyError(f"unknown task: {task_id}")
+        problems: list[str] = []
+        try:
+            _validate_semantic_receipt(root, store, task)
+        except ValueError as error:
+            problems.append(str(error))
+        document = workflow(root / "WORKFLOW.yaml")
+        phase = next((item for item in document["phases"] if item["id"] == task["phase"]), None)
+        if phase is not None:
+            for validator_id in task.get("validators", []):
+                if validator_id.startswith("synthesis_"):
+                    report = run_validator(root, phase, validator_id)
+                    if report.get("status") != PASS:
+                        problems.extend(f"{validator_id}: {item}" for item in (report.get("failures") or report.get("unknowns") or [])[:20])
+        for output in task["outputs"]:
+            if "*" not in output and "{" not in output and not (root / output).exists():
+                problems.append(f"output missing: {output}")
+        return {"task_id": task_id, "problems": problems, "status": "clean" if not problems else "problems"}
 
 
 def _validate_semantic_receipt(root: Path, store: RuntimeStore, task: dict[str, Any]) -> None:

@@ -46,3 +46,10 @@ Back off when rate limited and record blocked items. When you use a browser
 (screenshots, rendering, inspecting a page), present as desktop Chrome in a
 desktop-sized window (for example 1440x900, not mobile) so you see the desktop
 layout and content, unless the task asks for a mobile view.
+
+## Checks and source wording
+
+A check that flags text you believe is right as the source has it (a product
+or standard name shaped like an ID, a quoted term) is a false positive. Do not
+reword the source's text to satisfy it: leave it and name the check and the
+text in your report, so the orchestrator fixes the check.

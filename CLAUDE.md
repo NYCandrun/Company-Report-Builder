@@ -5,8 +5,13 @@ Follow `README.md` as the operational entry point. Start a company run with
 `runs/<slug>/` directory: rerun `python3 -m research_control run` and dispatch
 every ready packet until exact-artifact release passes.
 
-- Give every independent ready packet its own isolated subagent and a unique
-  worker ID. Discovery is one task per channel: the runtime handles
+- Give every independent ready packet its own isolated subagent. Each packet
+  comes with a brief (`brief` in the `run` output, `<task>.brief.md`): pass it
+  as the subagent's whole prompt, unchanged, with the model and effort for its
+  tier from the table below. The brief carries the worker ID, lifecycle
+  commands, run notes, and the `work check` the worker runs before it succeeds.
+  When a worker reports something for the orchestrator, act on it; a small
+  correction to a finished output is recorded with `work record-edit`. Discovery is one task per channel: the runtime handles
   `company_site` and `sitemaps`; each of the other eight channels gets its own
   worker.
 - Workers act only under a held lease: claim and start before working, succeed
@@ -43,7 +48,10 @@ every ready packet until exact-artifact release passes.
 
 ## Model routing
 
-Every packet names an advisory tier (`model_route` in its JSON). Claude Code can
+Every packet names an advisory tier (`model_route` in its JSON and in the
+`run` output). Extraction batches carry their own tier by the kind of source
+they read: code, specs, and data on `standard`; recordings, pages, and business
+records on `strong`. Claude Code can
 select a model and effort per subagent, so apply the route on every dispatch:
 
 | Tier | Model class | Subagent model | Effort | Task types |
