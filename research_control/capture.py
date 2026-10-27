@@ -88,9 +88,11 @@ class TextExtractor(HTMLParser):
         self.parts.append(data)
 
     def text(self) -> str:
-        value = " ".join(part.strip() for part in self.parts if part.strip())
-        value = re.sub(r"[ \t]+", " ", value)
-        value = re.sub(r"\s*\n\s*", "\n", value)
+        # Inline elements are joined as rendered: whitespace comes only from the
+        # document itself, so text split across per-letter spans stays intact.
+        value = "".join(self.parts)
+        value = re.sub(r"[ \t\r\f\v\u00a0]+", " ", value)
+        value = re.sub(r" *\n[\s]*", "\n", value)
         return value.strip() + "\n"
 
     def title(self) -> str:

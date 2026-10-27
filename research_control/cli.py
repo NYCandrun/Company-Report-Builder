@@ -9,6 +9,7 @@ import shutil
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError, URLError
 
 from research_control import PASS, __version__
 from research_control.adaptive import advance, complete_work, open_runtime, runtime_status
@@ -52,6 +53,37 @@ def _refresh_release_evidence(root: Path) -> None:
         report, _path = check_phase(root, phase["id"], update_state=False)
         if report["status"] != PASS:
             raise ValueError(f"phase evidence is not releasable: {phase['id']}={report['status']}")
+
+
+def _web_fetch(args: argparse.Namespace, cache: SharedWebCache) -> None:
+    if args.refresh:
+        fetched = public_fetch(args.url, DiscoveryPolicy())
+        response = cache.store_response(
+            args.url,
+            final_url=fetched.url,
+            content_type=fetched.content_type,
+            status=fetched.status,
+            headers=fetched.headers,
+            body=fetched.body,
+            consumer=args.consumer,
+            purpose=args.purpose,
+            discovered_from=args.discovered_from,
+        )
+    else:
+        response = cache.fetch_or_reuse(
+            args.url,
+            consumer=args.consumer,
+            purpose=args.purpose,
+            discovered_from=args.discovered_from,
+            fetcher=lambda: public_fetch(args.url, DiscoveryPolicy()),
+        )
+    _print_json({
+        "status": "fetched", "url": response.requested_url,
+        "final_url": response.final_url, "content_type": response.content_type,
+        "http_status": response.status, "content_bytes": len(response.body),
+        "content_sha256": response.content_sha256,
+        "object_path": response.object_path, "cache_hit": response.cache_hit,
+    })
 
 
 def preflight(root: Path) -> int:
@@ -413,34 +445,14 @@ def main() -> None:
                     )
                     _print_json({"status": "registered", "url": normalized})
                 elif args.web_command == "fetch":
-                    if args.refresh:
-                        fetched = public_fetch(args.url, DiscoveryPolicy())
-                        response = cache.store_response(
-                            args.url,
-                            final_url=fetched.url,
-                            content_type=fetched.content_type,
-                            status=fetched.status,
-                            headers=fetched.headers,
-                            body=fetched.body,
-                            consumer=args.consumer,
-                            purpose=args.purpose,
-                            discovered_from=args.discovered_from,
-                        )
-                    else:
-                        response = cache.fetch_or_reuse(
-                            args.url,
-                            consumer=args.consumer,
-                            purpose=args.purpose,
-                            discovered_from=args.discovered_from,
-                            fetcher=lambda: public_fetch(args.url, DiscoveryPolicy()),
-                        )
-                    _print_json({
-                        "status": "fetched", "url": response.requested_url,
-                        "final_url": response.final_url, "content_type": response.content_type,
-                        "http_status": response.status, "content_bytes": len(response.body),
-                        "content_sha256": response.content_sha256,
-                        "object_path": response.object_path, "cache_hit": response.cache_hit,
-                    })
+                    try:
+                        _web_fetch(args, cache)
+                    except (HTTPError, URLError, PermissionError, ValueError, TimeoutError) as error:
+                        _print_json({
+                            "status": "unavailable", "url": args.url,
+                            "http_status": getattr(error, "code", None),
+                            "reason": f"{type(error).__name__}: {error}",
+                        })
                 elif args.web_command == "list":
                     records = cache.records(purpose=args.purpose, state=args.state)
                     if args.offset < 0 or args.limit < 1 or args.limit > 1000:
