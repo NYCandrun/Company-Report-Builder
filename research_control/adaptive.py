@@ -9,7 +9,8 @@ from typing import Any
 from research_control import PASS
 from research_control.checks import check_phase, run_validator
 from research_control.dispatch import emit_ready_packets
-from research_control.io import load_json, workflow
+from research_control.discovery import ALTERNATES_PART, BLOCKED_SOURCES_LIST
+from research_control.io import load_json, load_jsonl, workflow
 from research_control.orchestration import current_phase, initialize, load_state, phase_order
 from research_control.automatic import RUNTIME_WORKER, run_automatic
 from research_control.media import is_media_url
@@ -202,6 +203,15 @@ def _validate_semantic_receipt(root: Path, store: RuntimeStore, task: dict[str, 
                 raise ValueError(f"{task['task_id']}: {channel} receipt does not match scheduler state")
             if not str(receipt.get("evidence", "")).strip():
                 raise ValueError(f"{task['task_id']}: {channel} receipt lacks completion evidence")
+    if task["task_type"] == "alternate_copies":
+        blocked = {row["source_id"] for row in load_jsonl(root / BLOCKED_SOURCES_LIST)}
+        part = root / ALTERNATES_PART
+        handled = {row["source_id"] for row in load_jsonl(part)} if part.is_file() else set()
+        missing = sorted(blocked - handled)
+        if missing:
+            raise ValueError(
+                f"{task['task_id']}: no alternate or --none record for: {', '.join(missing[:15])}"
+            )
     if task["task_type"] == "triage":
         failures = validate_triage(root)
         if failures:

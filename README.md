@@ -188,6 +188,16 @@ concrete reason.
   GitHub API and are recorded as blocked; their repositories are captured
   individually. `recapture --blocked` re-queues blocked sources after a capture
   method improves.
+
+After the discovery snapshot and every capture finish, any blocked sources get
+one alternate-copies pass (`capture.alternate-copies`, one agent worker): it
+looks for a public copy of the same content (wire-service or issuer copy of a
+release, syndicated article, the same video or episode elsewhere, the other
+party's announcement) and records an alternate or "none found" for every
+blocked source with `discovery alternate`. Alternates join the original's
+channel without reopening it and are captured automatically; `01-sources/BLOCKED.md`
+shows each blocked source's alternate or that none exists. The final manifest
+waits for this pass.
 - Video and audio: a timestamped `transcript.txt`. YouTube tries published
   captions, then yt-dlp captions with the default, `web_embedded`, and
   `android_vr` player clients, then the audio through yt-dlp, then audio

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from research_control.capture import MANIFEST_FIELDS
-from research_control.discovery import coverage_markdown
+from research_control.discovery import ALTERNATES_PART, coverage_markdown
 from research_control.io import (
     atomic_write_json,
     atomic_write_jsonl,
@@ -160,9 +160,26 @@ def reduce_capture_parts(root: Path, store: RuntimeStore) -> dict[str, Any]:
         ],
     )
     atomic_write_jsonl(root / "tools/outputs/capture-dispositions.jsonl", dispositions)
+    alternates_path = root / ALTERNATES_PART
+    alternates: dict[str, list[dict[str, Any]]] = {}
+    for row in (load_jsonl(alternates_path) if alternates_path.is_file() else []):
+        alternates.setdefault(str(row.get("source_id")), []).append(row)
+    captured_ids = {row["id"] for row in manifest_rows}
+
+    def alternate_note(source_id: str) -> str:
+        rows = alternates.get(source_id, [])
+        found = [row["alternate_source_id"] for row in rows if row.get("outcome") == "admitted"]
+        if found:
+            states = [f"`{value}` ({'captured' if value in captured_ids else 'not captured'})" for value in found]
+            return " — alternate copy: " + ", ".join(states)
+        return " — no public alternate copy found" if rows else ""
+
     blocked_lines = ["# Blocked sources", ""]
     if blocked:
-        blocked_lines.extend(f"- `{item['source_id']}` — {item['url']} — {item['reason']}" for item in blocked)
+        blocked_lines.extend(
+            f"- `{item['source_id']}` — {item['url']} — {item['reason']}{alternate_note(item['source_id'])}"
+            for item in blocked
+        )
     else:
         blocked_lines.append("None.")
     atomic_write_text(root / "01-sources/BLOCKED.md", "\n".join(blocked_lines) + "\n")

@@ -29,7 +29,7 @@ from research_control.orchestration import (
     start_task,
     status_summary,
 )
-from research_control.planner import discovery_task_id
+from research_control.planner import ALTERNATES_TASK, discovery_task_id
 from research_control.provision import RUNS_DIRECTORY, provision_run, run_slug, sync_engine
 from research_control.publication import render
 from research_control.reducers import reduce_capture_parts, reduce_discovery, reduce_extraction_parts
@@ -118,6 +118,7 @@ def preflight(root: Path) -> int:
         "prompts/phases/capture-reducer.md",
         "prompts/phases/extraction-reducer.md",
         "prompts/phases/triage.md",
+        "prompts/phases/alternate-copies.md",
         "prompts/phases/brand-guide.md",
         "prompts/phases/diagram-modeling.md",
         "prompts/phases/diagram-building.md",
@@ -284,6 +285,13 @@ def _parser() -> argparse.ArgumentParser:
     discovery_close.add_argument("--channel", required=True, choices=DISCOVERY_CHANNELS)
     discovery_close.add_argument("--state", required=True, choices=["saturated", "sufficient", "not_applicable", "blocked", "incomplete"])
     discovery_close.add_argument("--evidence", required=True)
+    discovery_alternate = discovery_sub.add_parser(
+        "alternate", help="record a public alternate copy of a blocked source, or --none when there is none"
+    )
+    discovery_alternate.add_argument("--source-id", required=True)
+    discovery_alternate.add_argument("--url")
+    discovery_alternate.add_argument("--none", action="store_true", help="no public alternate copy exists")
+    discovery_alternate.add_argument("--evidence", required=True)
     discovery_reopen = discovery_sub.add_parser("reopen", help="reopen a closed channel after a scope change")
     discovery_reopen.add_argument("--channel", required=True, choices=DISCOVERY_CHANNELS)
     discovery_reopen.add_argument("--evidence", required=True)
@@ -429,6 +437,12 @@ def main() -> None:
                 engine.initialize()
                 if args.discovery_command in WORKER_DISCOVERY_COMMANDS:
                     _require_discovery_lease(store, args.channel)
+                if args.discovery_command == "alternate":
+                    alternates = store.task(ALTERNATES_TASK)
+                    if not alternates or alternates["state"] not in {"leased", "running"}:
+                        raise ValueError(f"claim and start {ALTERNATES_TASK} before recording alternates")
+                    if bool(args.url) == bool(args.none):
+                        raise ValueError("pass exactly one of --url or --none")
                 if args.discovery_command == "crawl":
                     passes = []
                     while True:
@@ -444,6 +458,8 @@ def main() -> None:
                     ))
                 elif args.discovery_command == "close":
                     _print_json(engine.close_channel(args.channel, args.state, args.evidence))
+                elif args.discovery_command == "alternate":
+                    _print_json(engine.add_alternate(args.source_id, args.url, args.evidence))
                 elif args.discovery_command == "reopen":
                     _print_json(engine.reopen_channel(args.channel, args.evidence))
                 elif args.discovery_command == "retry":

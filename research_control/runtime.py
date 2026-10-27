@@ -857,6 +857,7 @@ class RuntimeStore:
         discovered_from: str | None = None,
         depth: int = 0,
         metadata: dict[str, Any] | None = None,
+        reopen_channel: bool = True,
     ) -> tuple[dict[str, Any], bool]:
         existing = self.connection.execute(
             "SELECT * FROM sources WHERE canonical_url=?", (canonical_url,)
@@ -880,7 +881,7 @@ class RuntimeStore:
             )
         self.ensure_discovery_channel(channel)
         current = self.discovery_channel(channel)
-        if current and (current["state"] != "open" or int(current["consecutive_empty_passes"]) != 0):
+        if reopen_channel and current and (current["state"] != "open" or int(current["consecutive_empty_passes"]) != 0):
             with self.connection:
                 self.connection.execute(
                     """

@@ -93,7 +93,7 @@
         "standard": {
           "model_class": "balanced_capable",
           "effort": "medium",
-          "task_types": ["source_discovery", "triage", "filing", "language_review"]
+          "task_types": ["source_discovery", "alternate_copies", "triage", "filing", "language_review"]
         },
         "strong": {
           "model_class": "flagship_capable",

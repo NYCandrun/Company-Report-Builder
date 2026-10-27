@@ -22,7 +22,7 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 from urllib.request import Request, build_opener
 
 from research_control.capture import PublicRedirectHandler, USER_AGENT
-from research_control.io import atomic_write_json, atomic_write_jsonl, atomic_write_text, utc_now, workflow
+from research_control.io import append_jsonl, atomic_write_json, atomic_write_jsonl, atomic_write_text, utc_now, workflow
 from research_control.runtime import DISCOVERY_COMPLETE, DISCOVERY_TERMINAL, RuntimeStore
 from research_control.web_cache import SharedWebCache
 
@@ -112,6 +112,8 @@ class LinkExtractor(HTMLParser):
 
 
 LIVE_COVERAGE = "tools/outputs/discovery/coverage.md"
+BLOCKED_SOURCES_LIST = "tools/lists/blocked-sources.jsonl"
+ALTERNATES_PART = "tools/outputs/worker-parts/alternates.jsonl"
 
 
 def coverage_markdown(channels: list[dict[str, Any]]) -> str:
@@ -669,6 +671,42 @@ class DiscoveryEngine:
         result = self.store.set_discovery_channel(channel, state, evidence)
         self.write_catalog()
         return result
+
+    def add_alternate(self, source_id: str, url: str | None, evidence: str) -> dict[str, Any]:
+        """Record a public alternate copy of a blocked source, or that none exists.
+
+        The alternate joins the original's channel without reopening it: it is the
+        same evidence by another route, not new discovery. Each call appends one
+        row to the alternate-copies part.
+        """
+        original = self.store.source(source_id)
+        if not original:
+            raise KeyError(f"unknown source: {source_id}")
+        if not evidence.strip():
+            raise ValueError("alternate evidence is required")
+        row: dict[str, Any] = {"source_id": source_id, "original_url": original["canonical_url"], "evidence": evidence.strip()}
+        if url:
+            canonical = canonicalize_url(url, self.company_url)
+            channel = original["channel"]
+            if not discoverable_link(canonical) and not admissible_media(canonical, channel):
+                raise ValueError("non-research media or asset URL")
+            alternate, created = self.store.add_source(
+                canonical_url=canonical,
+                original_url=url,
+                host_key=host_key(canonical),
+                channel=channel,
+                source_kind=source_kind(canonical),
+                relevance=candidate_relevance(canonical, channel),
+                discovered_from=source_id,
+                metadata={"alternate_of": source_id, "evidence": evidence.strip()},
+                reopen_channel=False,
+            )
+            row.update({"outcome": "admitted", "alternate_source_id": alternate["source_id"], "alternate_url": canonical, "new": created})
+        else:
+            row["outcome"] = "none_found"
+        append_jsonl(self.root / ALTERNATES_PART, row)
+        self.write_catalog()
+        return row
 
     def reopen_channel(self, channel: str, evidence: str) -> dict[str, Any]:
         """Reopen a closed channel when the research scope it was closed against changes."""

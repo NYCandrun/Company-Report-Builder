@@ -8,7 +8,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-from research_control.discovery import DISCOVERY_CHANNELS, DiscoveryEngine
+from research_control.discovery import ALTERNATES_PART, BLOCKED_SOURCES_LIST, DISCOVERY_CHANNELS, DiscoveryEngine
 from research_control.io import atomic_write_jsonl, atomic_write_text, load_json, workflow
 from research_control.triage import TRIAGE_DECISIONS, TRIAGE_EXCERPT_CHARACTERS, TRIAGE_INDEX, triage_included
 from research_control.orchestration import TASK_SCHEMAS, current_phase, load_state
@@ -22,6 +22,9 @@ RUNTIME_DISCOVERY_CHANNELS = {"company_site", "sitemaps"}
 # Channels that complete first-party coverage start after the runtime crawl, so
 # their workers search for what the crawl could not reach rather than repeat it.
 FIRST_PARTY_FOLLOW_UP = {"newsroom_blog", "docs_help", "careers", "code_packages"}
+
+
+ALTERNATES_TASK = "capture.alternate-copies"
 
 
 def discovery_task_id(channel: str) -> str:
@@ -301,7 +304,38 @@ class AdaptivePlanner:
 
         capture_tasks = [self.store.task(task_id) for task_id in capture_ids]
         snapshot_done = bool(barrier) and barrier["state"] == "succeeded"
-        if snapshot_done and capture_ids and all(task and task["state"] == "succeeded" for task in capture_tasks):
+        captures_done = bool(capture_ids) and all(task and task["state"] == "succeeded" for task in capture_tasks)
+        alternates = self.store.task(ALTERNATES_TASK)
+        if snapshot_done and captures_done and not alternates:
+            blocked = self._blocked_sources()
+            if blocked:
+                # One pass per run: blocked sources get a search for public
+                # copies of the same content; alternates of alternates do not.
+                atomic_write_jsonl(self.root / BLOCKED_SOURCES_LIST, blocked)
+                self._add(
+                    WorkItem(
+                        task_id=ALTERNATES_TASK,
+                        phase="capture",
+                        task_type="alternate_copies",
+                        inputs=[
+                            {"id": "blocked_sources", "path": BLOCKED_SOURCES_LIST, "required": True},
+                            {"id": "scope_map", "path": "00-scope.md", "required": True},
+                        ],
+                        outputs=[ALTERNATES_PART],
+                        prompt_files=["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/phases/alternate-copies.md"],
+                        depends_on=[barrier_id],
+                        schema_files=[],
+                        validators=["alternate_accounting"],
+                        priority=45,
+                        independent=True,
+                        exclusive_inputs=True,
+                        metadata={"channels": list(DISCOVERY_CHANNELS), "executor": "agent"},
+                    ),
+                    created,
+                )
+                alternates = self.store.task(ALTERNATES_TASK)
+        alternates_done = alternates is None or alternates["state"] == "succeeded"
+        if snapshot_done and captures_done and alternates_done:
             self._add(
                 WorkItem(
                     task_id="capture.reduce-captures",
@@ -317,7 +351,7 @@ class AdaptivePlanner:
                         "tools/outputs/capture-dispositions.jsonl",
                     ],
                     prompt_files=["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/phases/capture-reducer.md"],
-                    depends_on=[barrier_id, *capture_ids],
+                    depends_on=[barrier_id, *([ALTERNATES_TASK] if alternates else []), *capture_ids],
                     schema_files=["research_control/schemas/source.schema.json", "research_control/schemas/disposition.schema.json"],
                     validators=["source_records", "source_dates", "manifest_files", "capture_workers"],
                     priority=50,
@@ -435,6 +469,25 @@ class AdaptivePlanner:
                 created,
             )
         return created
+
+    def _blocked_sources(self) -> list[dict[str, Any]]:
+        """Blocked captures that are not themselves alternates, with their reasons."""
+        rows: list[dict[str, Any]] = []
+        for source in self.store.sources():
+            if source["relevance"] in UNCAPTURED_RELEVANCE or source["metadata"].get("alternate_of"):
+                continue
+            receipt_path = self.root / "tools/outputs/worker-parts/capture" / f"{source['source_id']}.json"
+            receipt = load_json(receipt_path) if receipt_path.is_file() else {}
+            if receipt.get("status") != "blocked" and source["status"] != "blocked":
+                continue
+            rows.append({
+                "source_id": source["source_id"],
+                "url": source["canonical_url"],
+                "channel": source["channel"],
+                "reason": receipt.get("reason") or source["metadata"].get("capture_reason")
+                or source["metadata"].get("discovery_error") or "blocked",
+            })
+        return rows
 
     def _write_triage_index(self) -> None:
         """Write a compact, deterministic index the triage worker reads instead of full sources."""

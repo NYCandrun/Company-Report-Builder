@@ -238,6 +238,8 @@ class AdaptivePlannerTests(unittest.TestCase):
                     store.complete(task["task_id"], RUNTIME_WORKER)
 
                 AdaptivePlanner(root, store).reconcile()
+                # No capture was blocked, so no alternate-copies pass is planned.
+                self.assertIsNone(store.task("capture.alternate-copies"))
                 self.assertIn("capture.reduce-discovery", store.task("capture.reduce-captures")["depends_on"])
                 reduce_capture_parts(root, store)
                 store.claim(RUNTIME_WORKER, task_id="capture.reduce-captures")
@@ -269,6 +271,76 @@ class AdaptivePlannerTests(unittest.TestCase):
                 self.assertTrue(all(task["metadata"]["estimated_tokens"] <= 90_000 for task in extraction_tasks))
                 extracted = {item["source_id"] for task in extraction_tasks for item in task["inputs"]}
                 self.assertNotIn(small, extracted)
+
+
+class AlternateCopiesTests(unittest.TestCase):
+    def test_blocked_capture_gets_one_alternate_pass_before_the_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            copy_template(root)
+            state = initialize(root, "https://example.com")
+            state["phases"]["bootstrap"]["status"] = "complete"
+            state["phases"]["scope"]["status"] = "complete"
+            state["phases"]["capture"]["status"] = "ready"
+            save_state(root, state)
+            with RuntimeStore(root) as store:
+                store.initialize(run_id=state["run_id"], company_url=state["company_url"])
+                engine = DiscoveryEngine(root, store)
+                engine.initialize()
+                engine.add_candidates(
+                    "company_site", ["https://example.com/press"], discovered_from="homepage",
+                    evidence="fixture", record_pass=False,
+                )
+                AdaptivePlanner(root, store).reconcile()
+                for channel in DISCOVERY_CHANNELS:
+                    for number in (1, 2):
+                        engine.add_candidates(channel, [], discovered_from=f"p{number}", evidence=f"{channel} pass {number}")
+                    _write_receipt(root, store, channel)
+                    worker = RUNTIME_WORKER if channel in RUNTIME_DISCOVERY_CHANNELS else f"w-{channel}"
+                    store.claim(worker, task_id=discovery_task_id(channel))
+                    store.start(discovery_task_id(channel), worker)
+                    store.complete(discovery_task_id(channel), worker)
+                AdaptivePlanner(root, store).reconcile()
+                reduce_discovery(root, store)
+                store.claim(RUNTIME_WORKER, task_id="capture.reduce-discovery")
+                store.start("capture.reduce-discovery", RUNTIME_WORKER)
+                store.complete("capture.reduce-discovery", RUNTIME_WORKER)
+                captures = [task for task in store.tasks(phase="capture") if task["task_type"] == "capture"]
+                for index, task in enumerate(captures):
+                    source_id = task["metadata"]["source_id"]
+                    directory_path = root / "01-sources/captures" / source_id
+                    directory_path.mkdir(parents=True, exist_ok=True)
+                    (directory_path / "content.txt").write_text("text\n", encoding="utf-8")
+                    status = "blocked" if store.source(source_id)["canonical_url"].endswith("/press") else "captured"
+                    atomic_write_json(root / task["metadata"]["receipt"], {
+                        "source_id": source_id, "status": status, "reason": "HTTP Error 403: Forbidden",
+                        "canonical_text_ready": status == "captured",
+                        "local_paths": [str((directory_path / "content.txt").relative_to(root))],
+                        "source": {"id": source_id, "grade": "P", "title": "t", "publisher": "p",
+                                   "url": store.source(source_id)["canonical_url"], "date published": "",
+                                   "date last modified": "", "date captured": "2026-10-27",
+                                   "local file": str((directory_path / "content.txt").relative_to(root)),
+                                   "method": "fixture", "notes": ""},
+                    })
+                    store.claim(RUNTIME_WORKER, task_id=task["task_id"])
+                    store.start(task["task_id"], RUNTIME_WORKER)
+                    store.complete(task["task_id"], RUNTIME_WORKER)
+                AdaptivePlanner(root, store).reconcile()
+                alternates = store.task("capture.alternate-copies")
+                self.assertIsNotNone(alternates)
+                self.assertIsNone(store.task("capture.reduce-captures"))
+                blocked_id = next(
+                    task["metadata"]["source_id"] for task in captures
+                    if store.source(task["metadata"]["source_id"])["canonical_url"].endswith("/press")
+                )
+                row = engine.add_alternate(blocked_id, "https://wire.example.org/release", "wire copy of the release")
+                self.assertEqual("admitted", row["outcome"])
+                # The alternate does not reopen the original's channel.
+                self.assertEqual("saturated", store.discovery_channel("company_site")["state"])
+                AdaptivePlanner(root, store).reconcile()
+                alternate_capture = store.task(f"capture.source.{row['alternate_source_id'].casefold()}")
+                self.assertIsNotNone(alternate_capture)
+                self.assertEqual("ready", alternate_capture["state"])
 
 
 def _write_receipt(root: Path, store: RuntimeStore, channel: str) -> None:

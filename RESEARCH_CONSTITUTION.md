@@ -123,7 +123,12 @@ check them unless the user asks.
 
 ### Public-access boundary
 
-Back off when rate limited and log failed access. Try the Wayback Machine once.
+Back off when rate limited and log failed access. When an admitted source
+cannot be captured, look for a publicly reachable copy of the same content
+(a wire-service or issuer copy of a release, a syndicated article, the same
+video or episode on another platform, the other party's own announcement)
+before accepting the gap; a page that only summarizes the original is not a
+copy. Try the Wayback Machine once.
 If the network path is blocked or repeatedly fails, stop that channel and use
 dated first-party sources for messaging history.
 
