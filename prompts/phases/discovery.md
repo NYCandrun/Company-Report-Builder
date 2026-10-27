@@ -29,8 +29,13 @@ company and for direct competitors alike:
   query ending in `FORMAT TSV`, or the same query posted with `curl
   --data-binary`), and, when the playground is unavailable, the raw hourly
   files at `https://data.gharchive.org/YYYY-MM-DD-H.json.gz`, scanned with a
-  script for only the hours and repositories you need. The archive's date
-  range is limited; state it.
+  script for only the hours and repositories you need. The playground's copy
+  covers a limited window and can stop updating (in October 2026 it ran from
+  January 13, 2023 to July 2, 2026): check it first with one request
+  (`SELECT min(file_time), max(file_time) FROM github_events`), state it, and
+  for activity after it use the live GitHub pages (`web render`) and the
+  latest commit dates. The raw hourly files are practical only for a few
+  specific hours.
 - Software Heritage, the public archive of source code, which often keeps a
   repository after GitHub deleted it. Check for a copy with one request to
   `https://archive.softwareheritage.org/api/1/origin/https://github.com/OWNER/REPO/visit/latest/`;

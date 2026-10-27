@@ -391,8 +391,10 @@ after each wave of workers.
 Discovery uses public archives for what GitHub and the web no longer serve,
 for the company and for direct competitors: GH Archive, the public record of
 GitHub events, through the ClickHouse public playground (one cheap SQL
-request) or, when that is unavailable, its raw hourly files at
-data.gharchive.org; Software Heritage, the public archive of source code, for
+request; its copy covers a limited window, January 13, 2023 to July 2, 2026
+when checked in October 2026, so workers check the range first and use live
+GitHub pages for later activity) or, when that is unavailable, its raw hourly
+files at data.gharchive.org; Software Heritage, the public archive of source code, for
 the files of repositories GitHub has deleted (the runtime reads their file
 list and Markdown and CSV files, not their code); and the Wayback Machine for
 pages when the network allows it. The company's own deleted repositories are
