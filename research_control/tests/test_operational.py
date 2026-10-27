@@ -36,7 +36,7 @@ def copy_template(target: Path) -> None:
     for name in ("README.md", "RESEARCH_CONSTITUTION.md", "WORKFLOW.yaml", "pyproject.toml"):
         shutil.copy2(SOURCE_ROOT / name, target / name)
     for name in ("prompts", "research_control", "tools"):
-        shutil.copytree(SOURCE_ROOT / name, target / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        shutil.copytree(SOURCE_ROOT / name, target / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "outputs"))
 
 
 def text(root: Path, relative: str, value: str = "complete\n") -> None:
