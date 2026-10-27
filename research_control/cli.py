@@ -586,7 +586,17 @@ def main() -> None:
                         raise ValueError(f"task is not currently claimable: {args.task_id}")
                     _print_json(claimed)
                 elif args.work_command == "start":
-                    _print_json(store.start(args.task_id, args.worker_id))
+                    from research_control.dispatch import brief_out_of_date, write_packet
+
+                    started = store.start(args.task_id, args.worker_id)
+                    changed = brief_out_of_date(root, args.task_id)
+                    if changed:
+                        # A file changed after the brief was written: the worker reads a fresh copy.
+                        write_packet(root, store.task(args.task_id))
+                        started = {**started, "brief_rewritten": True,
+                                   "notice": "This task's brief was rewritten because these inputs changed after it "
+                                             f"was written: {', '.join(changed[:10])}. Read the brief again from the top."}
+                    _print_json(started)
                 elif args.work_command == "heartbeat":
                     _print_json(store.heartbeat(args.task_id, args.worker_id))
                 elif args.work_command == "fail":

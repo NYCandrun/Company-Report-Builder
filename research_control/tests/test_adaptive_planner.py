@@ -668,11 +668,42 @@ class WorkerBriefTests(unittest.TestCase):
             self.assertNotIn("## Browsing", brief)
             self.assertNotIn("## Citation meaning", brief)
             self.assertNotIn("<!-- only:", brief)
+            # What is not included is named before the instructions, so a worker knows to open it.
+            self.assertLess(brief.index("Not included in this file"), brief.index("# The task's instructions"))
+            self.assertIn("Open any other file you need to judge well", brief)
+            # A brief whose copy of an input went out of date is caught.
+            from research_control.dispatch import brief_out_of_date
+
+            self.assertEqual([], brief_out_of_date(root, "facts.extract.abc"))
+            atomic_write_text(root / "tools/extracts/slices/SRC-1.part-0001.txt", "We build agents and tools.\n")
+            self.assertEqual(["tools/extracts/slices/SRC-1.part-0001.txt"], brief_out_of_date(root, "facts.extract.abc"))
             self.assertEqual("standard", entry["model_route"]["tier"])
             self.assertIn("work claim facts.extract.abc --worker-id w-abc", brief)
             self.assertIn("work check facts.extract.abc", brief)
             self.assertIn("Treat X as internal tooling.", brief)
             self.assertIn("--effort medium", brief)
+
+    def test_every_task_type_gets_the_rules_it_must_apply(self) -> None:
+        import json
+
+        from research_control.dispatch import _prompt
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            copy_template(root)
+            document = json.loads((root / "WORKFLOW.yaml").read_text(encoding="utf-8"))
+            carriers = {
+                task["task_type"] for profile in document["execution_profiles"].values()
+                for task in profile.get("tasks", []) if "prompts/core/evidence.md" in task.get("cores", [])
+            }
+            # Client marks (stated, inferred, lead) apply wherever a client can appear, diagrams included.
+            exempt = {"scope", "triage", "capture"}
+            for task_type in sorted(carriers - exempt):
+                self.assertIn("## Claim discipline", _prompt(root, "prompts/core/evidence.md", task_type), task_type)
+            for task_type in ("diagram_builder", "orchestrator_page_review", "brief_writer", "diagram_modeler"):
+                text = _prompt(root, "prompts/core/evidence.md", task_type)
+                self.assertIn("## Currency", text, task_type)
+                self.assertIn("diagram label", text, task_type)
 
 
 class GateRefreshTests(unittest.TestCase):

@@ -165,7 +165,12 @@ both the number of steps and the size of what it holds. Each task's brief
 (`<task>.brief.md`) is one file with everything the worker needs: its steps,
 the task's instructions, and the text of the files it reads (stores such as
 captures and the fact store stay out; the instructions say which rows or
-passages to open). A worker reads it once instead of opening file after file.
+passages to open). A worker reads it once instead of opening file after file; files that
+are not included (stores, large sets) are listed near the top, and the worker
+opens whatever else it needs to judge well, short of reading whole stores. The
+brief records a fingerprint of every included file, and `work start` rewrites
+a brief whose copy of an input went out of date and tells the worker to read
+it again.
 The orchestrator starts a worker with one line pointing at that file, so the
 brief never sits in the orchestrator's own conversation. Shared rule sections
 marked `<!-- only: ... -->` reach only the task types that use them. `run`

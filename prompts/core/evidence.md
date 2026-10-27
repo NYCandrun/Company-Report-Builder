@@ -30,7 +30,7 @@ dates. For recordings, use the live date when known and keep upload date in
 notes.
 
 ## Claim discipline
-<!-- only: source_discovery, extraction, filing, filing_review, synthesis, currency_review, verification, verification_fixer, technical_review, devils_advocate, insider_review, editor_review, fixer, brief_writer, diagram_modeler, citation_claim_review, publication_fixer -->
+<!-- only: source_discovery, extraction, filing, filing_review, synthesis, currency_review, verification, verification_fixer, technical_review, devils_advocate, insider_review, editor_review, fixer, brief_writer, diagram_modeler, citation_claim_review, publication_fixer, diagram_builder, orchestrator_page_review -->
 
 - Aims are not achievements.
 - `can` is not `does`. `some` is not `all`. `up to` is not typical.
@@ -79,7 +79,7 @@ organization responsible for the source. Put a person's name in notes unless a
 separate field is assigned.
 
 ## Currency
-<!-- only: extraction, filing_review, synthesis, currency_review, verification, verification_fixer, technical_review, devils_advocate, insider_review, editor_review, fixer, brief_writer, diagram_modeler, citation_claim_review, publication_fixer -->
+<!-- only: extraction, filing_review, synthesis, currency_review, verification, verification_fixer, technical_review, devils_advocate, insider_review, editor_review, fixer, brief_writer, diagram_modeler, citation_claim_review, publication_fixer, diagram_builder, orchestrator_page_review -->
 
 Every fact carries the date its source's content reflects, from
 `tools/outputs/source-dates.jsonl` (published, embedded upload date, last
@@ -108,7 +108,7 @@ change. Never state a company dollar price as current unless the company
 publishes it.
 
 ## Citation meaning
-<!-- only: synthesis, verification_fixer, technical_review, devils_advocate, insider_review, editor_review, fixer, brief_writer, diagram_modeler, citation_claim_review, publication_fixer -->
+<!-- only: synthesis, verification_fixer, technical_review, devils_advocate, insider_review, editor_review, fixer, brief_writer, diagram_modeler, citation_claim_review, publication_fixer, orchestrator_page_review -->
 
 A citation supports the exact adjacent words. It names where the source came
 from (publisher or channel, platform), its date, and resolves to the quoted

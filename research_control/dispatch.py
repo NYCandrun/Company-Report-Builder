@@ -8,7 +8,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-from research_control.io import atomic_write_json, atomic_write_text, utc_now
+from research_control.hashing import hash_path
+from research_control.io import atomic_write_json, atomic_write_text, load_json, utc_now
 from research_control.runtime import RuntimeStore
 from research_control.routing import model_route
 
@@ -122,13 +123,12 @@ def write_packet(root: Path, task: dict[str, Any]) -> dict[str, Any]:
     ])
     atomic_write_text(md_path, "\n".join(lines))
     brief_path = directory / f"{task['task_id']}.brief.md"
-    material, elsewhere = task_material(root, task)
-    atomic_write_text(brief_path, worker_brief(root, task, route, md_path) + "\n".join([
+    material, elsewhere, fingerprints = task_material(root, task)
+    atomic_write_json(directory / f"{task['task_id']}.material.json", fingerprints)
+    atomic_write_text(brief_path, worker_brief(root, task, route, md_path, elsewhere) + "\n".join([
         "", "---", "", "# The task's instructions", "", md_path.read_text(encoding="utf-8").strip(), "",
         "---", "", "# The files this task reads", "",
-        material or "(none: the instructions name what to open)",
-        *(["", "Not included above (open only what you need, as the instructions say):",
-           *(f"- `{path}`" for path in elsewhere)] if elsewhere else []),
+        material or "(none in this file: see the list of files not included near the top)",
     ]) + "\n")
     return {
         "task_id": task["task_id"],
@@ -157,15 +157,17 @@ NOT_INLINED = ("01-sources/", "02-facts/", "04-competitors/", "07-final-report/"
 TEXT_SUFFIXES = {".md", ".txt", ".json", ".jsonl", ".csv", ".tsv", ".yaml", ".yml"}
 
 
-def task_material(root: Path, task: dict[str, Any]) -> tuple[str, list[str]]:
-    """The text of the files a task reads, each under a header, and the paths left out
-    (stores, files the task edits, large sets, files over the size limits)."""
+def task_material(root: Path, task: dict[str, Any]) -> tuple[str, list[str], dict[str, str]]:
+    """The text of the files a task reads, each under a header; the paths left out
+    (stores, files the task edits, large sets, files over the size limits); and a
+    fingerprint of each included file, so a copy that went out of date is caught."""
     from research_control.io import resolve_pattern
 
     outputs = {str(path.relative_to(root)) for pattern in task["outputs"] for path in resolve_pattern(root, pattern)}
     outputs |= {pattern for pattern in task["outputs"] if not any(mark in pattern for mark in "*{?")}
     parts: list[str] = []
     left: list[str] = []
+    fingerprints: dict[str, str] = {}
     total = 0
     for item in task["inputs"]:
         pattern = str(item.get("path", "")) if isinstance(item, dict) else ""
@@ -190,10 +192,20 @@ def task_material(root: Path, task: dict[str, Any]) -> tuple[str, list[str]]:
                 continue
             total += len(text)
             parts.append(f"=== FILE: {relative} ===\n{text}\n")
-    return "\n".join(parts), left
+            fingerprints[relative] = hash_path(path)
+    return "\n".join(parts), left, fingerprints
 
 
-def worker_brief(root: Path, task: dict[str, Any], route: dict[str, Any], packet: Path) -> str:
+def brief_out_of_date(root: Path, task_id: str) -> list[str]:
+    """Files whose text in a task's brief no longer matches the file on disk."""
+    path = root / PACKET_DIRECTORY / f"{task_id}.material.json"
+    fingerprints = load_json(path) if path.is_file() else {}
+    return sorted(relative for relative, digest in fingerprints.items()
+                  if not (root / relative).is_file() or hash_path(root / relative) != digest)
+
+
+def worker_brief(root: Path, task: dict[str, Any], route: dict[str, Any], packet: Path,
+                 elsewhere: list[str] | None = None) -> str:
     """The whole instruction a host gives a worker for this task, so the orchestrator
     only points the worker at it: lifecycle, run notes, the check, completion; the
     task's instructions and the files it reads are appended after it."""
@@ -207,12 +219,17 @@ def worker_brief(root: Path, task: dict[str, Any], route: dict[str, Any], packet
         "",
         f"1. `python3 -m research_control work claim {task_id} --worker-id {worker}` then "
         f"`python3 -m research_control work start {task_id} --worker-id {worker}` "
-        "(if refused for concurrency, wait a minute and retry).",
-        "2. Everything you need is in this file: the task's instructions follow these steps, then the files the "
-        "task reads, each under `=== FILE: path ===`. Read this file whole, in as few reads as you can (Read with "
-        "allow_large, or a few large ranges), and follow the instructions exactly. Open another file only to edit "
-        "an output, or where the instructions say to (a full fact row or a capture), never a whole store.",
+        "(if refused for concurrency, wait a minute and retry). If `work start` says this file was rewritten because "
+        "its inputs changed, read it again from the top.",
+        "2. This file holds the task's instructions (after these steps) and the text of the files the task reads "
+        "(at the end, each under `=== FILE: path ===`), except the files listed just below. Read it whole, in as "
+        "few reads as you can (Read with allow_large, or a few large ranges), and follow the instructions exactly. "
+        "Open any other file you need to judge well: a related fact, the passage around a quote, a file listed "
+        "below. Do not read whole stores (every capture, the whole fact store) end to end.",
     ]
+    if elsewhere:
+        lines += ["", "   Not included in this file (open what you need from these):",
+                  *(f"   - `{path}`" for path in elsewhere), ""]
     if notes and notes.group(1).strip():
         lines += ["3. Run notes from `00-scope.md` (findings and decisions this run has made; they apply to your work):",
                   "", notes.group(1).strip(), ""]
