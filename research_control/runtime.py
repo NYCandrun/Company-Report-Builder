@@ -521,8 +521,9 @@ class RuntimeStore:
         if stale:
             now = utc_now()
             with self.connection:
+                # Rerunning changed work is a fresh attempt, not a retry of a failure.
                 self.connection.executemany(
-                    "UPDATE tasks SET state='stale', finished_at=NULL, updated_at=? WHERE task_id=?",
+                    "UPDATE tasks SET state='stale', finished_at=NULL, attempt_count=0, updated_at=? WHERE task_id=?",
                     [(now, task_id) for task_id in sorted(stale)],
                 )
             for task_id in sorted(stale):
@@ -552,7 +553,7 @@ class RuntimeStore:
         task = self.task(task_id)
         if not task:
             raise KeyError(f"unknown task: {task_id}")
-        if task["state"] != "succeeded":
+        if task["state"] not in {"succeeded", "blocked", "failed"}:
             return task
         # Completed consumers of this task's outputs are stale with it.
         stale = [task_id]
@@ -569,11 +570,13 @@ class RuntimeStore:
         now = utc_now()
         with self.connection:
             self.connection.execute(
-                "UPDATE tasks SET state='stale', finished_at=NULL, last_error=?, updated_at=? WHERE task_id=?",
+                # A requested rerun is a fresh attempt, not a retry of a failure.
+                "UPDATE tasks SET state='stale', finished_at=NULL, attempt_count=0, last_error=?, updated_at=? "
+                "WHERE task_id=?",
                 (reason, now, task_id),
             )
             self.connection.executemany(
-                "UPDATE tasks SET state='stale', finished_at=NULL, updated_at=? WHERE task_id=?",
+                "UPDATE tasks SET state='stale', finished_at=NULL, attempt_count=0, updated_at=? WHERE task_id=?",
                 [(now, child) for child in stale[1:]],
             )
         self.event("task_stale", task_id, {"reason": reason})

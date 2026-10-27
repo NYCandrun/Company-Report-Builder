@@ -188,6 +188,19 @@ def current_phase(root: Path, state: dict[str, Any] | None = None) -> str | None
     return None
 
 
+def reopen_phase(root: Path, phase_id: str, reason: str) -> None:
+    """Return a completed phase to ready when its work is no longer current."""
+    state = load_state(root)
+    record = state["phases"][phase_id]
+    if record["status"] != "complete":
+        return
+    record["status"] = "ready"
+    record.pop("completed_at", None)
+    state["status"] = "running"
+    save_state(root, state)
+    append_history(root, "phase-reopened", f"{phase_id}: {reason}")
+
+
 def set_phase_result(root: Path, phase_id: str, status: str, report: str) -> dict[str, Any]:
     state = load_state(root)
     if phase_id not in state["phases"]:

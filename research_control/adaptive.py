@@ -11,7 +11,7 @@ from research_control.checks import check_phase, run_validator
 from research_control.dispatch import emit_ready_packets
 from research_control.discovery import ALTERNATES_PART, BLOCKED_SOURCES_LIST
 from research_control.io import load_json, load_jsonl, workflow
-from research_control.orchestration import current_phase, initialize, load_state, phase_order
+from research_control.orchestration import current_phase, initialize, load_state, phase_order, reopen_phase
 from research_control.automatic import RUNTIME_WORKER, run_automatic
 from research_control.media import is_media_url
 from research_control.planner import AdaptivePlanner
@@ -52,6 +52,7 @@ def advance(root: Path, company_url: str | None = None, *, automatic: bool = Tru
         recovered = store.recover_expired()
         stale = store.invalidate_stale()
         for _step in range(16):
+            _reopen_unsatisfied_phases(root, store)
             phase = current_phase(root)
             if phase is None:
                 return {"status": "released", "phase": None, "recovered": recovered, "stale": stale}
@@ -120,6 +121,17 @@ def advance(root: Path, company_url: str | None = None, *, automatic: bool = Tru
                 "runtime": store.summary(),
             }
     raise RuntimeError("adaptive advance exceeded the phase-transition safety bound")
+
+
+def _reopen_unsatisfied_phases(root: Path, store: RuntimeStore) -> None:
+    """A passed gate no longer holds once any of its phase's tasks must rerun."""
+    state = load_state(root)
+    for phase_id in phase_order(root):
+        if state["phases"][phase_id]["status"] != "complete":
+            continue
+        pending = [task["task_id"] for task in store.tasks(phase=phase_id) if task["state"] not in SATISFIED_STATES]
+        if pending:
+            reopen_phase(root, phase_id, f"{len(pending)} task(s) must rerun, e.g. {pending[0]}")
 
 
 def complete_work(
@@ -240,7 +252,7 @@ def retry_media(root: Path, source_ids: list[str] | None = None) -> dict[str, An
     selected = set(source_ids or [])
     requeued: list[str] = []
     with open_runtime(root) as store:
-        for task in store.tasks(states={"succeeded"}):
+        for task in store.tasks(states={"succeeded", "blocked", "failed"}):
             if task["task_type"] != "capture":
                 continue
             source_id = task["metadata"].get("source_id", "")
@@ -262,7 +274,7 @@ def requeue_captures(root: Path, source_ids: list[str] | None = None, *, blocked
     selected = set(source_ids or [])
     requeued: list[str] = []
     with open_runtime(root) as store:
-        for task in store.tasks(states={"succeeded"}):
+        for task in store.tasks(states={"succeeded", "blocked", "failed"}):
             if task["task_type"] != "capture":
                 continue
             source_id = task["metadata"].get("source_id", "")
