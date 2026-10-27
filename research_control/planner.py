@@ -512,6 +512,11 @@ class AdaptivePlanner:
         for source in self.store.sources():
             if source["relevance"] in UNCAPTURED_RELEVANCE or source["metadata"].get("alternate_of"):
                 continue
+            # A source still being captured is not blocked yet, whatever an
+            # earlier attempt recorded.
+            capture = self.store.task(f"capture.source.{source['source_id'].casefold()}")
+            if capture and capture["state"] not in SATISFIED_STATES:
+                continue
             receipt_path = self.root / "tools/outputs/worker-parts/capture" / f"{source['source_id']}.json"
             receipt = load_json(receipt_path) if receipt_path.is_file() else {}
             if receipt.get("status") != "blocked" and source["status"] != "blocked":
