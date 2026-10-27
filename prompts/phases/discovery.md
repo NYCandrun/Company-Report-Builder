@@ -39,6 +39,30 @@ Admit what answers a question, not everything that exists:
 - Competitors: admit the pages that establish a competitor's positioning,
   packaging, pricing, or the specific capability being compared. Do not admit a
   competitor's documentation or blog wholesale.
+- Market and competitors (`market_competitors`): build the competitor set from
+  evidence, not from the best-known names. Look in three places:
+  1. Firms the company names or compares itself to: its own pages, its
+     leaders' interviews, its job postings, and captured sales material.
+  2. Firms listed beside the company where buyers look: the partner
+     directories and competency lists it appears in (cloud providers, AI labs,
+     software vendors), marketplace categories, agency and review directories,
+     "alternatives to" and comparison pages, award and analyst lists, its
+     investors' portfolios, and trade press that names firms together.
+  3. Firms selling the same offering to the same buyers in the same way: the
+     same engagement model, size, and specialization.
+  A direct competitor sells the same kind of offering to the same buyers in a
+  similar way; an adjacent firm (a global consulting firm, a platform vendor,
+  an AI lab moving into services) competes for some of the same budget. Find
+  the direct competitors first, and record which each firm is and why. For
+  each direct competitor, admit the pages that establish its positioning and
+  offering, engagement model and packaging, pricing or rate signals, partner
+  tiers, named customers or case studies, size and funding (headcount, rounds,
+  acquisitions), and recent launches with dates. For the market, admit what
+  sizes or describes the category: analyst and trade reports, filings and
+  earnings commentary on the category, funding and acquisition activity, and
+  moves by platform vendors and AI labs into the company's line of work.
+  Close as `sufficient` against the market and competitor questions, naming
+  each competitor found, whether it is direct or adjacent, and the evidence.
 - Social platforms that require login (LinkedIn, X, Facebook, Instagram,
   Threads, TikTok) are recorded automatically as uncaptured leads, except
   videos admitted on the `video` channel, which the runtime tries to transcribe. Admit the

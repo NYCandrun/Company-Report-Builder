@@ -368,7 +368,7 @@ Discovery has no source-count target in either direction. Scope numbers the
 research questions (`Q1`, `Q2`, ...), starting from the brief's required
 sections, and every later stage is bounded by them.
 
-There is one discovery task per channel, ten in all:
+There is one discovery task per channel, eleven in all:
 
 | Channel | Who does it |
 |---|---|
@@ -376,6 +376,7 @@ There is one discovery task per channel, ten in all:
 | `sitemaps` | runtime: audits every declared sitemap against the catalog |
 | `newsroom_blog`, `docs_help`, `careers`, `code_packages` | one agent worker each, after the crawl, for what the crawl could not reach |
 | `video`, `podcasts`, `social`, `independent_web` | one agent worker each, in parallel with the crawl |
+| `market_competitors` | one agent worker, in parallel with the crawl: the market, and direct and adjacent competitors found from evidence (shared partner directories, marketplace categories, comparison pages, trade press, the company's own comparisons) |
 
 A search channel closes as `sufficient` when its admitted sources answer the
 named questions (the evidence must cite the question IDs), or as `saturated`

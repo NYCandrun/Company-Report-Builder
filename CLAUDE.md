@@ -26,7 +26,7 @@ every ready packet until exact-artifact release passes.
   beyond these entries. When a worker reports something for you, act on it; a
   small correction to a finished output is recorded with `work record-edit`.
   Discovery is one task per channel: the runtime handles `company_site` and
-  `sitemaps`; each of the other eight channels gets its own worker.
+  `sitemaps`; each of the other nine channels gets its own worker.
 - Workers act only under a held lease: claim and start before working, succeed
   only after outputs exist. Never let a worker run discovery or capture
   commands for a task it has not claimed. To add work to a closed channel,

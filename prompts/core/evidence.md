@@ -11,8 +11,10 @@ evidence. The immutable assignment and phase prompt define your actual work.
 - T: press, analysts, reviews, reprints, aggregators, and competitors describing the company.
 - I: non-public material supplied by the user.
 
-A company-authored customer story is P. Grade by authorship and first-hand
-status, not merely the quoted speaker or hosting domain.
+A company-authored customer story is P. A competitor's own page about its own
+business is S (first-hand for that firm); press and analysts on the market are
+T. Grade by authorship and first-hand status, not merely the quoted speaker or
+hosting domain.
 
 ## Fact receipts
 <!-- only: extraction, filing, filing_review, verification, verification_fixer, technical_review, citation_claim_review -->

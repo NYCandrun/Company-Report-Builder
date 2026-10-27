@@ -86,11 +86,15 @@ def _first_party_discovery(root: Path, store: RuntimeStore, task: dict[str, Any]
     return result
 
 
+# Channels whose sources other parties wrote: the press, competitors, and the market.
+THIRD_PARTY_CHANNELS = {"independent_web", "market_competitors"}
+
+
 def _capture(root: Path, store: RuntimeStore, task: dict[str, Any]) -> dict[str, Any]:
     source = store.source(task["metadata"]["source_id"])
     if not source:
         raise KeyError(f"unknown source: {task['metadata']['source_id']}")
-    grade = "S" if source["channel"] == "independent_web" else "P"
+    grade = "S" if source["channel"] in THIRD_PARTY_CHANNELS else "P"
     media = source["channel"] in {"video", "podcasts"} or is_media_url(source["canonical_url"])
     receipt = auto_capture_source(
         root, url=source["canonical_url"], source_id=source["source_id"], grade=grade, store=store, media=media,

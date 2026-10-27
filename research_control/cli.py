@@ -698,7 +698,9 @@ def main() -> None:
                     raise ValueError(
                         f"{args.source_id}: media sources require caption/transcription capture and a manual receipt"
                     )
-                grade = args.grade or ("S" if source_record["channel"] == "independent_web" else "P")
+                from research_control.automatic import THIRD_PARTY_CHANNELS
+
+                grade = args.grade or ("S" if source_record["channel"] in THIRD_PARTY_CHANNELS else "P")
                 _print_json(capture_source_part(
                     root, url=source_record["canonical_url"], source_id=args.source_id,
                     grade=grade, title=args.title, publisher=args.publisher, store=store,

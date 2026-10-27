@@ -61,7 +61,7 @@
       "expired_lease_action": "targeted_retry"
     },
     "discovery": {
-      "required_channels": ["company_site", "sitemaps", "newsroom_blog", "docs_help", "careers", "video", "podcasts", "social", "code_packages", "independent_web"],
+      "required_channels": ["company_site", "sitemaps", "newsroom_blog", "docs_help", "careers", "video", "podcasts", "social", "code_packages", "independent_web", "market_competitors"],
       "first_party": "runtime crawl of the company host and its sitemaps to a fixed point",
       "search_channels": "close as sufficient when the admitted sources answer the named research questions, or saturated after repeated empty passes",
       "lead_only_hosts": "login-walled platforms are recorded as leads with provenance and are not captured",

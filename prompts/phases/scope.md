@@ -19,10 +19,14 @@ ID (`Q1`, `Q2`, ...). Start from the brief's required sections, in order:
 - Q4 positioning and how it has changed;
 - Q5 stated direction, actual launches, and unresolved roadmap questions;
 - Q6 people and organization signals;
-- Q7 competitors and defensible comparisons;
+- Q7 competitors and defensible comparisons: the direct competitors (same kind
+  of offering, same buyers, similar engagement model) found from evidence,
+  then adjacent firms that compete for some of the same budget;
 - Q8 dependencies around the products in focus;
+- Q9 market: the category the company sells in, its size and growth where
+  sources state them, how buyers spend in it, and where it is heading;
 
-then add company-specific questions from Q9 onward. Under each question, name
+then add company-specific questions from Q10 onward. Under each question, name
 the source channels most likely to answer it. Discovery workers close channels
 as sufficient against these IDs, and triage selects sources for extraction by
 them, so phrase each question so a source can be judged against it.

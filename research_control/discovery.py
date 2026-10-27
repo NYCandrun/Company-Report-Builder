@@ -38,6 +38,7 @@ DISCOVERY_CHANNELS = (
     "social",
     "code_packages",
     "independent_web",
+    "market_competitors",
 )
 
 TRACKING_PARAMETERS = {
