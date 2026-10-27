@@ -422,6 +422,12 @@ def _parser() -> argparse.ArgumentParser:
     web_list.add_argument("--limit", type=int, default=200)
     web_list.add_argument("--details", action="store_true")
     web_sub.add_parser("export")
+    web_render = web_sub.add_parser(
+        "render", help="open a page in the headless browser (desktop Chrome) and print its title, text, and links"
+    )
+    web_render.add_argument("--url", required=True)
+    web_render.add_argument("--max-chars", type=int, default=12_000, help="text to print (default 12,000 characters)")
+    web_render.add_argument("--links", default="", help="print only links containing this text (for example /orgs/)")
 
     media = subparsers.add_parser("media", help="manage media transcripts")
     media_sub = media.add_subparsers(dest="media_command", required=True)
@@ -725,6 +731,19 @@ def main() -> None:
                     root, url=source_record["canonical_url"], source_id=args.source_id,
                     grade=grade, title=args.title, publisher=args.publisher, store=store,
                 ))
+            return
+        if args.command == "web" and args.web_command == "render":
+            from research_control.capture import _github_page
+
+            try:
+                page = _github_page(args.url)
+            except Exception as error:  # the page could not be rendered; say why
+                _print_json({"status": "unavailable", "url": args.url, "reason": f"{type(error).__name__}: {error}"})
+                return
+            text = str(page.get("text", ""))
+            links = [link for link in page.get("links", []) if args.links and args.links in str(link)]
+            _print_json({"status": "rendered", "url": page.get("url"), "title": page.get("title"),
+                         "text": text[:args.max_chars], "characters": len(text), **({"links": links[:300]} if args.links else {})})
             return
         if args.command == "web":
             with open_runtime(root) as store:

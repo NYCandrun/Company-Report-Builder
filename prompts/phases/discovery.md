@@ -63,6 +63,12 @@ first, and collect every one:
 Confirm an organization belongs to the firm from its profile (name, website,
 email domain) or its repositories, not from the name alone.
 
+The headless browser is one command: `python3 -m research_control web render
+--url URL` prints a page's title and its text as desktop Chrome renders it
+(`--max-chars` to read less, `--links TEXT` to list only links containing that
+text). Use it for pages that refuse plain requests, such as github.com
+organization, people, repository, and profile pages.
+
 Search for what that crawl cannot reach: other first-party hosts and
 subdomains, applicant tracking systems, documentation portals, public code,
 recorded talks and podcasts, customer and partner announcements, independent
