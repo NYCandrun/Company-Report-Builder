@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -91,7 +92,21 @@ def reconcile_records(
     return report
 
 
+def superseded_tasks(root: Path) -> set[str]:
+    """Tasks the scheduler retired; their ledger rows record history, not live ownership."""
+    database = root / "tools/outputs/runtime.sqlite3"
+    if not database.is_file():
+        return set()
+    connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
+    try:
+        return {row[0] for row in connection.execute("SELECT task_id FROM tasks WHERE state='superseded'")}
+    finally:
+        connection.close()
+
+
 def validate_ledger(root: Path, records: list[dict[str, Any]], task_types: set[str] | None = None) -> dict[str, Any]:
+    retired = superseded_tasks(root)
+    records = [row for row in records if str(row.get("task_id", "")) not in retired]
     selected = [row for row in records if task_types is None or row.get("task_type") in task_types]
     final_output_owner: dict[str, tuple[str, str]] = {}
     for row in records:

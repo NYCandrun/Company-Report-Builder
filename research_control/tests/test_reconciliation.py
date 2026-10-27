@@ -7,6 +7,7 @@ from pathlib import Path
 
 from research_control import FAIL, PASS
 from research_control.reconciliation.assignments import reconcile_records, validate_ledger
+from research_control.runtime import RuntimeStore, WorkItem
 
 
 FIXTURES = Path(__file__).with_name("fixtures")
@@ -57,6 +58,16 @@ class ReconciliationTests(unittest.TestCase):
             report = validate_ledger(root, rows)
             self.assertEqual(FAIL, report["status"])
             self.assertTrue(any("overlaps tasks" in item for item in report["failures"]))
+            # A batch the scheduler superseded no longer owns its inputs.
+            with RuntimeStore(root) as store:
+                store.initialize(run_id="run", company_url="https://example.com")
+                store.add_task(WorkItem(
+                    task_id="task-a", phase="capture", task_type="capture", inputs=[{"id": "SRC-001"}],
+                    outputs=["task-a.md"], prompt_files=["prompt.md"],
+                ))
+                store.supersede("task-a", "replaced by task-b")
+            report = validate_ledger(root, rows)
+            self.assertFalse(any("overlaps tasks" in item for item in report["failures"]))
 
     def test_worker_success_without_output_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
