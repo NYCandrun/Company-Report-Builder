@@ -376,7 +376,7 @@ There is one discovery task per channel, eleven in all:
 | `sitemaps` | runtime: audits every declared sitemap against the catalog |
 | `newsroom_blog`, `docs_help`, `careers`, `code_packages` | one agent worker each, after the crawl, for what the crawl could not reach |
 | `video`, `podcasts`, `social`, `independent_web` | one agent worker each, in parallel with the crawl |
-| `market_competitors` | one agent worker, in parallel with the crawl: the market, and direct and adjacent competitors found from evidence (shared partner directories, marketplace categories, comparison pages, trade press, the company's own comparisons); direct competitors' own GitHub repositories get a shallow look (latest commit's file list and README) |
+| `market_competitors` | one agent worker, in parallel with the crawl: the market, and direct and adjacent competitors found from evidence (shared partner directories, marketplace categories, comparison pages, trade press, the company's own comparisons); direct competitors' own GitHub repositories get a shallow look (latest commit's file list and README, plus specific files on the main branch that show the offering) |
 
 A search channel closes as `sufficient` when its admitted sources answer the
 named questions (the evidence must cite the question IDs), or as `saturated`

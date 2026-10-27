@@ -632,8 +632,8 @@ def auto_capture_source(
     """Capture a public page, PDF, or media source end to end without an agent.
 
     With ``shallow_repositories`` (sources about other firms, such as competitors), a
-    GitHub repository is read at its latest commit only: its file list and README, with
-    no history, branches, pull requests, or authorship.
+    GitHub repository is read at its latest commit only: its file list and README, or
+    the one file a URL names, with no history, branches, pull requests, or authorship.
 
     Produces a terminal receipt: ``captured`` with a canonical text derivative,
     or ``blocked`` with the concrete reason. Media sources also get a
@@ -1553,7 +1553,9 @@ def _github_shallow_capture(root: Path, *, url: str, source_id: str, grade: str)
     listed = _git(["ls-files", "--", relative or "."], cwd=target).splitlines()
     lines = [
         f"Repository: {owner}/{repo}", f"Source URL: {url}", f"Captured commit: {commit} (committed {committed})",
-        "Method: shallow look at the latest commit (file list and README only; no history, branches, or authors)", "",
+        "Method: shallow look at the latest commit ("
+        + ("the one file named" if relative and (target / relative).is_file() else "file list and README only")
+        + "; no history, branches, or authors)", "",
         f"--- FILE TREE ({len(listed)} files{', under ' + relative if relative else ''}) ---", *listed[:300],
         *([f"... {len(listed) - 300} more files"] if len(listed) > 300 else []),
     ]

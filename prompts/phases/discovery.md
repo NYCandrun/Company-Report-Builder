@@ -66,9 +66,16 @@ Admit what answers a question, not everything that exists:
   browser (`https://github.com/orgs/ORG/repositories`) and admit only the
   repositories that show its offering (a product, a public tool, an
   accelerator), by repository URL. The runtime reads each one at its latest
-  commit (file list and README only). Do not clone, read history, look up its
-  people or their handles, query GH Archive, or admit adjacent firms' code;
-  that depth is for the company itself (`code_packages`).
+  commit: the file list and README. When the file list shows something worth
+  reading on the main branch (a product's own documentation, an architecture
+  note, a package description that names what it is built on), admit that
+  file by its URL (`https://github.com/ORG/REPO/blob/main/PATH`); the runtime
+  reads that one file at the latest commit. Keep it bounded: only files that
+  show what the competitor sells, how it is built, or what it depends on,
+  never whole directories of code. Do not clone, read history or other
+  branches, look up its people or their handles, query GH Archive, or admit
+  adjacent firms' code; that depth is for the company itself
+  (`code_packages`).
   Close as `sufficient` against the market and competitor questions, naming
   each competitor found, whether it is direct or adjacent, and the evidence.
 - Social platforms that require login (LinkedIn, X, Facebook, Instagram,
