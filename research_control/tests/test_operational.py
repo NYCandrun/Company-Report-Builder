@@ -292,7 +292,7 @@ class OperationalRunTests(unittest.TestCase):
 
             synthesis_names = (
                 "product-map", "offering", "customers-proof", "competitors", "glossary",
-                "messaging-timeline", "organization", "direction", "open-questions",
+                "messaging-timeline", "organization", "direction", "inference-catalogue", "open-questions",
             )
 
             def write_groundwork() -> None:

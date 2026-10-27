@@ -16,6 +16,13 @@ dependencies; neutral early questions and whom to ask; evidence limits; source
 notes. Include one opening portfolio exhibit, one section-1 product map, and
 one section-3 messaging timeline without duplication.
 
+Before evidence limits, include an inference-catalogue exhibit drawn from
+`05-synthesis/inference-catalogue.md`: "How the company works" and "What the
+work is", each listing the inferences in order of strength with their strength
+and supporting evidence. Thin-evidence inferences go last, below a dividing
+rule. Label the whole exhibit as inference; never present its entries as
+established facts elsewhere in the brief.
+
 Section 7 uses neutral first person and topical headings, not assignments to
 employees. Section 8 uses reproducible counts and plain-language method names.
 

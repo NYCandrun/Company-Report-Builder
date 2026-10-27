@@ -198,7 +198,8 @@
         {"id": "write-messaging-timeline", "task_type": "synthesis", "depends_on": ["groundwork", "currency-review"], "prompt": "prompts/phases/synthesis.md", "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"], "outputs": ["05-synthesis/messaging-timeline.md"], "independent": true, "exclusive_inputs": false},
         {"id": "write-organization", "task_type": "synthesis", "depends_on": ["groundwork", "currency-review"], "prompt": "prompts/phases/synthesis.md", "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"], "outputs": ["05-synthesis/organization.md"], "independent": true, "exclusive_inputs": false},
         {"id": "write-direction", "task_type": "synthesis", "depends_on": ["groundwork", "currency-review"], "prompt": "prompts/phases/synthesis.md", "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"], "outputs": ["05-synthesis/direction.md"], "independent": true, "exclusive_inputs": false},
-        {"id": "write-open-questions", "task_type": "synthesis", "depends_on": ["write-product-map", "write-offering", "write-customers-proof", "write-competitors", "write-glossary", "write-messaging-timeline", "write-organization", "write-direction"], "prompt": "prompts/phases/synthesis.md", "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"], "outputs": ["05-synthesis/open-questions.md"], "independent": true, "exclusive_inputs": false},
+        {"id": "write-inference-catalogue", "task_type": "synthesis", "depends_on": ["write-product-map", "write-offering", "write-customers-proof", "write-competitors", "write-glossary", "write-messaging-timeline", "write-organization", "write-direction"], "prompt": "prompts/phases/inference-catalogue.md", "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"], "outputs": ["05-synthesis/inference-catalogue.md"], "independent": true, "exclusive_inputs": false},
+        {"id": "write-open-questions", "task_type": "synthesis", "depends_on": ["write-product-map", "write-offering", "write-customers-proof", "write-competitors", "write-glossary", "write-messaging-timeline", "write-organization", "write-direction", "write-inference-catalogue"], "prompt": "prompts/phases/synthesis.md", "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"], "outputs": ["05-synthesis/open-questions.md"], "independent": true, "exclusive_inputs": false},
         {
           "id": "currency-review",
           "task_type": "currency_review",
@@ -283,7 +284,7 @@
           "prompt": "prompts/phases/fixer.md",
           "depends_on": ["technical", "devils-advocate", "insider", "editor"],
           "cores": ["prompts/core/runtime.md", "prompts/core/evidence.md", "prompts/core/writing.md"],
-          "outputs": ["05-synthesis/{product-map,offering,customers-proof,competitors,glossary,messaging-timeline,organization,direction,open-questions}.md", "06-checks/review-decisions.md", "tools/outputs/review-decisions.jsonl"],
+          "outputs": ["05-synthesis/{product-map,offering,customers-proof,competitors,glossary,messaging-timeline,organization,direction,inference-catalogue,open-questions}.md", "06-checks/review-decisions.md", "tools/outputs/review-decisions.jsonl"],
           "independent": true,
           "exclusive_inputs": true,
           "output_mode": "revise"
@@ -599,7 +600,7 @@
         {"id": "currency_file", "path": "tools/outputs/currency.csv", "required": true}
       ],
       "outputs": [
-        {"id": "synthesis_files", "path": "05-synthesis/{product-map,offering,customers-proof,competitors,glossary,messaging-timeline,organization,direction,open-questions}.md"}
+        {"id": "synthesis_files", "path": "05-synthesis/{product-map,offering,customers-proof,competitors,glossary,messaging-timeline,organization,direction,inference-catalogue,open-questions}.md"}
       ],
       "reconciliations": [
         {"id": "synthesis_assignments", "report": "tools/outputs/reconciliation/synthesis-assignments.json"}
@@ -639,7 +640,7 @@
         {"id": "cited_fact_review", "path": "06-checks/verification-cited.md", "role": "verification_reviewer", "independent": true}
       ],
       "completion": {"require_all": true, "required_worker_task_types": ["verification"], "state_update_after_gate": true},
-      "stale_if": ["05-synthesis/{product-map,offering,customers-proof,competitors,glossary,messaging-timeline,organization,direction,open-questions}.md", "02-facts/**", "tools/lists/cited-facts.txt", "tools/outputs/verification-verdicts.jsonl"],
+      "stale_if": ["05-synthesis/{product-map,offering,customers-proof,competitors,glossary,messaging-timeline,organization,direction,inference-catalogue,open-questions}.md", "02-facts/**", "tools/lists/cited-facts.txt", "tools/outputs/verification-verdicts.jsonl"],
       "downstream": ["corrected_synthesis"],
       "retry_policy": "global",
       "gate": {
@@ -707,7 +708,7 @@
         {"id": "editor", "path": "06-checks/review-editor*.md", "role": "editor", "independent": true}
       ],
       "completion": {"require_all": true, "required_worker_task_types": ["technical_review", "devils_advocate", "insider_review", "editor_review", "fixer"], "state_update_after_gate": true},
-      "stale_if": ["05-synthesis/{product-map,offering,customers-proof,competitors,glossary,messaging-timeline,organization,direction,open-questions}.md", "06-checks/review-*.md", "tools/outputs/cited-facts/**"],
+      "stale_if": ["05-synthesis/{product-map,offering,customers-proof,competitors,glossary,messaging-timeline,organization,direction,inference-catalogue,open-questions}.md", "06-checks/review-*.md", "tools/outputs/cited-facts/**"],
       "downstream": ["final"],
       "retry_policy": "global",
       "gate": {

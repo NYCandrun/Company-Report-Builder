@@ -123,6 +123,7 @@ def preflight(root: Path) -> int:
         "prompts/phases/synthesis-groundwork.md",
         "prompts/phases/currency-review.md",
         "prompts/phases/synthesis-supplement.md",
+        "prompts/phases/inference-catalogue.md",
         "prompts/phases/brand-guide.md",
         "prompts/phases/diagram-modeling.md",
         "prompts/phases/diagram-building.md",
