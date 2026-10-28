@@ -1,0 +1,61 @@
+TASK TYPE: COMPANY CATALOGUE, BUILT FROM THE SYNTHESIS AND THE FACT STORE
+
+Read the evidence, writing, and runtime cores and the other synthesis files.
+They cite the evidence by fact ID: open a fact's full row only when you need
+its quote, date, or notes, by searching `02-facts/` for its ID, rather than
+reading the fact store whole. Write `05-synthesis/inference-catalogue.md` (or
+revise it, if it exists, for what the synthesis files now say), a catalog in
+four parts that lays out the evidence so a reader can judge each entry.
+
+1. What the company sells: each offering (services, engagement types,
+   products, workshops, licensed or marketplace software), with its basis:
+   `Stated` when the company offers it publicly (its site, a marketplace
+   listing, a proposal or pricing it published), `Inferred` when it is seen
+   only in delivered work or engagement records, `Lead` when the evidence is
+   thin (a single mention, a name in one file). For each offering give what
+   the buyer gets, packaging and pricing evidence, who has bought it (with
+   relationship marks), and its fact IDs. Stated offerings come first, then
+   inferred, then leads below a dividing rule. Use repository and document
+   evidence by its scope: offering-level material (generic, reusable,
+   presented for any buyer) supports an offering; engagement-scoped material
+   (shaped to one client) supports what that engagement covered and, with
+   other engagements, a pattern of what is sold. Internal tools that look
+   like products (a factory, a marketplace) are offerings only when a source
+   offers them or names them as products; otherwise they are internal
+   practice, and a name match to a product is a thin inference.
+2. How the company works: operating model, staffing and delivery, sales
+   motion, internal tools and practices, partners, and how work is packaged
+   and reused.
+3. What the work is: the kinds of engagements and deliverables, the
+   technologies and platforms the work runs on, the problems it addresses,
+   and who it is for.
+4. How it has changed: dated timelines from change histories and dated
+   sources, each step with its date and fact ID: deals and accounts moving
+   through stages (and the sales cycle, expansion, or apparent churn those
+   steps suggest), projects and products from first commit through built,
+   unmerged, and shipped work, and the company's offerings, structure, and
+   plans over time. Mark each item's delivery status (shipped, built but
+   unmerged, or promised in docs only) and keep plans as plans.
+
+Parts 2, 3, and 4 hold inferences. For each inference write:
+
+- the inference, one sentence, starting `My inference:`;
+- strength: `strong` (several independent sources agree, including
+  first-party ones), `moderate` (one strong source or several weaker ones), or
+  `thin` (one person, one repository, a name, a demo, or a single mention),
+  with a one-line reason;
+- supporting facts: the fact IDs and, in a few words each, what they show;
+- counter-evidence or limits, with fact IDs, or "none found";
+- what would confirm or overturn it.
+
+Order parts 2 and 3 by strength, and part 4 by date within each timeline. Put `thin` inferences last, below a dividing rule
+labeled "Thin evidence". Personal or side projects of employees are evidence
+about what the company's people build, not about what the company sells; say
+so where an inference rests on them. Customer, client, and partner
+relationships keep their `Stated` / `Inferred` / `Lead` marks. Do not restate a
+stated fact as an inference; the catalog is for conclusions that go beyond
+what any one source says. Run the fact-ID and writing checks before return.
+
+Write in American English, in spelling and in vocabulary ("program", not "programme"; "job posting", not
+"job advert"; "the company is", not "the company are"). Quotes, quoted titles, and names keep the
+source's spelling. `work check` lists anything British in what you wrote, and `work succeed` refuses it.

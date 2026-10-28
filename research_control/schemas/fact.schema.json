@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "fact.schema.json",
+  "title": "Research fact",
+  "type": "object",
+  "required": ["fact_id", "claim", "verbatim_quote", "source_id", "location", "source_date", "grade", "topics", "about", "said_by", "verdict"],
+  "properties": {
+    "fact_id": {"type": "string", "pattern": "^[A-Z][A-Z0-9-]*-[A-Z]*[0-9]+[a-z]?$"},
+    "claim": {"type": "string", "minLength": 1},
+    "verbatim_quote": {"type": "string", "minLength": 1},
+    "source_id": {"type": "string", "minLength": 1},
+    "location": {"type": "string", "minLength": 1},
+    "source_date": {"type": "string", "minLength": 1},
+    "grade": {"enum": ["P", "S", "T", "I"]},
+    "topics": {"type": "string", "minLength": 1},
+    "about": {"type": "string", "minLength": 1},
+    "said_by": {"type": "string", "minLength": 1},
+    "verdict": {"type": "string", "minLength": 1}
+  },
+  "additionalProperties": true
+}

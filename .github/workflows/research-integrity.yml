@@ -1,0 +1,29 @@
+name: Research integrity
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  deterministic-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate declarative contracts
+        run: |
+          python -m json.tool WORKFLOW.yaml >/dev/null
+          for schema in research_control/schemas/*.json; do python -m json.tool "$schema" >/dev/null; done
+          python -m compileall -q research_control tools/check_phase_gate.py tools/reconcile_work.py tools/check_release.py
+          python -m research_control preflight
+
+      - name: Run regression and clean-room tests
+        run: python -m unittest discover -s research_control/tests -v

@@ -1,0 +1,57 @@
+# TASK TYPE: ALTERNATE COPIES OF BLOCKED SOURCES
+
+Every source in this task's `blocked_sources` input list was admitted as evidence,
+but the runtime could not capture it: the site refused automated requests
+(HTTP 403), the page is gone (HTTP 404), or another access failure, each with
+its recorded reason. Your job is to find a publicly reachable copy of the
+same content, so the evidence is not lost, and to record the outcome for every
+listed source.
+
+Good alternate copies:
+
+- the same press release on a wire service (PR Newswire, GlobeNewswire,
+  Business Wire), the issuer's own newsroom, or a trade outlet that reprints it
+  in full;
+- the publisher's syndicated copy of an article (for example Yahoo Finance or
+  MSN) when it is public;
+- the same video on YouTube, Vimeo, or the publisher's own player page;
+- the same podcast episode on Apple Podcasts, Spotify, the show's site, or the
+  direct audio enclosure from its RSS feed;
+- the other party's own announcement of the same event, when it states the
+  same facts;
+- an archived copy, if an archive is reachable from this environment;
+- for a GitHub repository that is gone (deleted or made private: git asks for a
+  login), its Software Heritage copy when one exists (one request to
+  `https://archive.softwareheritage.org/api/1/origin/https://github.com/OWNER/REPO/visit/latest/`;
+  record `https://archive.softwareheritage.org/browse/origin/directory/?origin_url=https://github.com/OWNER/REPO`),
+  or else one GH Archive query URL that returns what the public record of
+  GitHub events kept about it (see the discovery instructions on public
+  archives).
+
+Not alternates: pages that only summarize, quote from, or comment on the
+original; search-result pages; cache mirrors; paywall-removal services.
+
+Verify each candidate is publicly reachable before recording it (for example
+`python3 -m research_control web fetch --url URL --consumer TASK_ID --purpose research_discovery`,
+which reports the HTTP status). Check the source catalog
+(`tools/outputs/discovery/sources.jsonl`, read only) first: an equivalent copy
+may already be cataloged, and you can record it by its URL.
+
+Record one outcome per blocked source, under your claim:
+
+```bash
+python3 -m research_control discovery alternate --source-id SRC-... \
+  --url ALTERNATE_URL --evidence "how it was found and why it is the same content"
+python3 -m research_control discovery alternate --source-id SRC-... \
+  --none --evidence "what was searched and why nothing qualifies"
+```
+
+A recorded alternate joins the original's channel without reopening it, and
+the runtime captures it automatically. The task is complete only when every
+source in its list has at least one recorded outcome. Return the number of sources
+with an alternate, the number with none, and any that need a different access
+method.
+
+Write in American English, in spelling and in vocabulary ("program", not "programme"; "job posting", not
+"job advert"; "the company is", not "the company are"). Quotes, quoted titles, and names keep the
+source's spelling. `work check` lists anything British in what you wrote, and `work succeed` refuses it.

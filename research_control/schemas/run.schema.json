@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "run.schema.json",
+  "title": "Company research run state",
+  "type": "object",
+  "required": ["schema_version", "run_id", "company_url", "created_at", "updated_at", "status", "phases"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "company_url": {"type": "string", "pattern": "^https?://"},
+    "created_at": {"type": "string", "minLength": 1},
+    "updated_at": {"type": "string", "minLength": 1},
+    "status": {"enum": ["running", "blocked", "released"]},
+    "phases": {"type": "object", "minProperties": 1}
+  },
+  "additionalProperties": true
+}

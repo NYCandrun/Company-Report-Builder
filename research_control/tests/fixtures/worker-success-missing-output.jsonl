@@ -1,0 +1,1 @@
+{"worker_id":"w1","task_id":"t1","attempt":1,"task_type":"capture","input_ids":["SRC-001"],"exclusive_inputs":true,"expected_outputs":["missing.md"],"required_validators":["local"],"status":"succeeded","output_validation_status":"PASS","output_hashes":{}}

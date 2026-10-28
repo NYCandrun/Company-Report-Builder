@@ -1,0 +1,142 @@
+# Evidence core
+
+Apply this file only to tasks that inspect, extract, verify, synthesize, or cite
+evidence. The immutable assignment and phase prompt define your actual work.
+
+## Grades
+<!-- only: source_discovery, alternate_copies, scope, triage, retriage, extraction, filing, filing_review, verification, technical_review, citation_claim_review -->
+
+- P: the company's own public words, code, filings, jobs, and statements by its people.
+- S: a named third party's first-hand record, such as a customer or partner announcement.
+- T: press, analysts, reviews, reprints, aggregators, and competitors describing the company.
+- I: non-public material supplied by the user.
+
+A company-authored customer story is P. A competitor's own page about its own
+business is S (first-hand for that firm); press and analysts on the market are
+T. Grade by authorship and first-hand status, not merely the quoted speaker or
+hosting domain.
+
+## Fact receipts
+<!-- only: extraction, filing, filing_review, verification, verification_fixer, technical_review, citation_claim_review -->
+
+Every fact needs a verbatim quote, manifest source ID, exact location, source
+date, grade, `about`, and `said_by`. A path, `website`, `many pages`, or `count
+script` is not a receipt. Counts need a reproducible script and saved output.
+
+Check a quote against the original captured source. Preserve wording when it
+matters. Ellipses may shorten but never alter meaning.
+
+Published date and modified date are different. Do not promote deploy,
+homepage, pricing-page modification, or shallow-clone times to publication
+dates. For recordings, use the live date when known and keep upload date in
+notes.
+
+## Claim discipline
+<!-- only: source_discovery, extraction, filing, filing_review, synthesis, currency_review, verification, verification_fixer, technical_review, devils_advocate, insider_review, editor_review, fixer, findings, brief_writer, diagram_modeler, citation_claim_review, publication_fixer, diagram_builder, orchestrator_page_review -->
+
+- Aims are not achievements.
+- `can` is not `does`. `some` is not `all`. `up to` is not typical.
+- Beta is not general availability. A job posting is not a hire.
+- Unmerged branch or pull-request work is built but not shipped. A capability
+  a README or doc describes but the code does not implement is promised, not
+  built.
+- Employee-delivered work is not product capability without product evidence.
+- A statement in one person's material (their repository, post, talk, or
+  notes) is that person's: attribute it to them ("a general manager's
+  repository lists ..."). It speaks for the company only when the company
+  publishes or adopts it.
+- A repository under an employee's personal account is that person's work.
+  Call it the company's tooling or product only when evidence shows the
+  company uses, owns, or offers it.
+- Keep contradictions visible with both sources and dates.
+- Start inference with `My inference:` and name its supporting fact IDs.
+- Scope every absence to the sources searched.
+- Mark every customer, client, or partner relationship with its basis,
+  wherever it appears: a sentence, a list, a table, a diagram label, a
+  caption, or a fact row.
+  - `Stated` means a source names the relationship. A company's own working
+    record counts: a client named in an employee's repository, plugin,
+    configuration, or document is stated, whatever other files say.
+  - `Inferred` means the evidence supports it but no source names it. The
+    mark goes on the relationship itself (for example "Microsoft (inferred
+    client)") with its fact IDs.
+  - `Lead` means an inference from thin evidence, such as one commit, a
+    repository name, a demo, or one person's activity. Write it as
+    "Chubb (lead)" with its fact IDs. A lead may appear wherever it is
+    relevant, but it carries the least weight: never use it to support a
+    conclusion on its own, and never count it with stated or inferred
+    relationships.
+  - In working records (fact rows, synthesis files, the findings) name the
+    evidence after the mark ("Chubb (lead, thin evidence: one commit)"). In
+    the report the mark is one word with its citations, and the evidence
+    behind it is said once, where the relationship is first introduced or in
+    the exhibit's source line; the source note carries the quoted place.
+
+  In the fact store, record the basis in the fact's notes (`Relationship
+  basis: Stated`, `Inferred`, or `Lead (thin evidence)`), so every later step
+  carries it.
+
+  In an exhibit of customers, clients, or partners (a list, table, logo
+  wall, or count), order the entries stated first, then inferred, each
+  marked. Put leads last, below a dividing rule, under a label such as
+  "Leads (thin evidence, not established)". In prose, say plainly how strong
+  the evidence is ("one commit suggests", "two sources state") rather than
+  relying on the label. Counts and totals include only
+  stated relationships unless the count says otherwise. Never let an
+  inferred client or a lead become a stated one through summary, emphasis,
+  position, or a logo, name, or count.
+
+Name a transcript speaker only when the record establishes identity. Otherwise
+use `a speaker in the <title> webinar`. Diarization labels (`Speaker 1`, ...)
+group voices and mark turns but can split or merge people; tie a label to a
+name only where the transcript itself establishes it, and mark it `(probable)`. Mark probable or unclear labels. A fact
+depending on uncertain transcription remains inference or unresolved.
+
+`about` names the subject company, `Market`, or `X (per Y)`. `said_by` names the
+organization responsible for the source. Put a person's name in notes unless a
+separate field is assigned.
+
+## Currency
+<!-- only: extraction, filing_review, synthesis, currency_review, verification, verification_fixer, technical_review, devils_advocate, insider_review, editor_review, fixer, findings, brief_writer, diagram_modeler, citation_claim_review, publication_fixer, diagram_builder, orchestrator_page_review -->
+
+Every fact carries the date its source's content reflects, from
+`tools/outputs/source-dates.jsonl` (published, embedded upload date, last
+modified or last commit, or a live page's capture date), never a capture date
+standing in for an unknown publication date. Each source there has an age
+flag at the research date: `current`, `as of`, `dated` (more than two quarters
+old), or `undated`. Use them: `dated` evidence carries its date where it is
+introduced in a part or exhibit (an exhibit's source line can date the whole
+exhibit) and its age once there, and `undated` evidence never supports a
+claim about the present.
+
+A recording is dated by when it was recorded where it says so
+(`recorded_date` in source dates), with its posting date kept beside it; when
+the two differ, cite both, and date what was said by the recording.
+
+Evidence within the last quarter may support plain current wording. Older
+current-state evidence needs `as of <date>`. A repository, spreadsheet, or
+other document snapshot is dated by its own content or its last commit, not
+by when it was captured; every fact from it carries that date. When the
+snapshot is more than two quarters older than the research date, say so once
+where it is introduced in each part or exhibit, for example "as of December
+2025, about three quarters before this research", and never let it stand for
+the present. Plans,
+forecasts, and targets are stated as plans with their date, not as results. Flagged rows use `last confirmed
+<date>` or `possibly retired`. A redirect is not retirement proof. When sources from different dates give different values for the
+same thing (a deal's stage, a headcount, a title), show the change over time
+with each date; it is a contradiction only when sources of the same time
+disagree. A job listing that has been taken down is dated evidence of what the
+company was hiring for then, not a current role. When a title fits more than
+one person (two co-founders), name the person. A one-off
+title is not automatically a title change. Simultaneous plans are not a price
+change. Never state a company dollar price as current unless the company
+publishes it.
+
+## Citation meaning
+<!-- only: synthesis, verification_fixer, technical_review, devils_advocate, insider_review, editor_review, fixer, findings, brief_writer, diagram_modeler, citation_claim_review, publication_fixer, orchestrator_page_review -->
+
+A citation supports the exact adjacent words. It names where the source came
+from (publisher or channel, platform), its date, and resolves to the quoted
+place through the fact's deep link (`tools/outputs/fact-links.jsonl`). Never cite a source directly in
+the brief without a fact row. Structural correctness does not establish
+semantic support. An independent claim review remains required.

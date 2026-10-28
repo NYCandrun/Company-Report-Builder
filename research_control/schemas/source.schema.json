@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "source.schema.json",
+  "title": "Captured source",
+  "type": "object",
+  "required": ["id", "grade", "title", "publisher", "url", "date_published", "date_captured", "local_file", "method", "notes"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "grade": {"enum": ["P", "S", "T", "I"]},
+    "title": {"type": "string", "minLength": 1},
+    "publisher": {"type": "string", "minLength": 1},
+    "url": {"type": "string"},
+    "date_published": {"type": ["string", "null"]},
+    "date_last_modified": {"type": ["string", "null"]},
+    "date_captured": {"type": "string", "minLength": 10},
+    "local_file": {"type": "string", "minLength": 1},
+    "method": {"type": "string", "minLength": 1},
+    "notes": {"type": "string"}
+  },
+  "additionalProperties": true
+}
