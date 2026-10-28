@@ -20,6 +20,72 @@ FACTS = """# Q1
 
 
 class VerificationShardTests(unittest.TestCase):
+    def test_source_changes_invalidate_verdicts_until_fresh_verification(self) -> None:
+        for change in ("context", "delete", "extra-file", "new-transcript"):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                atomic_write_text(root / "02-facts/q01.md", FACTS)
+                atomic_write_text(root / "05-synthesis/offering.md", "Agents [PRD-001, PRD-002]; network [PRD-003].\n")
+                capture = root / "01-sources/captures/SRC-A/content.txt"
+                text = "We build agents. We sell services.\n" + "Unchanged background.\n" * 300
+                atomic_write_text(capture, text + "This is current.\n")
+                atomic_write_text(root / "01-sources/captures/SRC-B/content.txt", "Our network.\n")
+                extra = root / "01-sources/captures/SRC-A/appendix.txt"
+                atomic_write_text(extra, "Supporting context.\n")
+                # content.txt is intentionally omitted: source_excerpt still reads it.
+                atomic_write_text(root / "01-sources/MANIFEST.csv", "id,url,grade,local file\n"
+                                  "SRC-A,https://example.com,P,01-sources/captures/SRC-A/appendix.txt\n")
+                verification.prepare(root)
+                part = f"{verification.PART_DIR}/initial.jsonl"
+                atomic_write_jsonl(root / part, [
+                    {"fact_id": fact_id, "verdict": "confirmed", "reason": "supported",
+                     "evidence_paths": ["01-sources/captures/SRC-A/content.txt"]}
+                    for fact_id in ("PRD-001", "PRD-002", "PRD-003")
+                ])
+                verification.reduce_verdicts(root, [part])
+                self.assertEqual(3, verification.prepare(root)["reused_verdicts"])
+                self.assertEqual([], verification.shards(root))
+
+                if change == "context":
+                    # The quote and nearby excerpt remain unchanged.
+                    atomic_write_text(capture, text + "This is historical, not current.\n")
+                elif change == "delete":
+                    capture.unlink()
+                elif change == "extra-file":
+                    atomic_write_text(extra, "Corrected supporting context.\n")
+                else:
+                    atomic_write_text(capture.with_name("transcript.txt"), "We build agents, but only in a demo.\n")
+                for _ in range(2):
+                    self.assertEqual(1, verification.prepare(root)["reused_verdicts"])
+                    self.assertEqual([["PRD-001", "PRD-002"]], verification.shards(root))
+                # Repeated preparation must not give the old verdict a new fingerprint.
+                fresh = f"{verification.PART_DIR}/fresh.jsonl"
+                atomic_write_jsonl(root / fresh, [
+                    {"fact_id": fact_id, "verdict": "unsupported", "reason": "context changed",
+                     "evidence_paths": ["01-sources/captures/SRC-A/appendix.txt"]}
+                    for fact_id in ("PRD-001", "PRD-002")
+                ])
+                verification.reduce_verdicts(root, [fresh])
+                self.assertEqual(3, verification.prepare(root)["reused_verdicts"])
+                verdicts = {row["fact_id"]: row["verdict"] for row in load_jsonl(root / verification.REUSED)}
+                self.assertEqual("unsupported", verdicts["PRD-001"])
+
+    def test_unbound_legacy_verdicts_are_not_reused(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            atomic_write_text(root / "02-facts/q01.md", FACTS)
+            atomic_write_text(root / "05-synthesis/offering.md", "Agents [PRD-001].\n")
+            atomic_write_text(root / "01-sources/captures/SRC-A/content.txt", "We build agents.\n")
+            verification.prepare(root)
+            row = {"fact_id": "PRD-001", "verdict": "confirmed", "reason": "old verification",
+                   "evidence_paths": ["01-sources/captures/SRC-A/content.txt"]}
+            for path in (verification.VERDICTS, verification.REUSED, verification.ADDED,
+                         f"{verification.PART_DIR}/old.jsonl"):
+                atomic_write_jsonl(root / path, [row])
+            for _ in range(2):
+                self.assertEqual(0, verification.prepare(root)["reused_verdicts"])
+                self.assertEqual([["PRD-001"]], verification.shards(root))
+
     def test_cited_facts_are_sharded_by_source_and_merged_in_cited_order(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from research_control.deeplinks import source_excerpt
+from research_control.hashing import hash_patterns
 from research_control.io import atomic_write_json, atomic_write_jsonl, atomic_write_text, load_json, load_jsonl
 from research_control.validators import sources
 from research_control.validators.facts import load_fact_tables
@@ -59,8 +60,12 @@ def prepare(root: Path) -> dict[str, Any]:
     manifest_path = root / "01-sources/MANIFEST.csv"
     manifest = {row.get("id", ""): row for row in sources.load_manifest(manifest_path)} if manifest_path.is_file() else {}
     index: dict[str, dict[str, str]] = {}
+    source_hashes: dict[str, dict[str, str]] = {}
     for fact_id in cited:
-        packet = fact_packet(root, facts, manifest, fact_id)
+        source_id = facts[fact_id].get("source_id", "")
+        if source_id not in source_hashes:
+            source_hashes[source_id] = _source_hashes(root, source_id, manifest.get(source_id, {}))
+        packet = fact_packet(root, facts, manifest, fact_id, source_hashes=source_hashes[source_id])
         source_id = packet["source"]["id"]
         relative = f"{PACKET_DIR}/{fact_id}.json"
         atomic_write_json(root / relative, packet)
@@ -80,7 +85,15 @@ def prepare(root: Path) -> dict[str, Any]:
     }
 
 
-def fact_packet(root: Path, facts: dict[str, dict[str, str]], manifest: dict[str, dict[str, str]], fact_id: str) -> dict[str, Any]:
+def _source_hashes(root: Path, source_id: str, source: dict[str, str]) -> dict[str, str]:
+    paths = [item.strip() for item in source.get("local file", "").split(";") if item.strip()]
+    # Include the files source_excerpt reads even when the manifest omits them.
+    paths += [f"01-sources/captures/{source_id}/{name}" for name in ("content.txt", "transcript.txt")]
+    return hash_patterns(root, sorted(set(paths)))
+
+
+def fact_packet(root: Path, facts: dict[str, dict[str, str]], manifest: dict[str, dict[str, str]], fact_id: str,
+                *, source_hashes: dict[str, str] | None = None) -> dict[str, Any]:
     """What a verifier judges one fact from: its row, its source, and the located quote in context."""
     fact = {key: value for key, value in facts[fact_id].items() if not key.startswith("_")}
     source_id = fact.get("source_id", "")
@@ -94,8 +107,9 @@ def fact_packet(root: Path, facts: dict[str, dict[str, str]], manifest: dict[str
             "id": source_id, "url": source.get("url", ""), "grade": source.get("grade", ""),
             "date published": source.get("date published", ""),
             "local files": [item.strip() for item in source.get("local file", "").split(";") if item.strip()],
+            "content_hashes": source_hashes if source_hashes is not None else _source_hashes(root, source_id, source),
         },
-        # The located quote with its context; the fingerprint leaves it out.
+        # The complete source files, not just this excerpt, are fingerprinted above.
         "excerpt": source_excerpt(root, source_id, fact.get("verbatim_quote", "")),
     }
 
@@ -112,23 +126,19 @@ def _fingerprint(packet: dict[str, Any]) -> str:
 
 
 def _prior_verdicts(root: Path) -> dict[str, tuple[str, dict[str, Any]]]:
-    """Earlier verdicts with the fingerprint of the packet each one judged."""
-    index_path = root / PACKET_INDEX
-    if not index_path.is_file():
-        return {}
-    facts = load_json(index_path).get("facts", {})
+    """Reuse only verdicts bound to the evidence they actually judged.
+
+    A newly prepared packet index must never relabel an old verdict. Legacy
+    verdicts and unmerged worker parts lack this binding and are not reused.
+    """
     rows: list[dict[str, Any]] = []
-    for path in [root / VERDICTS, root / REUSED, root / ADDED, *sorted((root / PART_DIR).glob("*.jsonl"))]:
+    for path in [root / VERDICTS, root / REUSED, root / ADDED]:
         if path.is_file():
             rows.extend(load_jsonl(path))
     prior: dict[str, tuple[str, dict[str, Any]]] = {}
     for row in rows:
         fact_id = str(row.get("fact_id", ""))
-        fingerprint = facts.get(fact_id, {}).get("fingerprint")
-        if fingerprint is None and fact_id in facts:
-            # Index written before fingerprints existed: recompute from the packet it named.
-            packet_path = root / facts[fact_id]["packet"]
-            fingerprint = _fingerprint(load_json(packet_path)) if packet_path.is_file() else None
+        fingerprint = row.get("verification_fingerprint")
         if fingerprint and row.get("verdict") in VERDICT_VALUES:
             prior[fact_id] = (fingerprint, row)
     return prior
@@ -189,7 +199,8 @@ def validate_part(root: Path, part: str, fact_ids: list[str]) -> list[str]:
 
 def reduce_verdicts(root: Path, parts: list[str]) -> dict[str, Any]:
     """Merge shard verdicts in cited order and write the verification report."""
-    cited = load_json(root / PACKET_INDEX)["cited"]
+    index = load_json(root / PACKET_INDEX)
+    cited = index["cited"]
     verdicts: dict[str, dict[str, Any]] = {
         str(row["fact_id"]): row for row in (load_jsonl(root / REUSED) if (root / REUSED).is_file() else [])
     }
@@ -198,7 +209,7 @@ def reduce_verdicts(root: Path, parts: list[str]) -> dict[str, Any]:
             fact_id = str(row.get("fact_id", ""))
             if fact_id in verdicts:
                 raise ValueError(f"{fact_id}: verdicts in more than one shard or also reused")
-            verdicts[fact_id] = row
+            verdicts[fact_id] = {**row, "verification_fingerprint": index["facts"][fact_id]["fingerprint"]}
     missing = [fact_id for fact_id in cited if fact_id not in verdicts]
     if missing:
         raise ValueError(f"no verdict for cited facts: {', '.join(missing[:15])}")

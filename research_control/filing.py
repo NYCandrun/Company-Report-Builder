@@ -123,19 +123,21 @@ def _source_dates(root: Path) -> dict[str, str]:
     return {str(row.get("source_id")): str(row.get("content_date") or "") for row in load_jsonl(path)} if path.is_file() else {}
 
 
+def fact_key(source_id: str, claim: str, quote: str) -> tuple[str, str, str]:
+    """Only the same source, normalized claim, and normalized quote are duplicates."""
+    return str(source_id), normalize_text(str(claim or "")), normalize_text(str(quote or ""))
+
+
 def file_candidates(root: Path, worker: str = "runtime filing") -> dict[str, Any]:
     root = root.resolve()
     questions = scope_questions(root)
     if not questions:
         raise ValueError("00-scope.md lists no numbered research questions to file facts under")
     candidates = load_jsonl(root / CANDIDATES)
-    by_id = {str(row.get("candidate_id")): row for row in candidates}
     tables = _tables(root, questions)
     existing = load_fact_tables(sorted((root / "02-facts").glob("*.md")))
     filed_by_candidate: dict[str, str] = {}
-    by_quote: dict[tuple[str, str], str] = {}
-    by_claim: dict[tuple[str, str], str] = {}
-    quotes_by_source: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    by_fact: dict[tuple[str, str, str], str] = {}
     claim_sources: dict[str, set[str]] = defaultdict(set)
     numbers: Counter[str] = Counter()
     for row in existing:
@@ -146,15 +148,11 @@ def file_candidates(root: Path, worker: str = "runtime filing") -> dict[str, Any
         for candidate_id in CANDIDATE_ID.findall(" ".join(str(value) for key, value in row.items() if not key.startswith("_"))):
             filed_by_candidate.setdefault(candidate_id, fact_id)
         source = row.get("source_id", "")
-        quote = normalize_text(row.get("verbatim_quote", ""))
-        by_quote.setdefault((source, quote), fact_id)
-        by_claim.setdefault((source, normalize_text(row.get("claim", ""))), fact_id)
-        quotes_by_source[source].append((quote, fact_id))
+        by_fact.setdefault(fact_key(source, row.get("claim", ""), row.get("verbatim_quote", "")), fact_id)
         claim_sources[normalize_text(row.get("claim", ""))].add(fact_id)
     disposed = {str(row.get("input_id")) for row in load_jsonl(root / DISPOSITIONS)} if (root / DISPOSITIONS).is_file() else set()
     texts = _source_texts(root)
     dates = _source_dates(root)
-    assigned: dict[str, str] = {}
     new_rows: dict[int, list[str]] = defaultdict(list)
     dispositions: list[dict[str, Any]] = []
     stats: Counter[str] = Counter()
@@ -167,39 +165,21 @@ def file_candidates(root: Path, worker: str = "runtime filing") -> dict[str, Any
             "reason": reason, "evidence_paths": evidence, "output_ids": outputs,
         })
 
-    def resolve(reference: str, depth: int = 0) -> str:
-        if not reference.startswith("CAND-"):
-            return reference
-        if reference in assigned or reference in filed_by_candidate:
-            return assigned.get(reference) or filed_by_candidate[reference]
-        target = by_id.get(reference, {})
-        return resolve(str(target["duplicate_of"]), depth + 1) if target.get("duplicate_of") and depth < 20 else ""
-
     pending = [row for row in candidates if str(row.get("candidate_id")) not in filed_by_candidate
                and str(row.get("candidate_id")) not in disposed]
-    declared = []
     for candidate in pending:
         candidate_id = str(candidate["candidate_id"])
-        if candidate.get("duplicate_of"):
-            declared.append(candidate)
-            continue
         source = str(candidate.get("source_id", ""))
-        quote, claim = normalize_text(str(candidate.get("quote", ""))), normalize_text(str(candidate.get("claim", "")))
-        kept = by_quote.get((source, quote))
-        reason = f"same source ({source}) and quote as {kept}" if kept else ""
-        if not kept:
-            kept = by_claim.get((source, claim))
-            reason = f"near-duplicate: same source ({source}) and the same claim as {kept}" if kept else ""
-        if not kept and len(quote.split()) >= 8:
-            kept = next((fact_id for other, fact_id in quotes_by_source[source]
-                         if len(other.split()) >= 8 and (quote in other or other in quote)), "")
-            reason = f"near-duplicate: same source ({source}) and one quote contains the other ({kept})" if kept else ""
+        key = fact_key(source, candidate.get("claim", ""), candidate.get("quote", ""))
+        claim = key[1]
+        # Recompute identity even for declared duplicate_of hints. A stale or
+        # incorrect hint must never discard a distinct claim or quotation.
+        kept = by_fact.get(key)
         if kept:
-            assigned[candidate_id] = kept
+            reason = f"same source ({source}), claim, and quote as {kept}"
             dispose(candidate_id, "duplicate", f"{reason}; no new row", [kept], [CANDIDATES])
-            stats["near duplicates merged" if reason.startswith("near") else "duplicates of a filed quote"] += 1
-            if reason.startswith("near"):
-                merges.append({"candidate_id": candidate_id, "kept": kept, "reason": reason})
+            stats["exact duplicates"] += 1
+            merges.append({"candidate_id": candidate_id, "kept": kept, "reason": reason})
             continue
         if not _quote_found(str(candidate.get("quote", "")), texts.get(source, "")):
             dispose(candidate_id, "rejected", f"quote not found in the captured text of {source}", [], [CANDIDATES])
@@ -221,10 +201,7 @@ def file_candidates(root: Path, worker: str = "runtime filing") -> dict[str, Any
             candidate.get("notes") or "", "", ", ".join(repeats[:5]),
         ]
         new_rows[chosen[0]].append("| " + " | ".join(_cell(value) for value in cells) + " |")
-        assigned[candidate_id] = fact_id
-        by_quote[(source, quote)] = fact_id
-        by_claim[(source, claim)] = fact_id
-        quotes_by_source[source].append((quote, fact_id))
+        by_fact[key] = fact_id
         claim_sources[claim].add(fact_id)
         dispose(candidate_id, "completed", f"filed as {fact_id} in {path.relative_to(root)}", [fact_id],
                 [str(path.relative_to(root)), CANDIDATES])
@@ -232,17 +209,6 @@ def file_candidates(root: Path, worker: str = "runtime filing") -> dict[str, Any
         filed.append({"fact_id": fact_id, "candidate_id": candidate_id, "source_id": source,
                       "quote": str(candidate.get("quote", "")), "topic": str(candidate.get("topic", "")),
                       "filed_under": f"Q{chosen[0]}"})
-    for candidate in declared:
-        target = resolve(str(candidate["duplicate_of"]))
-        if target:
-            dispose(str(candidate["candidate_id"]), "duplicate",
-                    f"marked duplicate_of {candidate['duplicate_of']} by the reducer; same source and quote as {target}",
-                    [target], [CANDIDATES])
-            stats["duplicates marked by the reducer"] += 1
-        else:
-            dispose(str(candidate["candidate_id"]), "rejected",
-                    f"duplicate_of {candidate['duplicate_of']} names no filed fact", [], [CANDIDATES])
-            stats["rejected: unresolved duplicate"] += 1
     header = "| " + " | ".join(COLUMNS) + " |\n|" + "---|" * len(COLUMNS) + "\n"
     for number, rows in new_rows.items():
         path, _ = tables[number]

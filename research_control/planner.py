@@ -841,6 +841,9 @@ class AdaptivePlanner:
                 inputs=[
                     {"id": "synthesis", "path": "05-synthesis/*.md", "required": True},
                     {"id": "fact_store", "path": "02-facts/*.md", "required": True},
+                    {"id": "source_manifest", "path": "01-sources/MANIFEST.csv", "required": True},
+                    # Hash the directory itself so new and deleted capture files are detected too.
+                    {"id": "captured_evidence", "path": "01-sources/captures", "required": True},
                 ],
                 outputs=[verification.CITED_LIST, verification.PACKET_INDEX],
                 prompt_files=["prompts/core/runtime.md", "prompts/phases/verification.md"],

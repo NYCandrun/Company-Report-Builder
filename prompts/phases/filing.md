@@ -19,20 +19,21 @@ duplicate and filter spot checks in `06-checks/`. A zero-fact topic still needs
 an explicit disposition and audit record.
 
 When filing again after new or re-extracted candidates, keep the fact ID of
-every fact already in `02-facts/`: a candidate with the same source ID and
-quote as a filed fact takes that fact's ID, and only new facts get new IDs.
+every fact already in `02-facts/`: a candidate with the same source ID,
+normalized claim, and normalized quote as a filed fact takes that fact's ID,
+and only new facts get new IDs.
 Verification verdicts and synthesis citations are keyed by fact ID, so an
 unchanged fact must not be renumbered.
 
 When `tools/lists/supplement-sources.json` exists, those sources were
 recaptured with more content and re-extracted as a supplement. Leave every
 fact row already in `02-facts/` unchanged. File only candidates that are not
-already filed: one with the same source ID and quote as a filed fact gets a
-`duplicate` disposition naming that fact; every other candidate is appended
+already filed: one with the same source ID, normalized claim, and normalized
+quote as a filed fact gets a `duplicate` disposition naming that fact; every other candidate is appended
 under a new fact ID.
 
-A candidate marked `duplicate_of` repeats a filed fact or an earlier candidate
-with the same source and quote (the reducer marks them, so extraction passes
-over the same text need no cross-checking). Do not file it; record it as a
-duplicate of that ID. Near-duplicates the reducer cannot see (the same claim
-quoted differently) are yours to merge as before.
+A candidate marked `duplicate_of` is a duplicate hint from the reducer.
+Confirm that its source ID, normalized claim, and normalized quote all match
+before recording a duplicate disposition. Normalize whitespace and letter case
+only. Keep different claims separate even when their quotations match or
+overlap, and keep different quotations even when their claims match.

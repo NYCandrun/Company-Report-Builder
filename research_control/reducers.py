@@ -22,6 +22,7 @@ from research_control.io import (
 )
 from research_control.runtime import DISCOVERY_TERMINAL, UNCAPTURED_RELEVANCE, RuntimeStore
 from research_control.triage import excluded_dispositions
+from research_control.filing import fact_key
 
 
 def _json_parts(directory: Path) -> list[dict[str, Any]]:
@@ -312,27 +313,22 @@ def reduce_extraction_parts(root: Path, batches: list[dict[str, Any]] | None = N
     }
 
 
-def _quote_key(source_id: str, quote_text: str) -> tuple[str, str]:
-    text = str(quote_text or "").replace("\u2019", "'").replace("\u201c", '"').replace("\u201d", '"')
-    return str(source_id), re.sub(r"\s+", " ", text).strip().casefold()
-
-
 def _mark_duplicates(root: Path, candidates: list[dict[str, Any]]) -> int:
-    """Mark candidates that repeat a filed fact or an earlier candidate (same source and
-    quote) with `duplicate_of`, so passes over the same text need no cross-checking."""
-    filed: dict[tuple[str, str], str] = {}
+    """Mark candidates that repeat a filed fact or an earlier candidate (same source,
+    normalized claim, and normalized quote) with `duplicate_of`, so passes over the same text need no cross-checking."""
+    filed: dict[tuple[str, str, str], str] = {}
     filed_candidates: set[str] = set()
     paths = sorted((root / "02-facts").glob("*.md"))
     for fact in fact_tables.load_fact_tables(paths) if paths else []:
-        filed.setdefault(_quote_key(fact.get("source_id", ""), fact.get("verbatim_quote", "")), str(fact.get("fact_id", "")))
+        filed.setdefault(fact_key(fact.get("source_id", ""), fact.get("claim", ""), fact.get("verbatim_quote", "")), str(fact.get("fact_id", "")))
         filed_candidates.update(re.findall(r"CAND-[A-Z0-9]+-\d+", " ".join(str(value) for value in fact.values())))
-    seen: dict[tuple[str, str], str] = {}
+    seen: dict[tuple[str, str, str], str] = {}
     marked = 0
     for row in candidates:
         identifier = str(row.get("candidate_id", row.get("id", "")))
         row.pop("duplicate_of", None)
-        key = _quote_key(row.get("source_id", ""), row.get("quote", ""))
-        if not key[1] or identifier in filed_candidates:
+        key = fact_key(row.get("source_id", ""), row.get("claim", ""), row.get("quote", ""))
+        if not all(key) or identifier in filed_candidates:
             seen.setdefault(key, identifier)
             continue
         original = filed.get(key) or seen.get(key)

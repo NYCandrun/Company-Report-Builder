@@ -110,7 +110,7 @@ class ExtractionReducerTests(unittest.TestCase):
             self.assertEqual(["CAND-BBB-001"], [row["candidate_id"] for row in merged])
 
 
-    def test_reducer_marks_repeated_quotes_without_dropping_them(self) -> None:
+    def test_reducer_marks_only_repeated_source_claim_and_quote(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             atomic_write_text(root / "02-facts/q01.md", "\n".join([
@@ -120,13 +120,19 @@ class ExtractionReducerTests(unittest.TestCase):
             ]) + "\n")
             parts = root / "tools/outputs/worker-parts/extraction"
             atomic_write_jsonl(parts / "aaa.candidates.jsonl", [
-                {"candidate_id": "CAND-AAA-001", "source_id": "SRC-1", "quote": "Tribe builds agents."},
+                {"candidate_id": "CAND-AAA-001", "source_id": "SRC-1", "claim": "c", "quote": "Tribe builds agents."},
             ])
             atomic_write_jsonl(parts / "bbb.candidates.jsonl", [
-                {"candidate_id": "CAND-BBB-001", "source_id": "SRC-1", "quote": "Tribe  builds agents."},
-                {"candidate_id": "CAND-BBB-002", "source_id": "SRC-1", "quote": "It ships in weeks."},
-                {"candidate_id": "CAND-BBB-003", "source_id": "SRC-1", "quote": "it ships in weeks."},
+                {"candidate_id": "CAND-BBB-001", "source_id": "SRC-1", "claim": " C ", "quote": "Tribe  builds agents."},
+                {"candidate_id": "CAND-BBB-002", "source_id": "SRC-1", "claim": "Fast shipping", "quote": "It ships in weeks."},
+                {"candidate_id": "CAND-BBB-003", "source_id": "SRC-1", "claim": "fast SHIPPING", "quote": "it ships in weeks."},
             ])
+            extra = [
+                {"candidate_id": "CAND-BBB-004", "source_id": "SRC-1", "claim": "Different claim", "quote": "Tribe builds agents.", "duplicate_of": "PRD-001"},
+                {"candidate_id": "CAND-BBB-005", "source_id": "SRC-1", "claim": "c", "quote": "builds agents."},
+                {"candidate_id": "CAND-BBB-006", "source_id": "SRC-2", "claim": "c", "quote": "Tribe builds agents."},
+            ]
+            atomic_write_jsonl(parts / "bbb.candidates.jsonl", load_jsonl(parts / "bbb.candidates.jsonl") + extra)
             for batch in ("aaa", "bbb"):
                 atomic_write_jsonl(parts / f"{batch}.dispositions.jsonl", [{
                     "assignment_id": f"facts.extract.{batch}", "input_id": "SRC-1", "source_id": "SRC-1",
@@ -136,7 +142,8 @@ class ExtractionReducerTests(unittest.TestCase):
             rows = {row["candidate_id"]: row.get("duplicate_of") for row in load_jsonl(root / "tools/candidates/all.jsonl")}
             self.assertEqual(2, report["duplicates_marked"])
             self.assertEqual({"CAND-AAA-001": None, "CAND-BBB-001": "PRD-001", "CAND-BBB-002": None,
-                              "CAND-BBB-003": "CAND-BBB-002"}, rows)
+                              "CAND-BBB-003": "CAND-BBB-002", "CAND-BBB-004": None,
+                              "CAND-BBB-005": None, "CAND-BBB-006": None}, rows)
 
     def test_extraction_part_check_rejects_missing_quotes_and_dispositions(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

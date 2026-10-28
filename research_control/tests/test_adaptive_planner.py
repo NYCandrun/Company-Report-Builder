@@ -3,12 +3,14 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from research_control import adaptive, verification
 from research_control.discovery import DISCOVERY_CHANNELS, DiscoveryEngine
 from research_control.automatic import RUNTIME_WORKER
 from research_control.cli import _require_discovery_lease
 from research_control.dispatch import emit_ready_packets
-from research_control.io import atomic_write_json, atomic_write_jsonl, load_jsonl, workflow
+from research_control.io import atomic_write_json, atomic_write_jsonl, atomic_write_text, load_json, load_jsonl, workflow
 from research_control.orchestration import current_phase, initialize, load_state, reopen_phase, save_state
 from research_control.planner import RUNTIME_DISCOVERY_CHANNELS, AdaptivePlanner, _batch_id, discovery_task_id
 from research_control.runtime import WorkItem
@@ -27,6 +29,73 @@ def copy_template(target: Path) -> None:
 
 
 class AdaptivePlannerTests(unittest.TestCase):
+    def test_source_changes_requeue_verification_in_automatic_run(self) -> None:
+        for change in ("context", "delete", "new-transcript", "manifest"):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                copy_template(root)
+                state = initialize(root, "https://example.com")
+                for phase in state["phases"]:
+                    if phase == "verification":
+                        state["phases"][phase]["status"] = "ready"
+                        break
+                    state["phases"][phase]["status"] = "complete"
+                save_state(root, state)
+                atomic_write_text(root / "02-facts/product.md",
+                                  "| Fact ID | Claim | Verbatim quote | Source ID | Location | Source date | Grade |\n"
+                                  "|---|---|---|---|---|---|---|\n"
+                                  "| PRD-001 | Acme builds agents. | We build agents | SRC-A | line 1 | 2026-01-01 | P |\n")
+                atomic_write_text(root / "05-synthesis/offering.md", "Acme builds agents [PRD-001].\n")
+                manifest = root / "01-sources/MANIFEST.csv"
+                manifest_text = ("id,url,grade,local file\n"
+                                 "SRC-A,https://example.com,P,01-sources/captures/SRC-A/content.txt\n")
+                atomic_write_text(manifest, manifest_text)
+                capture = root / "01-sources/captures/SRC-A/content.txt"
+                original = "We build agents.\n" + "Background context.\n" * 300
+                atomic_write_text(capture, original + "Currently available.\n")
+
+                # Exercise the real planner, scheduler, automatic preparation and reduction.
+                # Only the unrelated GitHub phase-archive requirement is stubbed.
+                with patch("research_control.adaptive.ensure_conversation_pushed", return_value={"on_remote": True}):
+                    initial = adaptive.advance(root)
+                    self.assertEqual("work_ready", initial["status"], initial)
+                    self.assertEqual(1, initial["automatic"]["executed"])
+                    with RuntimeStore(root) as store:
+                        shard = next(task for task in store.tasks() if task["task_type"] == "verification")
+                        store.claim("verifier", task_id=shard["task_id"])
+                        store.start(shard["task_id"], "verifier")
+                    atomic_write_jsonl(root / shard["metadata"]["part"], [{
+                        "fact_id": "PRD-001", "verdict": "confirmed", "reason": "The quote supports the claim.",
+                        "evidence_paths": [str(capture.relative_to(root))],
+                    }])
+                    adaptive.complete_work(root, shard["task_id"], "verifier")
+                    adaptive.advance(root)
+                    with RuntimeStore(root) as store:
+                        self.assertEqual("succeeded", store.task("verification.reduce-verdicts")["state"])
+                    prior_fingerprint = load_json(root / verification.PACKET_INDEX)["facts"]["PRD-001"]["fingerprint"]
+
+                    if change == "context":
+                        atomic_write_text(capture, original + "Historical offering; no longer available.\n")
+                    elif change == "delete":
+                        capture.unlink()
+                    elif change == "new-transcript":
+                        atomic_write_text(capture.with_name("transcript.txt"), "Only a demo, not a product.\n")
+                    else:
+                        atomic_write_text(manifest, manifest_text.replace("https://example.com", "https://example.com/archive"))
+
+                    refreshed = adaptive.advance(root)
+                    self.assertEqual("work_ready", refreshed["status"], refreshed)
+                    self.assertIn("verification.prepare", refreshed["stale"])
+                    self.assertIn(shard["task_id"], refreshed["stale"])
+                    self.assertIn("verification.reduce-verdicts", refreshed["stale"])
+                    self.assertEqual(1, refreshed["automatic"]["executed"])
+                    self.assertEqual([], load_jsonl(root / verification.REUSED))
+                    self.assertNotEqual(prior_fingerprint, load_json(root / verification.PACKET_INDEX)["facts"]["PRD-001"]["fingerprint"])
+                    with RuntimeStore(root) as store:
+                        self.assertEqual(2, store.task("verification.prepare")["attempt_count"])
+                        self.assertEqual("ready", store.task(shard["task_id"])["state"])
+                        self.assertEqual("planned", store.task("verification.reduce-verdicts")["state"])
+
     def test_model_routing_is_advisory_and_capability_dependent(self) -> None:
         economy = model_route(SOURCE_ROOT, "capture")
         strong = model_route(SOURCE_ROOT, "diagram_modeler")

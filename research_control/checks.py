@@ -33,6 +33,12 @@ from research_control.validators import american, brand, citations, dates, diagr
 
 # Fact IDs end in at least three digits (zero-padded), so "GPT-4o", "SOC-2" and "AIUC-1" are not IDs.
 FACT_ID = re.compile(r"\b[A-Z][A-Z0-9-]*-[A-Z]*\d{3,}[a-z]?\b")
+VERDICT_INPUTS = [
+    "tools/outputs/verification-verdicts.jsonl",
+    "tools/outputs/verification-verdicts-added.jsonl",
+]
+
+
 def _report(
     root: Path,
     checker: str,
@@ -67,6 +73,8 @@ def _write(root: Path, relative: str, report: dict[str, Any]) -> dict[str, Any]:
 def _validation_engine_key(root: Path) -> str:
     values = hash_patterns(root, [
         "research_control/checks.py",
+        "research_control/verification.py",
+        "research_control/verification_sandbox.py",
         "research_control/validators/*.py",
         "research_control/reconciliation/*.py",
         "research_control/reporting/*.py",
@@ -275,7 +283,7 @@ def _validate_verdicts(root: Path, checker: str) -> dict[str, Any]:
         if not row.get("evidence_paths"):
             failures.append(f"{fact_id or index}: missing evidence paths")
     unknowns = [] if records else ["verification verdict file is missing or empty"]
-    return _report(root, checker, ["tools/outputs/verification-verdicts.jsonl", "tools/lists/cited-facts.txt"], len(records) or 1, len(records), failures, unknowns)
+    return _report(root, checker, [*VERDICT_INPUTS, "tools/lists/cited-facts.txt"], len(records) or 1, len(records), failures, unknowns)
 
 
 def _review_findings(root: Path) -> list[dict[str, Any]]:
@@ -518,7 +526,7 @@ def _validate_final_cited_facts(root: Path) -> dict[str, Any]:
         if row.get("verdict") in {"confirmed", "corrected"}
     }
     missing = sorted(cited - verified)
-    return _report(root, "new_cited_fact_verification", ["tools/outputs/citation-map-*.json", DIAGRAM_MODEL_JSON, "tools/outputs/verification-verdicts.jsonl"], len(cited), len(cited & verified), [f"published fact lacks accepted verification: {item}" for item in missing])
+    return _report(root, "new_cited_fact_verification", ["tools/outputs/citation-map-*.json", DIAGRAM_MODEL_JSON, *VERDICT_INPUTS], len(cited), len(cited & verified), [f"published fact lacks accepted verification: {item}" for item in missing])
 
 
 def _validate_exhibits(root: Path) -> dict[str, Any]:
@@ -666,12 +674,14 @@ def run_validator(root: Path, phase: dict[str, Any], validator_id: str) -> dict[
             for row in _verification_records(root)
             if row.get("verdict") in {"confirmed", "corrected"}
         }
-        return diagrams.validate_models(
+        report = diagrams.validate_models(
             root,
             {str(row.get("fact_id")) for row in fact_rows},
             source_ids,
             verified,
         )
+        report["input_hashes"].update(hash_patterns(root, VERDICT_INPUTS))
+        return report
     if validator_id in {"brand_capture_artifacts", "brand_artifacts"}:
         return _rename(brand.validate_artifacts(root), validator_id)
     if validator_id == "brand_visual_records":
@@ -769,11 +779,11 @@ def run_reconciliation(root: Path, phase: dict[str, Any], reconciliation_id: str
     if reconciliation_id == "cited_fact_verification":
         assigned = _ids_from_text(root / "tools/lists/cited-facts.txt")
         completed = [str(row.get("fact_id", "")) for row in _verification_records(root)]
-        return _coverage_reconciliation(root, reconciliation_id, assigned, completed, ["tools/lists/cited-facts.txt", "tools/outputs/verification-verdicts.jsonl"])
+        return _coverage_reconciliation(root, reconciliation_id, assigned, completed, ["tools/lists/cited-facts.txt", *VERDICT_INPUTS])
     if reconciliation_id == "verification_corrections":
         assigned = [str(row.get("fact_id", "")) for row in _verification_records(root)]
         completed = [str(row.get("fact_id", row.get("input_id", ""))) for row in _records(root, "tools/outputs/verification-corrections.jsonl")]
-        return _coverage_reconciliation(root, reconciliation_id, assigned, completed, ["tools/outputs/verification-verdicts.jsonl", "tools/outputs/verification-corrections.jsonl"])
+        return _coverage_reconciliation(root, reconciliation_id, assigned, completed, [*VERDICT_INPUTS, "tools/outputs/verification-corrections.jsonl"])
     if reconciliation_id == "review_findings":
         assigned = [str(row.get("finding_id", "")) for row in _review_findings(root) if row.get("finding_id")]
         completed = [str(row.get("finding_id", row.get("input_id", ""))) for row in _records(root, "tools/outputs/review-decisions.jsonl")]
@@ -790,7 +800,7 @@ def run_reconciliation(root: Path, phase: dict[str, Any], reconciliation_id: str
                 for fact_id in record.get("fact_ids", [])
             })
         completed = [str(row.get("fact_id", "")) for row in _verification_records(root) if row.get("verdict") in {"confirmed", "corrected"}]
-        return _coverage_reconciliation(root, reconciliation_id, assigned, completed, ["tools/outputs/citation-map-*.json", DIAGRAM_MODEL_JSON, "tools/outputs/verification-verdicts.jsonl"])
+        return _coverage_reconciliation(root, reconciliation_id, assigned, completed, ["tools/outputs/citation-map-*.json", DIAGRAM_MODEL_JSON, *VERDICT_INPUTS])
     if reconciliation_id == "citation_sources":
         assigned = sorted({str(note.get("source_id")) for _path, data in _citation_maps(root) for note in data.get("notes", []) if note.get("source_id")})
         model_path = root / DIAGRAM_MODEL_JSON
