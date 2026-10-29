@@ -1,4 +1,59 @@
-# Adaptive company research agent
+# Agentic Research Orchestrator
+
+A durable, evidence-grounded research workflow that turns one company URL into a cited company brief, a brand guide built from public evidence, and four architecture diagrams.
+
+AI agents do the research, but ordinary software decides what runs and when the work is finished. A scheduler tracks every task and its dependencies, hands out work, checks the outputs, and releases the final deliverables only when they pass checks tied to their exact contents. No agent gets to declare its own work complete.
+
+## Engineering highlights
+
+- **Durable task execution.** Tasks live in a SQLite-backed scheduler. Workers claim a task under a time-limited lease and renew it with heartbeats. If a worker disappears, its expired lease is recovered and the task is retried. A run can be stopped and resumed at any point.
+- **Dependency-aware invalidation.** Every task records hashes of its inputs and outputs. When a source, a prompt, or a validation rule changes, the work that depended on it, and everything downstream of that work, is invalidated and re-queued.
+- **Evidence provenance.** Each captured source gets a capture record with its content hash, capture date, and the version of the rules in force. Every fact in the report cites a specific location in a specific source.
+- **Deterministic release checks.** The run is finished only when a release manifest passes and is bound to the hashes of the exact final files.
+- **Isolated agents.** Each agent gets a fixed task packet listing its exact inputs, outputs, instructions, and checks, and is told to write only its declared outputs. Files that several tasks feed into are written by a single owner.
+
+## Quick start
+
+```bash
+python3 -m research_control preflight
+python3 -m research_control new --url "https://example.com"
+```
+
+Python 3.11 or later, standard library only. Then follow [Run it](#run-it) to drive the run to release.
+
+## Verification
+
+- **131 regression and clean-room tests** in `research_control/tests/`. Run them with `python3 -m unittest discover -s research_control/tests`.
+- **CI:** the [Research integrity](.github/workflows/research-integrity.yml) workflow validates every schema and the workflow contract, compiles the engine, runs preflight, and runs the full test suite on every push.
+
+## How it fits together
+
+```mermaid
+flowchart LR
+  U[Company URL] --> P[Planner<br/>research questions + task graph]
+  P --> Q[(Scheduler<br/>SQLite: tasks, leases, hashes)]
+  Q --> D[Runtime work<br/>crawl, capture, transcription]
+  Q --> W[Agent workers<br/>one packet each]
+  D --> E[Evidence store<br/>captures + hashes]
+  W --> E
+  E --> F[Facts with citations]
+  F --> R[Brief, brand guide, diagrams]
+  R --> G{Release check<br/>bound to file hashes}
+  G -- fails --> Q
+  G -- passes --> OUT[Released deliverables]
+```
+
+The rules every run follows are in [RESEARCH_CONSTITUTION.md](RESEARCH_CONSTITUTION.md) and [WORKFLOW.yaml](WORKFLOW.yaml). The rest of this README is the full operating guide.
+
+## A design decision worth noting
+
+Deciding when work is done was taken away from the agents. A language model is good at research and writing, but it is unreliable at judging whether its own output is complete and correct. So the scheduler, not the agent, decides when a task has succeeded: the worker must still hold the task's lease, the task's inputs must be unchanged since it started, its outputs must exist, and their hashes are recorded so any later change is detected. The cost is a stricter, more verbose protocol for every worker. In return, a run can be stopped, resumed, or changed mid-flight without silently keeping stale work.
+
+**Status:** The framework is implemented, tested, and in use on live company research runs. Run data is archived separately from this template.
+
+---
+
+## Overview
 
 Give the agent one public company URL. This repository discovers the available
 evidence, plans work from the resulting corpus, and carries the run through a
