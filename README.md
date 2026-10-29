@@ -1,55 +1,57 @@
 # Agentic Research Orchestrator
 
-A durable, evidence-grounded research workflow that turns one company URL into a cited company brief, a brand guide built from public evidence, and four architecture diagrams.
+Give it a company's website address and it produces three things: a research report on the company with a source for every fact, a brand guide based on the company's public materials, and four diagrams of how the company's products and systems fit together.
 
-AI agents do the research, but ordinary software decides what runs and when the work is finished. A scheduler tracks every task and its dependencies, hands out work, checks the outputs, and releases the final deliverables only when they pass checks tied to their exact contents. No agent gets to declare its own work complete.
+The research and writing are done by AI agents, which are AI models given a task and the tools to carry it out. Everything else is ordinary code. A scheduler works out which tasks are ready, hands each one to an agent, checks what comes back, and releases the finished report only once it passes a final set of checks. The agents never decide for themselves that their work is done.
 
-## Engineering highlights
+## What makes this hard, and how it is handled
 
-- **Durable task execution.** Tasks live in a SQLite-backed scheduler. Workers claim a task under a time-limited lease and renew it with heartbeats. If a worker disappears, its expired lease is recovered and the task is retried. A run can be stopped and resumed at any point.
-- **Dependency-aware invalidation.** Every task records hashes of its inputs and outputs. When a source, a prompt, or a validation rule changes, the work that depended on it, and everything downstream of that work, is invalidated and re-queued.
-- **Evidence provenance.** Each captured source gets a capture record with its content hash, capture date, and the version of the rules in force. Every fact in the report cites a specific location in a specific source.
-- **Deterministic release checks.** The run is finished only when a release manifest passes and is bound to the hashes of the exact final files.
-- **Isolated agents.** Each agent gets a fixed task packet listing its exact inputs, outputs, instructions, and checks, and is told to write only its declared outputs. Files that several tasks feed into are written by a single owner.
+- **Work survives crashes and interruptions.** Every task is recorded in a small database. An agent checks a task out for a limited time and has to keep checking in to hold on to it. If an agent stops checking in, for example because its session crashed, the time runs out, the task goes back in the queue, and another agent picks it up. A run can be stopped and restarted at any point without losing finished work.
+- **When something changes, everything that relied on it is redone.** Each task records a fingerprint of every file it read and wrote (a short code computed from the file's exact contents, which changes if the file changes at all). If a source, an instruction, or a check changes, the fingerprints stop matching. That task, and every later task that used its output, is marked out of date and run again.
+- **Every fact can be traced to where it came from.** Each source is saved with a fingerprint of its contents, the date it was captured, and the version of the rules in force at the time. Every fact in the report links to the exact place it came from: a line of code, a moment in a recording, or the highlighted words on a web page.
+- **The finished report is checked exactly as delivered.** A run ends only when a final checklist passes, and that pass is tied to the fingerprints of the exact final files. If any of those files changes afterward, the pass no longer counts.
+- **Each agent sticks to its own assignment.** An agent gets a fixed assignment that lists what to read, what to write, its instructions, and the checks its work must pass, and it is told to write only those files. A file that several tasks contribute to is written by just one of them.
 
-## Quick start
+## Try it
+
+Needs Python 3.11 or later and nothing else:
 
 ```bash
 python3 -m research_control preflight
 python3 -m research_control new --url "https://example.com"
 ```
 
-Python 3.11 or later, standard library only. Then follow [Run it](#run-it) to drive the run to release.
+This checks the setup, creates a folder for the run, and starts it. [Run it](#run-it) explains how to carry a run through to the finished report.
 
-## Verification
+## How it is tested
 
-- **131 regression and clean-room tests** in `research_control/tests/`. Run them with `python3 -m unittest discover -s research_control/tests`.
-- **CI:** the [Research integrity](.github/workflows/research-integrity.yml) workflow validates every schema and the workflow contract, compiles the engine, runs preflight, and runs the full test suite on every push.
+- **131 automated tests** in `research_control/tests/`. Run them with `python3 -m unittest discover -s research_control/tests`.
+- **An automatic check on every push to GitHub** ([Research integrity](.github/workflows/research-integrity.yml)). It confirms the workflow file and every data format definition are valid, makes sure all the code loads, runs the setup check, and runs all 131 tests.
 
-## How it fits together
+## How the pieces connect
 
 ```mermaid
 flowchart LR
-  U[Company URL] --> P[Planner<br/>research questions + task graph]
-  P --> Q[(Scheduler<br/>SQLite: tasks, leases, hashes)]
-  Q --> D[Runtime work<br/>crawl, capture, transcription]
-  Q --> W[Agent workers<br/>one packet each]
-  D --> E[Evidence store<br/>captures + hashes]
+  U[Company website] --> P[Plan<br/>research questions and a task list]
+  P --> Q[(Scheduler<br/>tasks, check-outs, fingerprints)]
+  Q --> D[Scripted work<br/>crawl the site, save pages, transcribe recordings]
+  Q --> W[AI agents<br/>one assignment each]
+  D --> E[Saved sources<br/>with fingerprints]
   W --> E
-  E --> F[Facts with citations]
-  F --> R[Brief, brand guide, diagrams]
-  R --> G{Release check<br/>bound to file hashes}
+  E --> F[Facts, each with its source]
+  F --> R[Report, brand guide, diagrams]
+  R --> G{Final checks<br/>tied to the exact files}
   G -- fails --> Q
-  G -- passes --> OUT[Released deliverables]
+  G -- passes --> OUT[Finished deliverables]
 ```
 
 The rules every run follows are in [RESEARCH_CONSTITUTION.md](RESEARCH_CONSTITUTION.md) and [WORKFLOW.yaml](WORKFLOW.yaml). The rest of this README is the full operating guide.
 
 ## A design decision worth noting
 
-Deciding when work is done was taken away from the agents. A language model is good at research and writing, but it is unreliable at judging whether its own output is complete and correct. So the scheduler, not the agent, decides when a task has succeeded: the worker must still hold the task's lease, the task's inputs must be unchanged since it started, its outputs must exist, and their hashes are recorded so any later change is detected. The cost is a stricter, more verbose protocol for every worker. In return, a run can be stopped, resumed, or changed mid-flight without silently keeping stale work.
+The agents do not get to say when a task is finished. AI models are good at research and writing but unreliable at judging whether their own work is complete and correct, so the code decides instead. A task counts as done only if the agent still has it checked out, the files it read have not changed since it started, and the files it was supposed to write exist. Their fingerprints are then recorded, so any later change is caught. The cost is a stricter routine that every agent has to follow. The payoff is that a run can be paused, resumed, or changed partway through without quietly keeping work that is out of date.
 
-**Status:** The framework is implemented, tested, and in use on live company research runs. Run data is archived separately from this template.
+**Status:** Built, tested, and in use on real company research. The research from each run is stored separately, not in this repository.
 
 ---
 
